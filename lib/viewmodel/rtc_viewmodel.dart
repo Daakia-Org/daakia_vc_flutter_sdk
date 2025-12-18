@@ -2079,12 +2079,12 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  String getAdminType() {
-    if(adminList.isEmpty) return "Unknown";
+  String? getAdminType() {
+    if(adminList.isEmpty) return null;
     final metadata = adminList[0]?.metadata;
     if (Utils.isHost(metadata)) return "Host";
     if (Utils.isCoHost(metadata)) return "Co-Host";
-    return "Unknown";
+    return null;
   }
 
   List<RemoteActivityData> _screenShareRequestList = [];
