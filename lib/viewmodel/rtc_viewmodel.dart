@@ -2117,6 +2117,13 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearScreenShareRequest(String identity) {
+    _screenShareRequestList.removeWhere(
+          (item) => item.identity?.identity == identity,
+    );
+    notifyListeners();
+  }
+
   bool _isScreenShareDialogOpen = false;
 
   bool get isScreenShareDialogOpen => _isScreenShareDialogOpen;
