@@ -1460,6 +1460,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     viewModel?.unregisterCaption();
     handleAndroidNotification(enable: false);
     _disposePip();
+    DaakiaPiP.disposePiP();
   }
 
   void _disposePip() {
