@@ -2057,7 +2057,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool isScreenSharePermissionNeeded() {
     var localParticipant = room.localParticipant;
-    if (Utils.isCoHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
+    if (Utils.isHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
     if (!_isScreenShareEnable) {
       if (isScreenShareRequestAccepted) return false;
       if(adminList.isEmpty) return true;
