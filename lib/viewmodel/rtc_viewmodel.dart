@@ -2057,7 +2057,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool isScreenSharePermissionNeeded() {
     var localParticipant = room.localParticipant;
-    if (Utils.isCoHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
+    if (Utils.isHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
     if (!_isScreenShareEnable) {
       if (isScreenShareRequestAccepted) return false;
       if(adminList.isEmpty) return true;
@@ -2079,12 +2079,12 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  String getAdminType() {
-    if(adminList.isEmpty) return "Unknown";
+  String? getAdminType() {
+    if(adminList.isEmpty) return null;
     final metadata = adminList[0]?.metadata;
     if (Utils.isHost(metadata)) return "Host";
     if (Utils.isCoHost(metadata)) return "Co-Host";
-    return "Unknown";
+    return null;
   }
 
   List<RemoteActivityData> _screenShareRequestList = [];
@@ -2113,6 +2113,13 @@ class RtcViewmodel extends ChangeNotifier {
   void removeScreenShareRequest(RemoteActivityData data) {
     _screenShareRequestList.removeWhere(
           (item) => item.identity == data.identity,
+    );
+    notifyListeners();
+  }
+
+  void clearScreenShareRequest(String identity) {
+    _screenShareRequestList.removeWhere(
+          (item) => item.identity?.identity == identity,
     );
     notifyListeners();
   }
