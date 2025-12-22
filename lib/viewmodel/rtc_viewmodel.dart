@@ -2363,9 +2363,13 @@ class RtcViewmodel extends ChangeNotifier {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
   }
 
-  void storeAttendanceUid() {
-    StorageHelper()
-        .setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+  void storeMeetingDetails() {
+    final storageHelper = StorageHelper();
+    final metadata = room.localParticipant?.metadata;
+    storageHelper
+        .setMeetingUid(meetingDetails.meetingUid);
+    storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+    storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
   }
 
 }
