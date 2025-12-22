@@ -549,6 +549,10 @@ class _PreJoinState extends State<PreJoinScreen> {
           defaultAudioPublishOptions: const AudioPublishOptions(
             name: 'custom_audio_track_name',
           ),
+          defaultAudioCaptureOptions: const AudioCaptureOptions(
+            echoCancellation: true,
+            typingNoiseDetection: true,
+          ),
           defaultCameraCaptureOptions: const CameraCaptureOptions(
               maxFrameRate: 30,
               params: VideoParameters(
