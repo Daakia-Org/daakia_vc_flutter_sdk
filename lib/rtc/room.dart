@@ -161,6 +161,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       );
 
       viewModel?.registerCaption();
+      viewModel?.storeAttendanceUid();
     });
 
     if (lkPlatformIs(PlatformType.android)) {

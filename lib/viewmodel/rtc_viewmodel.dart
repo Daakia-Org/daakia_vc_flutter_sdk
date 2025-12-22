@@ -14,6 +14,7 @@ import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_model.dart';
 import 'package:daakia_vc_flutter_sdk/resources/json/language_json.dart';
+import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -2360,6 +2361,11 @@ class RtcViewmodel extends ChangeNotifier {
 
   void unregisterCaption() {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
+  }
+
+  void storeAttendanceUid() {
+    StorageHelper()
+        .setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
   }
 
 }
