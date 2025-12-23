@@ -82,6 +82,12 @@ class MeetingActions {
 
   static const String canDownloadChatAttachment = "can-download-chat-attachment";
 
+  static const String requestPublicChat = "request_public_chat";
+
+  static const String responsePublicChat = "response_public_chat";
+
+  static const String sendPrivateChat = "send_private_chat";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -138,6 +144,9 @@ class MeetingActions {
     requestScreenSharePermission,
     requestScreenSharePermissionResponse,
     canDownloadChatAttachment,
+    requestPublicChat,
+    responsePublicChat,
+    sendPrivateChat,
     // ✅ Add new fields here
   };
 }
