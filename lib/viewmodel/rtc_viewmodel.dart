@@ -2372,4 +2372,16 @@ class RtcViewmodel extends ChangeNotifier {
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
   }
 
+  void requestChatHistory() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestPublicChat),
+      participant.identity,
+    );
+  }
+
+
+
+
 }
