@@ -5,9 +5,10 @@ import 'consent_participant.dart';
 
 class ActionModel {
   final String? action;
+  final String? identity;
   final String? message;
   final String? token;
-  final bool value;
+  final bool? value;
   final TranscriptionActionModel? liveCaptionsData;
   final String? consent;
   final List<ConsentParticipant>? participants;
@@ -28,9 +29,10 @@ class ActionModel {
 
   ActionModel({
     this.action,
+    this.identity,
     this.message = "",
     this.token = "",
-    this.value = true,
+    this.value,
     this.liveCaptionsData,
     this.consent,
     this.participants,
@@ -42,7 +44,7 @@ class ActionModel {
     this.mode,
     this.messageId,
     this.reaction,
-    this.removeReaction = false,
+    this.removeReaction,
     this.requestBy,
     this.requestByName,
     this.isScreenShareAllowed,
@@ -53,10 +55,19 @@ class ActionModel {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
       'action': action,
-      'message': message,
-      'token': token,
-      'value': value,
     };
+    if (message != null) {
+      data['message'] = message;
+    }
+    if (token != null) {
+      data['token'] = token;
+    }
+    if (value != null) {
+      data['value'] = value;
+    }
+    if (identity != null) {
+      data['identity'] = identity;
+    }
     if (liveCaptionsData != null) {
       data['liveCaptionsData'] = liveCaptionsData;
     }
@@ -110,6 +121,7 @@ class ActionModel {
   factory ActionModel.fromJson(Map<String, dynamic> json) {
     return ActionModel(
       action: json['action'] as String?,
+      identity: json['identity'] as String?,
       message: json['message'] as String? ?? "",
       token: json['token'] as String? ?? "",
       value: json['value'] as bool? ?? true,
