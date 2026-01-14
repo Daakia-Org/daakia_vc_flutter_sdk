@@ -31,6 +31,7 @@ import '../model/meeting_details.dart';
 import '../model/private_chat_model.dart';
 import '../model/send_message_model.dart';
 import '../rtc/widgets/participant_info.dart';
+import '../utils/chat_message_mapper.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/meeting_actions.dart';
@@ -210,6 +211,7 @@ class RtcViewmodel extends ChangeNotifier {
     addMessage(
       RemoteActivityData(
           identity: null,
+          fromUserId: room.localParticipant?.identity,
           id: message.id,
           message: message.message,
           timestamp: message.timestamp,
@@ -2378,6 +2380,15 @@ class RtcViewmodel extends ChangeNotifier {
     sendPrivateAction(
       ActionModel(action: MeetingActions.requestPublicChat),
       participant.identity,
+    );
+  }
+
+  void sendPublicChatHistory(String? identity) {
+    if (identity == null) return;
+    final payload = ChatMessageMapper.toApiList(getMessageList());
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.responsePublicChat, messages: payload),
+      identity,
     );
   }
 
