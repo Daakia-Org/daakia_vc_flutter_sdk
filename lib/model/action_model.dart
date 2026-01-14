@@ -24,14 +24,15 @@ class ActionModel {
   final String? requestBy;
   final String? requestByName;
   final bool? isScreenShareAllowed;
+  final List<Map<String, dynamic>>? messages;
 
   // ✅ ADD NEW FIELD
 
   ActionModel({
     this.action,
     this.identity,
-    this.message = "",
-    this.token = "",
+    this.message,
+    this.token,
     this.value,
     this.liveCaptionsData,
     this.consent,
@@ -48,6 +49,7 @@ class ActionModel {
     this.requestBy,
     this.requestByName,
     this.isScreenShareAllowed,
+    this.messages,
     // ✅ ADD NEW FIELD
   });
 
@@ -113,6 +115,9 @@ class ActionModel {
     if (isScreenShareAllowed != null) {
       data['is_screen_share_allowed'] = isScreenShareAllowed;
     }
+    if (messages != null) {
+      data['messages'] = messages;
+    }
     // ✅ ADD NEW FIELD
     return data;
   }
@@ -144,6 +149,7 @@ class ActionModel {
       requestBy: json['request_by'] as String? ?? "",
       requestByName: json['request_by_name'] as String? ?? "",
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
+      messages: json['messages'] as List<Map<String, dynamic>>?,
       // ✅ ADD NEW FIELD
     );
   }
