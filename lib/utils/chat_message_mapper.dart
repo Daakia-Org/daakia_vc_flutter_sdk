@@ -30,10 +30,10 @@ class ChatMessageMapper {
     if (msg.identity?.identity.isNotEmpty == true) {
       return msg.identity?.identity;
     }
-    if (msg.userIdentity?.isNotEmpty == true) {
-      return msg.userIdentity;
+    if (msg.fromUserId?.isNotEmpty == true) {
+      return msg.fromUserId;
     }
-    return msg.participantIdentity;
+    return null;
   }
 
   /// ------------------------------------------------------------
