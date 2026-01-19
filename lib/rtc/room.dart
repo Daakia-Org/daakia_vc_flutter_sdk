@@ -324,11 +324,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
       }
     })
-    ..on<ParticipantConnectedEvent>((event) {
-      var viewModel = _livekitProviderKey.currentState?.viewModel;
-      viewModel?.setRecording(widget.room.isRecording);
-      _sortParticipants();
-    })
     ..on<ParticipantEvent>((event) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       viewModel?.setRecording(widget.room.isRecording);
@@ -346,10 +341,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       });
     })
     ..on<ParticipantConnectedEvent>((event) {
-      _livekitProviderKey.currentState?.viewModel
-          .getAttendanceListForParticipant();
-      _livekitProviderKey.currentState?.viewModel
-          .addParticipantToConsentList(event.participant);
+      var viewModel = _livekitProviderKey.currentState?.viewModel;
+      viewModel?.setRecording(widget.room.isRecording);
+      viewModel?.getAttendanceListForParticipant();
+      viewModel?.addParticipantToConsentList(event.participant);
       _sortParticipants();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
