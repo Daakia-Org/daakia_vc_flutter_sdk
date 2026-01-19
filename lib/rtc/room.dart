@@ -685,6 +685,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.sendPublicChatHistory(remoteData.identity?.identity);
         break;
 
+      case MeetingActions.responsePublicChat:
+        viewModel?.restorePublicChat(remoteData);
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
