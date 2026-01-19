@@ -184,6 +184,10 @@ class RtcViewmodel extends ChangeNotifier {
     return _privateChat[identity]?.chats ?? [];
   }
 
+  bool hasPrivateChat(String identity) {
+    return _privateChat[identity]?.chats.isNotEmpty ?? false;
+  }
+
   Future<void> sendPublicMessage(String userMessage) async {
     if (!Utils.isMessageSizeValid(userMessage)) {
       sendMessageToUI("Message is too long! Please shorten it and try again.");
