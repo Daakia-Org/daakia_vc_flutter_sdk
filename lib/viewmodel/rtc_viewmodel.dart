@@ -2402,6 +2402,14 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
 
-
+  void sendPrivateChatHistory(String? identity) {
+    if (identity == null) return;
+    if (!hasPrivateChat(identity)) return;
+    final payload = ChatMessageMapper.toApiList(getPrivateMessage()[identity]?.chats ?? []);
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.sendPrivateChat, messages: payload, identity: room.localParticipant?.identity),
+      identity,
+    );
+  }
 
 }
