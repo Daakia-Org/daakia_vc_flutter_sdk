@@ -345,6 +345,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.setRecording(widget.room.isRecording);
       viewModel?.getAttendanceListForParticipant();
       viewModel?.addParticipantToConsentList(event.participant);
+      viewModel?.sendPrivateChatHistory(event.participant.identity);
       _sortParticipants();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
