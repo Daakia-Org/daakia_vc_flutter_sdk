@@ -37,10 +37,11 @@ class MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<MessageBubble> {
   @override
   Widget build(BuildContext context) {
-    final String userName = widget.chat.identity?.name ?? "Unknown";
+    final participant = widget.chat.identity;
+    final String userName = participant == null ? widget.viewModel.getParticipantNameByIdentity(widget.chat.fromUserId) : participant.name;
     final String message = widget.chat.message ?? "";
     final String time = Utils.formatTimestampToTime(widget.chat.timestamp);
-    final bool isSender = widget.chat.isSender;
+    final bool isSender = (widget.chat.isSender || widget.chat.fromUserId == widget.viewModel.room.localParticipant?.identity);
     final bool isEdited = widget.chat.isEdited;
     return Align(
       alignment: isSender ? Alignment.centerRight : Alignment.centerLeft,
