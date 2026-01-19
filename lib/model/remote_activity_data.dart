@@ -38,6 +38,7 @@ class RemoteActivityData {
   final bool removeReaction;
   final bool isScreenShareAllowed;
   final String? fromUserId;
+  final List<dynamic>? messages;
 
   // ✅ ADD NEW FIELD
 
@@ -74,6 +75,7 @@ class RemoteActivityData {
     this.removeReaction = false,
     this.isScreenShareAllowed = false,
     this.fromUserId,
+    this.messages,
     // ✅ ADD NEW FIELD
   });
 
@@ -123,6 +125,7 @@ class RemoteActivityData {
       removeReaction: json['removeReaction'] as bool? ?? false,
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
       fromUserId: json['from'] as String?,
+      messages: json['messages'] as List<dynamic>?,
       // ✅ ADD NEW FIELD
     );
   }
@@ -161,6 +164,7 @@ class RemoteActivityData {
       'removeReaction': removeReaction,
       'is_screen_share_allowed': isScreenShareAllowed,
       'from': fromUserId,
+      'messages': messages,
       // ✅ ADD NEW FIELD
     };
   }
@@ -198,6 +202,7 @@ class RemoteActivityData {
     bool? removeReaction,
     bool? isScreenShareAllowed,
     String? fromUserId,
+    List<dynamic>? messages,
     // ✅ ADD NEW FIELD
   }) {
     return RemoteActivityData(
@@ -234,6 +239,7 @@ class RemoteActivityData {
       removeReaction: removeReaction ?? this.removeReaction,
       isScreenShareAllowed: isScreenShareAllowed ?? this.isScreenShareAllowed,
       fromUserId: fromUserId ?? this.fromUserId,
+      messages: messages ?? this.messages,
       // ✅ ADD NEW FIELD
     );
   }
