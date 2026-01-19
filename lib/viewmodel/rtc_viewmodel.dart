@@ -2392,6 +2392,11 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  void restorePublicChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    addAllMessage(messages);
+  }
+
 
 
 
