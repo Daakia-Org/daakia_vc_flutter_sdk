@@ -54,7 +54,7 @@ class ChatMessageMapper {
       id: json['id'] as String?,
       message: json['message'] as String?,
       timestamp: json['timestamp'] as int?,
-      userIdentity: json['from'] as String?,
+      fromUserId: json['from'] as String?,
       participantIdentity: json['from'] as String?,
       replyMessage: json['replyMessage'] != null
           ? ReplyMessage.fromJson(
