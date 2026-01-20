@@ -6,6 +6,7 @@ import 'consent_participant.dart';
 class ActionModel {
   final String? action;
   final String? identity;
+  final String? userIdentity;
   final String? message;
   final String? token;
   final bool? value;
@@ -31,6 +32,7 @@ class ActionModel {
   ActionModel({
     this.action,
     this.identity,
+    this.userIdentity,
     this.message,
     this.token,
     this.value,
@@ -69,6 +71,9 @@ class ActionModel {
     }
     if (identity != null) {
       data['identity'] = identity;
+    }
+    if (userIdentity != null) {
+      data['user_identity'] = userIdentity;
     }
     if (liveCaptionsData != null) {
       data['liveCaptionsData'] = liveCaptionsData;
@@ -127,6 +132,7 @@ class ActionModel {
     return ActionModel(
       action: json['action'] as String?,
       identity: json['identity'] as String?,
+      userIdentity: json['user_identity'] as String?,
       message: json['message'] as String? ?? "",
       token: json['token'] as String? ?? "",
       value: json['value'] as bool? ?? true,
