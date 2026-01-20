@@ -2412,4 +2412,18 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  void restorePrivateChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    final identity = remoteData.userIdentity;
+    final name = getParticipantNameByIdentity(identity);
+    _privateChat.putIfAbsent(
+        identity ?? "Unknown",
+            () => PrivateChatModel(
+            identity: identity ?? "Unknown",
+            name: name,
+            chats: messages));
+    notifyListeners();
+    sendPrivateChatEvent(UpdateView());
+  }
+
 }
