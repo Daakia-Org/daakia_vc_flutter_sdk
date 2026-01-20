@@ -2382,7 +2382,7 @@ class RtcViewmodel extends ChangeNotifier {
     if (room.remoteParticipants.values.isEmpty) return;
     final participant = room.remoteParticipants.values.first;
     sendPrivateAction(
-      ActionModel(action: MeetingActions.requestPublicChat),
+      ActionModel(action: MeetingActions.requestPublicChat, userIdentity: room.localParticipant?.identity),
       participant.identity,
     );
   }
@@ -2391,7 +2391,7 @@ class RtcViewmodel extends ChangeNotifier {
     if (identity == null) return;
     final payload = ChatMessageMapper.toApiList(getMessageList());
     sendPrivateAction(
-      ActionModel(action: MeetingActions.responsePublicChat, messages: payload),
+      ActionModel(action: MeetingActions.responsePublicChat, messages: payload, userIdentity: room.localParticipant?.identity),
       identity,
     );
   }
@@ -2407,7 +2407,7 @@ class RtcViewmodel extends ChangeNotifier {
     if (!hasPrivateChat(identity)) return;
     final payload = ChatMessageMapper.toApiList(getPrivateMessage()[identity]?.chats ?? []);
     sendPrivateAction(
-      ActionModel(action: MeetingActions.sendPrivateChat, messages: payload, identity: room.localParticipant?.identity),
+      ActionModel(action: MeetingActions.sendPrivateChat, userIdentity: room.localParticipant?.identity, messages: payload),
       identity,
     );
   }
