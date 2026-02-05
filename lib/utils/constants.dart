@@ -49,7 +49,7 @@ class Constant {
       'mp3', 'aac', 'mpeg', 'ogg', // Audio
       'txt', 'pdf', 'ppt', 'doc', 'xls', 'docx', 'pptx', 'xlsx', // Documents
       'jpg', 'jpeg', 'png', 'webp', // Images
-      'mp4', '3gp', // Videos
+      // 'mp4', '3gp', // Videos
     ];
   }
 
