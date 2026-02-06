@@ -24,6 +24,8 @@ class Constant {
 
   static const int maxMessageSize = 16384; // 16 KB limit
 
+  static const int maxMessageCharLimit = 512;
+
   static const int imageMaxSize = 15;
   static const int documentMaxSize = 15;
   static const int audioMaxSize = 15;
