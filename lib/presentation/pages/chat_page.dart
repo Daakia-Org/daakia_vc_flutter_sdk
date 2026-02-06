@@ -278,10 +278,12 @@ class _ChatState extends State<ChatPage> {
                         child: TextField(
                           controller: messageController,
                           focusNode: _messageFocusNode,
+                          maxLength: Constant.maxMessageCharLimit,
                           decoration: const InputDecoration(
                             hintText: "Type here...",
                             hintStyle: TextStyle(color: Colors.white),
                             border: InputBorder.none, // Removes default borders
+                            counterText: "",
                           ),
                           style: const TextStyle(color: Colors.white),
                         ),
