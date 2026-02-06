@@ -201,6 +201,19 @@ class Utils {
     return uri != null && uri.hasScheme && uri.host.isNotEmpty;
   }
 
+  static final _urlRegex = RegExp(
+    r'(https?:\/\/[^\s]+)',
+    caseSensitive: false,
+  );
+
+  static List<String> extractLinks(String text) {
+    return _urlRegex.allMatches(text).map((m) => m.group(0)!).toList();
+  }
+
+  static String extractTextWithoutLinks(String text) {
+    return text.replaceAll(_urlRegex, '').trim();
+  }
+
   static bool isFileLink(String url) {
     if (!isUrl(url)) return false;
     final mimeType = lookupMimeType(url);
