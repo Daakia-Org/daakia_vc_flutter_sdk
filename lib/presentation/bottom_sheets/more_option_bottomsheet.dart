@@ -135,7 +135,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 var raisedHand = viewModel.isMyHandRaised
                     ? MeetingActions.raiseHand
                     : MeetingActions.stopRaiseHand;
-                viewModel.sendAction(ActionModel(action: raisedHand));
+                viewModel.sendAction(ActionModel(action: raisedHand, timeStamp: DateTime.now().microsecondsSinceEpoch));
                 Navigator.pop(context);
               }),
               // Reaction
