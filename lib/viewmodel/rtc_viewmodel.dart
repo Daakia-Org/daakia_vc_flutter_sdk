@@ -685,6 +685,12 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  void clearRaiseHandMemory(String? identity) {
+    if (identity == null) return;
+    _raisedHandMap[identity] = false;
+    _raisedHandQueue.removeWhere((e) => e.identity == identity);
+  }
+
 
   void stopHandRaisedForAll() {
     _raisedHandMap.clear();
