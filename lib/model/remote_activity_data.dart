@@ -10,6 +10,7 @@ class RemoteActivityData {
   final String? id;
   final String? message;
   final int? timestamp;
+  final int? timeStamp;
   final String? action;
   final bool isSender;
   final String? requestId;
@@ -47,6 +48,7 @@ class RemoteActivityData {
     this.id,
     this.message,
     this.timestamp,
+    this.timeStamp,
     this.action,
     this.isSender = false,
     this.requestId = "",
@@ -86,6 +88,7 @@ class RemoteActivityData {
       id: json['id'] as String?,
       message: json['message'] as String?,
       timestamp: json['timestamp'] as int?,
+      timeStamp: json['timeStamp'] as int?,
       action: json['action'] as String?,
       isSender: json['isSender'] as bool? ?? false,
       requestId: json['request_id'] as String? ?? "",
@@ -136,6 +139,7 @@ class RemoteActivityData {
       'id': id,
       'message': message,
       'timestamp': timestamp,
+      'timeStamp': timeStamp,
       'action': action,
       'isSender': isSender,
       'request_id': requestId,
@@ -174,6 +178,7 @@ class RemoteActivityData {
     String? id,
     String? message,
     int? timestamp,
+    int? timeStamp,
     String? action,
     bool? isSender,
     String? requestId,
@@ -210,6 +215,7 @@ class RemoteActivityData {
       id: id ?? this.id,
       message: message ?? this.message,
       timestamp: timestamp ?? this.timestamp,
+      timeStamp: timeStamp ?? this.timeStamp,
       action: action ?? this.action,
       isSender: isSender ?? this.isSender,
       requestId: requestId ?? this.requestId,
