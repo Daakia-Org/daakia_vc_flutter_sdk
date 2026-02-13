@@ -29,6 +29,7 @@ import '../model/emoji_message.dart';
 import '../model/language_model.dart';
 import '../model/meeting_details.dart';
 import '../model/private_chat_model.dart';
+import '../model/raised_hand.dart';
 import '../model/send_message_model.dart';
 import '../rtc/widgets/participant_info.dart';
 import '../utils/chat_message_mapper.dart';
@@ -46,6 +47,7 @@ class RtcViewmodel extends ChangeNotifier {
   final List<ParticipantTrack> _participantTracks = [];
 
   final Map<String, bool> _raisedHandMap = {};
+  final List<RaisedHand> _raisedHandQueue = [];
 
   bool _isMyHandRaised = false;
 
@@ -661,13 +663,32 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void setHandRaised(RemoteActivityData remoteData) {
-    _raisedHandMap[remoteData.identity?.identity ?? ""] =
-        (remoteData.action == "raise_hand");
+    final id = remoteData.identity?.identity ?? "";
+
+    if (remoteData.action == "raise_hand") {
+      // prevent duplicate
+      if (!_raisedHandMap.containsKey(id) || _raisedHandMap[id] == false) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: remoteData.timeStamp ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+    }
+
     notifyListeners();
   }
 
+
   void stopHandRaisedForAll() {
     _raisedHandMap.clear();
+    _raisedHandQueue.clear();
     _isMyHandRaised = false;
     notifyListeners();
   }
@@ -679,9 +700,71 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool get isMyHandRaised => _isMyHandRaised;
 
+  List<RaisedHand> get raisedHandQueue => List.unmodifiable(_raisedHandQueue);
+
+  void syncRaiseHand(List<RaisedHand>? serverList) {
+    if (serverList == null) return;
+    // clear existing state
+    _raisedHandMap.clear();
+    _raisedHandQueue.clear();
+
+    // sort to ensure correct order (safety)
+    serverList.sort((a, b) => a.timeStamp.compareTo(b.timeStamp));
+
+    for (final item in serverList) {
+      _raisedHandMap[item.identity] = true;
+      _raisedHandQueue.add(item);
+    }
+
+    // update my hand state
+    final localId = room.localParticipant?.identity ?? "";
+    _isMyHandRaised = _raisedHandMap[localId] ?? false;
+
+    notifyListeners();
+  }
+
+  void requestRaiseHand() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestRaisedHands, userIdentity: room.localParticipant?.identity),
+      participant.identity,
+    );
+  }
+
+  void responseRaiseHand(RemoteActivityData action) {
+    final identity = action.userIdentity;
+    if(identity == null) return;
+    if (_raisedHandQueue.isEmpty) return;
+    sendPrivateAction(ActionModel(
+      action: MeetingActions.responseRaisedHands,
+      raisedHands: _raisedHandQueue,
+    ), identity);
+  }
+
+
   void setHandRaisedForLocal(ActionModel action) {
-    _raisedHandMap[room.localParticipant?.identity ?? ""] =
-        (action.action == MeetingActions.raiseHand);
+    final id = room.localParticipant?.identity ?? "";
+
+    if (action.action == MeetingActions.raiseHand) {
+      if (!(_raisedHandMap[id] ?? false)) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+
+      _isMyHandRaised = true;
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+      _isMyHandRaised = false;
+    }
+
     notifyListeners();
   }
 
