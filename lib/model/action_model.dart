@@ -6,9 +6,11 @@ import 'consent_participant.dart';
 
 class ActionModel {
   final String? action;
+  final String? identity;
+  final String? userIdentity;
   final String? message;
   final String? token;
-  final bool value;
+  final bool? value;
   final TranscriptionActionModel? liveCaptionsData;
   final String? consent;
   final List<ConsentParticipant>? participants;
@@ -24,15 +26,18 @@ class ActionModel {
   final String? requestBy;
   final String? requestByName;
   final bool? isScreenShareAllowed;
+  final List<Map<String, dynamic>>? messages;
   final List<RaisedHand>? raisedHands;
 
   // ✅ ADD NEW FIELD
 
   ActionModel({
     this.action,
-    this.message = "",
-    this.token = "",
-    this.value = true,
+    this.identity,
+    this.userIdentity,
+    this.message,
+    this.token,
+    this.value,
     this.liveCaptionsData,
     this.consent,
     this.participants,
@@ -44,10 +49,11 @@ class ActionModel {
     this.mode,
     this.messageId,
     this.reaction,
-    this.removeReaction = false,
+    this.removeReaction,
     this.requestBy,
     this.requestByName,
     this.isScreenShareAllowed,
+    this.messages,
     this.raisedHands,
     // ✅ ADD NEW FIELD
   });
@@ -56,10 +62,22 @@ class ActionModel {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = {
       'action': action,
-      'message': message,
-      'token': token,
-      'value': value,
     };
+    if (message != null) {
+      data['message'] = message;
+    }
+    if (token != null) {
+      data['token'] = token;
+    }
+    if (value != null) {
+      data['value'] = value;
+    }
+    if (identity != null) {
+      data['identity'] = identity;
+    }
+    if (userIdentity != null) {
+      data['user_identity'] = userIdentity;
+    }
     if (liveCaptionsData != null) {
       data['liveCaptionsData'] = liveCaptionsData;
     }
@@ -105,6 +123,9 @@ class ActionModel {
     if (isScreenShareAllowed != null) {
       data['is_screen_share_allowed'] = isScreenShareAllowed;
     }
+    if (messages != null) {
+      data['messages'] = messages;
+    }
     if (raisedHands != null) {
       data['raisedHands'] = raisedHands!.map((p) => p.toJson()).toList();
     }
@@ -116,6 +137,8 @@ class ActionModel {
   factory ActionModel.fromJson(Map<String, dynamic> json) {
     return ActionModel(
       action: json['action'] as String?,
+      identity: json['identity'] as String?,
+      userIdentity: json['user_identity'] as String?,
       message: json['message'] as String? ?? "",
       token: json['token'] as String? ?? "",
       value: json['value'] as bool? ?? true,
@@ -138,6 +161,7 @@ class ActionModel {
       requestBy: json['request_by'] as String? ?? "",
       requestByName: json['request_by_name'] as String? ?? "",
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
+      messages: json['messages'] as List<Map<String, dynamic>>?,
       raisedHands: (json['raisedHands'] as List<dynamic>?)
           ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
           .toList(),
