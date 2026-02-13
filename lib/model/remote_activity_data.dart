@@ -1,3 +1,4 @@
+import 'package:daakia_vc_flutter_sdk/model/raised_hand.dart';
 import 'package:daakia_vc_flutter_sdk/model/reaction_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
@@ -40,6 +41,7 @@ class RemoteActivityData {
   final bool isScreenShareAllowed;
   final String? fromUserId;
   final List<dynamic>? messages;
+  final List<RaisedHand>? raisedHands;
 
   // ✅ ADD NEW FIELD
 
@@ -78,6 +80,7 @@ class RemoteActivityData {
     this.isScreenShareAllowed = false,
     this.fromUserId,
     this.messages,
+    this.raisedHands,
     // ✅ ADD NEW FIELD
   });
 
@@ -129,6 +132,9 @@ class RemoteActivityData {
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
       fromUserId: json['from'] as String?,
       messages: json['messages'] as List<dynamic>?,
+      raisedHands: (json['raisedHands'] as List<dynamic>?)
+          ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
+          .toList(),
       // ✅ ADD NEW FIELD
     );
   }
@@ -169,6 +175,7 @@ class RemoteActivityData {
       'is_screen_share_allowed': isScreenShareAllowed,
       'from': fromUserId,
       'messages': messages,
+      'raisedHands': raisedHands?.map((e) => e.toJson()).toList(),
       // ✅ ADD NEW FIELD
     };
   }
@@ -208,6 +215,7 @@ class RemoteActivityData {
     bool? isScreenShareAllowed,
     String? fromUserId,
     List<dynamic>? messages,
+    List<RaisedHand>? raisedHands,
     // ✅ ADD NEW FIELD
   }) {
     return RemoteActivityData(
@@ -246,6 +254,7 @@ class RemoteActivityData {
       isScreenShareAllowed: isScreenShareAllowed ?? this.isScreenShareAllowed,
       fromUserId: fromUserId ?? this.fromUserId,
       messages: messages ?? this.messages,
+      raisedHands: raisedHands ?? this.raisedHands,
       // ✅ ADD NEW FIELD
     );
   }
