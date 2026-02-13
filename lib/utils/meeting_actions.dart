@@ -88,6 +88,10 @@ class MeetingActions {
 
   static const String sendPrivateChat = "send_private_chat";
 
+  static const String requestRaisedHands = "request_raised_hands";
+
+  static const String responseRaisedHands = "response_raised_hands";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -147,6 +151,8 @@ class MeetingActions {
     requestPublicChat,
     responsePublicChat,
     sendPrivateChat,
+    requestRaisedHands,
+    responseRaisedHands,
     // ✅ Add new fields here
   };
 }
