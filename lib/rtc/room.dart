@@ -163,6 +163,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.registerCaption();
       viewModel?.storeMeetingDetails();
       viewModel?.requestChatHistory();
+      viewModel?.requestRaiseHand();
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -687,6 +688,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.sendPrivateChat:
         viewModel?.restorePrivateChat(remoteData);
+        break;
+
+      case MeetingActions.requestRaisedHands:
+        viewModel?.responseRaiseHand(remoteData);
+        break;
+
+      case MeetingActions.responseRaisedHands:
+        viewModel?.syncRaiseHand(remoteData.raisedHands);
         break;
 
       case "":
