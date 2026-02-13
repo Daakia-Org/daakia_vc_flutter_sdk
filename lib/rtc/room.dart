@@ -356,6 +356,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           .removeParticipantFromConsentList(event.participant.identity);
       _livekitProviderKey.currentState?.viewModel
           .getAttendanceListForParticipant();
+      _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
       _sortParticipants();
     })
     ..on<RoomRecordingStatusChanged>((event) {
