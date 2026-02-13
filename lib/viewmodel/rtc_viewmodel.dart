@@ -14,6 +14,7 @@ import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_model.dart';
 import 'package:daakia_vc_flutter_sdk/resources/json/language_json.dart';
+import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -30,6 +31,7 @@ import '../model/meeting_details.dart';
 import '../model/private_chat_model.dart';
 import '../model/send_message_model.dart';
 import '../rtc/widgets/participant_info.dart';
+import '../utils/chat_message_mapper.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/meeting_actions.dart';
@@ -182,6 +184,10 @@ class RtcViewmodel extends ChangeNotifier {
     return _privateChat[identity]?.chats ?? [];
   }
 
+  bool hasPrivateChat(String identity) {
+    return _privateChat[identity]?.chats.isNotEmpty ?? false;
+  }
+
   Future<void> sendPublicMessage(String userMessage) async {
     if (!Utils.isMessageSizeValid(userMessage)) {
       sendMessageToUI("Message is too long! Please shorten it and try again.");
@@ -209,6 +215,7 @@ class RtcViewmodel extends ChangeNotifier {
     addMessage(
       RemoteActivityData(
           identity: null,
+          fromUserId: room.localParticipant?.identity,
           id: message.id,
           message: message.message,
           timestamp: message.timestamp,
@@ -2360,6 +2367,63 @@ class RtcViewmodel extends ChangeNotifier {
 
   void unregisterCaption() {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
+  }
+
+  void storeMeetingDetails() {
+    final storageHelper = StorageHelper();
+    final metadata = room.localParticipant?.metadata;
+    storageHelper
+        .setMeetingUid(meetingDetails.meetingUid);
+    storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+    storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+  }
+
+  void requestChatHistory() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestPublicChat, userIdentity: room.localParticipant?.identity),
+      participant.identity,
+    );
+  }
+
+  void sendPublicChatHistory(String? identity) {
+    if (identity == null) return;
+    final payload = ChatMessageMapper.toApiList(getMessageList());
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.responsePublicChat, messages: payload, userIdentity: room.localParticipant?.identity),
+      identity,
+    );
+  }
+
+  void restorePublicChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    addAllMessage(messages);
+  }
+
+
+  void sendPrivateChatHistory(String? identity) {
+    if (identity == null) return;
+    if (!hasPrivateChat(identity)) return;
+    final payload = ChatMessageMapper.toApiList(getPrivateMessage()[identity]?.chats ?? []);
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.sendPrivateChat, userIdentity: room.localParticipant?.identity, messages: payload),
+      identity,
+    );
+  }
+
+  void restorePrivateChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    final identity = remoteData.userIdentity;
+    final name = getParticipantNameByIdentity(identity);
+    _privateChat.putIfAbsent(
+        identity ?? "Unknown",
+            () => PrivateChatModel(
+            identity: identity ?? "Unknown",
+            name: name,
+            chats: messages));
+    notifyListeners();
+    sendPrivateChatEvent(UpdateView());
   }
 
 }

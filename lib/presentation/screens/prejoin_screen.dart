@@ -230,15 +230,13 @@ class _PreJoinState extends State<PreJoinScreen> {
       body["custom_metadata"] = widget.configuration?.metadata;
     }
     final cacheData = StorageHelper();
-    if (!widget.isHost) {
-      if (await cacheData.getMeetingUid() == widget.meetingId) {
-        if (await cacheData.getSessionUid() ==
-            widget.basicMeetingDetails?.currentSessionUid) {
-          if (await cacheData.getAttendanceId() != "") {
-            body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
-            if (hostToken.isEmpty) {
-              hostToken = await cacheData.getHostToken() ?? "";
-            }
+    if (await cacheData.getMeetingUid() == widget.meetingId) {
+      if (await cacheData.getSessionUid() ==
+          widget.basicMeetingDetails?.currentSessionUid) {
+        if (await cacheData.getAttendanceId() != "") {
+          body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
+          if (hostToken.isEmpty) {
+            hostToken = await cacheData.getHostToken() ?? "";
           }
         }
       }

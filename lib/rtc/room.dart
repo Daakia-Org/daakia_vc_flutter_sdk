@@ -161,6 +161,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       );
 
       viewModel?.registerCaption();
+      viewModel?.storeMeetingDetails();
+      viewModel?.requestChatHistory();
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -322,11 +324,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
       }
     })
-    ..on<ParticipantConnectedEvent>((event) {
-      var viewModel = _livekitProviderKey.currentState?.viewModel;
-      viewModel?.setRecording(widget.room.isRecording);
-      _sortParticipants();
-    })
     ..on<ParticipantEvent>((event) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       viewModel?.setRecording(widget.room.isRecording);
@@ -344,10 +341,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       });
     })
     ..on<ParticipantConnectedEvent>((event) {
-      _livekitProviderKey.currentState?.viewModel
-          .getAttendanceListForParticipant();
-      _livekitProviderKey.currentState?.viewModel
-          .addParticipantToConsentList(event.participant);
+      var viewModel = _livekitProviderKey.currentState?.viewModel;
+      viewModel?.setRecording(widget.room.isRecording);
+      viewModel?.getAttendanceListForParticipant();
+      viewModel?.addParticipantToConsentList(event.participant);
+      viewModel?.sendPrivateChatHistory(event.participant.identity);
       _sortParticipants();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
@@ -528,7 +526,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         } else {
           viewModel?.setCoHost(false);
-          StorageHelper().clearSdkData();
           clearConsentList(viewModel);
           showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         }
@@ -536,7 +533,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
-        StorageHelper().clearSdkData();
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
@@ -679,6 +675,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.canDownloadChatAttachment:
         viewModel?.isChatAttachmentDownloadEnable = remoteData.value;
+        break;
+
+      case MeetingActions.requestPublicChat:
+        viewModel?.sendPublicChatHistory(remoteData.userIdentity);
+        break;
+
+      case MeetingActions.responsePublicChat:
+        viewModel?.restorePublicChat(remoteData);
+        break;
+
+      case MeetingActions.sendPrivateChat:
+        viewModel?.restorePrivateChat(remoteData);
         break;
 
       case "":
