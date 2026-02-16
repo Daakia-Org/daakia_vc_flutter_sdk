@@ -206,13 +206,47 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             //       participant: widget.participant,
             //     )),
             if (viewModel.isHandRaised(widget.participant.identity))
-              const Positioned(
-                  top: 5,
-                  left: 5,
-                  child: Icon(
-                    Icons.front_hand,
-                    color: handRaiseColor,
-                  ))
+              Positioned(
+                top: 5,
+                left: 5,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: widget.isSpeaker ? 10 : 6,
+                    vertical: widget.isSpeaker ? 4 : 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(
+                      widget.isSpeaker ? 50 : 12, // ← true capsule for speaker
+                    ),
+                    border: Border.all(
+                      color: handRaiseColor,
+                      width: widget.isSpeaker ? 1.5 : 1.2,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.front_hand,
+                        color: handRaiseColor,
+                        size: widget.isSpeaker ? 24 : 16,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        viewModel
+                            .getRaisePosition(widget.participant.identity)
+                            .toString(),
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: widget.isSpeaker ? 18 : 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
           ],
         ),
       ),
