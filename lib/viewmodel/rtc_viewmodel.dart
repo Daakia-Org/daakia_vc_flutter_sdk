@@ -662,6 +662,14 @@ class RtcViewmodel extends ChangeNotifier {
     return isHandRaised;
   }
 
+  int? getRaisePosition(String identity) {
+    final index = _raisedHandQueue.indexWhere((e) => e.identity == identity);
+
+    if (index == -1) return null;
+
+    return index + 1; // 1-based index like Teams
+  }
+
   void setHandRaised(RemoteActivityData remoteData) {
     final id = remoteData.identity?.identity ?? "";
 
