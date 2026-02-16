@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../viewmodel/rtc_viewmodel.dart';
+import '../widgets/raised_hand_participant_widget.dart';
 
 class AllParticipantPage extends StatelessWidget {
   const AllParticipantPage({super.key});
@@ -28,6 +29,7 @@ class AllParticipantPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 LobbyRequestWidget(viewModel: viewModel),
+                RaisedHandParticipantWidget(viewModel: viewModel),
                 JoinedParticipantWidget(viewModel: viewModel),
                 if (viewModel.pendingParticipantList.isNotEmpty &&
                     (viewModel.isHost() || viewModel.isCoHost()))
