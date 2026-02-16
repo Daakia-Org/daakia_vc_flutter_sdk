@@ -17,110 +17,95 @@ class RaisedHandParticipantWidget extends StatefulWidget {
 
 class _RaisedHandParticipantWidgetState
     extends State<RaisedHandParticipantWidget> {
+  bool isExpanded = true;
+
   @override
   Widget build(BuildContext context) {
-    /// 🔹 Get raised-hand queue (already ordered)
     final raisedQueue = widget.viewModel.raisedHandQueue;
 
-    /// 🔹 Convert to participant models
     final raisedParticipants = raisedQueue
         .map((e) => widget.viewModel.getParticipantNameByIdentity(e.identity))
-        .whereType() // remove nulls safely
+        .whereType<String>()
         .toList();
 
-    /// 🔹 Hide widget if nobody raised hand
     if (raisedParticipants.isEmpty) return const SizedBox.shrink();
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: true,
+        tilePadding: EdgeInsets.zero,
+        title: const Text(
           'Raised Hands',
           style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.bold,
           ),
         ),
+        iconColor: Colors.white,
+        collapsedIconColor: Colors.white,
 
-        /// 📋 Raised-hand list (ordered)
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: raisedParticipants.length,
-          itemBuilder: (context, index) {
-            final name = raisedParticipants[index];
+        children: [
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: raisedParticipants.length,
+            itemBuilder: (context, index) {
+              final name = raisedParticipants[index];
 
-            return Container(
-              width: double.maxFinite,
-              padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 5),
-              child: Row(
-                children: [
-                  InitialsCircle(
-                    initials: Utils.getInitials(name),
-                    size: 30,
-                    textStyle: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13.0,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 15,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: handRaiseColor,
-                        width: 1.2,
+              return Container(
+                width: double.maxFinite,
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 5),
+                child: Row(
+                  children: [
+                    InitialsCircle(
+                      initials: Utils.getInitials(name),
+                      size: 30,
+                      textStyle: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.0,
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.front_hand,
-                          color: handRaiseColor,
-                          size: 16,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          "${index + 1}",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        name,
+                        style: const TextStyle(color: Colors.white, fontSize: 15),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  )
-                ],
-              ),
-            );
-          },
-        ),
-      ],
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: handRaiseColor, width: 1.2),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.front_hand, color: handRaiseColor, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            "${index + 1}",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
