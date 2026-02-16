@@ -2523,4 +2523,14 @@ class RtcViewmodel extends ChangeNotifier {
     sendPrivateChatEvent(UpdateView());
   }
 
+  void lowerHand(String? identity) {
+    if (identity == null) return;
+    if (room.localParticipant?.identity == identity) {
+      setMyHandRaised(false);
+      sendAction(ActionModel(action: MeetingActions.stopRaiseHand));
+    } else {
+      sendPrivateAction(ActionModel(action: MeetingActions.lowerHand), identity);
+    }
+  }
+
 }
