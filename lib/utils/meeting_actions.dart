@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 class MeetingActions {
   static const String raiseHand = "raise_hand";
   static const String stopRaiseHand = "stop_raise_hand";
+  static const String lowerHand = "lower_hand";
   static const String stopRaiseHandAll = "stop_raise_hand_all";
   static const String sendPrivateMessage = "send_private_message";
   static const String sendPublicMessage = "send_public_message";
@@ -110,6 +111,7 @@ class MeetingActions {
   static final Set<String> _validActions = {
     raiseHand,
     stopRaiseHand,
+    lowerHand,
     stopRaiseHandAll,
     sendPrivateMessage,
     sendPublicMessage,
