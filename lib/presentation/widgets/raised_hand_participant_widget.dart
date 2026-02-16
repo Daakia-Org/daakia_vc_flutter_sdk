@@ -52,6 +52,7 @@ class _RaisedHandParticipantWidgetState
             itemCount: raisedParticipants.length,
             itemBuilder: (context, index) {
               final name = raisedParticipants[index];
+              final identity = raisedQueue[index].identity;
 
               return Container(
                 width: double.maxFinite,
@@ -76,27 +77,40 @@ class _RaisedHandParticipantWidgetState
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: handRaiseColor, width: 1.2),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.front_hand, color: handRaiseColor, size: 16),
-                          const SizedBox(width: 4),
-                          Text(
-                            "${index + 1}",
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
+                    GestureDetector(
+                      onTap: () async {
+                        if (widget.viewModel.isHost() || widget.viewModel.isCoHost()) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) async {
+                            final confirm = await showLowerHandDialog(context, name);
+
+                            if (confirm == true) {
+                              widget.viewModel.lowerHand(identity);
+                            }
+                          });
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: handRaiseColor, width: 1.2),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.front_hand, color: handRaiseColor, size: 16),
+                            const SizedBox(width: 4),
+                            Text(
+                              "${index + 1}",
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     )
                   ],
@@ -106,6 +120,39 @@ class _RaisedHandParticipantWidgetState
           ),
         ],
       ),
+    );
+  }
+
+  Future<bool?> showLowerHandDialog(BuildContext context, String name) {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          backgroundColor: Colors.grey[900],
+          title: const Text(
+            "Lower Hand",
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Text(
+            "Are you sure you want to lower $name's hand?",
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text("Cancel"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text(
+                "Lower",
+                style: TextStyle(color: Colors.red),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }
