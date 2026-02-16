@@ -458,6 +458,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.setHandRaised(remoteData);
         break;
 
+      case MeetingActions.lowerHand:
+        viewModel?.lowerHand(widget.room.localParticipant?.identity);
+        break;
+
       case MeetingActions.stopRaiseHandAll:
         viewModel?.stopHandRaisedForAll();
         break;
