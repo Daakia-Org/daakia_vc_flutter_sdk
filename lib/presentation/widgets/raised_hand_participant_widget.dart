@@ -35,13 +35,42 @@ class _RaisedHandParticipantWidgetState
       child: ExpansionTile(
         initiallyExpanded: true,
         tilePadding: EdgeInsets.zero,
-        title: const Text(
-          'Raised Hands',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+          title: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Raised Hands',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              // 🔹 Lower all button (host/cohost only)
+              if (widget.viewModel.isHost() || widget.viewModel.isCoHost())
+                GestureDetector(
+                  onTap: () async {
+                    widget.viewModel.stopHandRaisedForAll();
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.redAccent),
+                    ),
+                    child: const Text(
+                      "Lower all",
+                      style: TextStyle(
+                        color: Colors.redAccent,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-        ),
         iconColor: Colors.white,
         collapsedIconColor: Colors.white,
 
@@ -77,41 +106,63 @@ class _RaisedHandParticipantWidgetState
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    GestureDetector(
-                      onTap: () async {
-                        if (widget.viewModel.isHost() || widget.viewModel.isCoHost()) {
-                          WidgetsBinding.instance.addPostFrameCallback((_) async {
-                            final confirm = await showLowerHandDialog(context, name);
-
-                            if (confirm == true) {
-                              widget.viewModel.lowerHand(identity);
-                            }
-                          });
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.6),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: handRaiseColor, width: 1.2),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // 🔹 Raised-hand visual badge (no click)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: handRaiseColor, width: 1.2),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.front_hand, color: handRaiseColor, size: 16),
+                              const SizedBox(width: 4),
+                              Text(
+                                "${index + 1}",
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.front_hand, color: handRaiseColor, size: 16),
-                            const SizedBox(width: 4),
-                            Text(
-                              "${index + 1}",
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
+
+                        // 🔹 Lower button (ONLY host/cohost)
+                        if (widget.viewModel.isHost() || widget.viewModel.isCoHost()) ...[
+                          const SizedBox(width: 8),
+                          GestureDetector(
+                            onTap: () async {
+                              final confirm = await showLowerHandDialog(context, name);
+                              if (confirm == true) {
+                                widget.viewModel.lowerHand(identity);
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: Colors.redAccent, width: 1),
+                              ),
+                              child: const Text(
+                                "Lower",
+                                style: TextStyle(
+                                  color: Colors.redAccent,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ],
-                        ),
-                      ),
+                          ),
+                        ],
+                      ],
                     )
                   ],
                 ),
