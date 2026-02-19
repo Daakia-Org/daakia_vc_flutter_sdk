@@ -142,6 +142,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             callBack: () {
               showRecordingConsentDialog(viewModel);
             });
+      } else {
+        viewModel?.fetchAndStoreSessionUid();
       }
 
       if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
@@ -524,7 +526,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           final storageHelper = StorageHelper();
           storageHelper
               .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
-          storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+
+          final sessionUid = Utils.getMetadataSessionUid(metadata);
+
+          if (sessionUid != null) {
+            storageHelper.setSessionUid(sessionUid);
+          }
+
           storageHelper
               .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
           storageHelper.setHostToken(remoteData.token ?? "");
