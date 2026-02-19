@@ -141,18 +141,20 @@ class Utils {
     }
   }
 
-  static String getMetadataSessionUid(String? metadata) {
-    if (metadata == null) return '';
+  static String? getMetadataSessionUid(String? metadata) {
+    if (metadata == null || metadata.isEmpty) return null;
 
     try {
-      // Parse the JSON string
       final Map<String, dynamic> jsonData = jsonDecode(metadata);
-      // Return the `meeting_attendance_id` if it exists, otherwise null
-      return jsonData['current_session_uid'].toString();
+
+      final sessionUid = jsonData['current_session_uid'];
+
+      if (sessionUid == null) return null;
+
+      return sessionUid.toString();
     } catch (e) {
-      // Handle JSON parsing errors
       debugPrint('Error parsing JSON: $e');
-      return "";
+      return null;
     }
   }
 
