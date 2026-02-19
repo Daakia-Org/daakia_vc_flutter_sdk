@@ -1564,11 +1564,23 @@ class RtcViewmodel extends ChangeNotifier {
 
     final metadataSessionId =
         Utils.getMetadataSessionUid(room.localParticipant?.metadata);
-    if (metadataSessionId.isNotEmpty && metadataSessionId != "null") {
+    if (metadataSessionId != null && metadataSessionId != "null" && metadataSessionId.isNotEmpty) {
       return metadataSessionId;
     }
 
     return meetingDetails.meetingBasicDetails?.currentSessionUid;
+  }
+
+  Future<void> fetchAndStoreSessionUid() async {
+    networkRequestHandler(
+      apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+      onSuccess: (data) async {
+        if (data?.id != null) {
+          final sessionUid = data!.id.toString();
+          StorageHelper().setSessionUid(sessionUid);
+        }
+      },
+    );
   }
 
   void checkSessionStatus({bool asUser = false, Function? callBack}) {
@@ -1577,6 +1589,7 @@ class RtcViewmodel extends ChangeNotifier {
         onSuccess: (data) {
           if (data != null) {
             sessionId = data.id.toString();
+            StorageHelper().setSessionUid(sessionId);
           }
 
           if (data?.recordingConsentActive == 1) {
@@ -2469,9 +2482,12 @@ class RtcViewmodel extends ChangeNotifier {
   void storeMeetingDetails() {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
+    final sessionUid = Utils.getMetadataSessionUid(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
-    storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+    if (sessionUid != null) {
+      storageHelper.setSessionUid(sessionUid);
+    }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
   }
 
