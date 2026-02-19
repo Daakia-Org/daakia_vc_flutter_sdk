@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../model/action_model.dart';
 import '../../resources/colors/color.dart';
+import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import 'initials_circle.dart';
@@ -50,6 +52,8 @@ class _RaisedHandParticipantWidgetState
               if (widget.viewModel.isHost() || widget.viewModel.isCoHost())
                 GestureDetector(
                   onTap: () async {
+                    widget.viewModel
+                        .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
                     widget.viewModel.stopHandRaisedForAll();
                   },
                   child: Container(
