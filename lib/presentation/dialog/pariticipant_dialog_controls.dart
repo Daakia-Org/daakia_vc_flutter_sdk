@@ -149,18 +149,18 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 },
                 isVisible: !widget.isForIndividual,
               ),
-              CustomTextItem(
-                text: "Lower Hands All",
-                onTap: () {
-                  Navigator.pop(context);
-                  widget.viewModel
-                      .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
-                  widget.viewModel.stopHandRaisedForAll();
-                },
-                isVisible: !widget.isForIndividual &&
-                    widget.viewModel.meetingDetails.features!
-                        .isRaiseHandAllowed(),
-              ),
+              // CustomTextItem(
+              //   text: "Lower Hands All",
+              //   onTap: () {
+              //     Navigator.pop(context);
+              //     widget.viewModel
+              //         .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
+              //     widget.viewModel.stopHandRaisedForAll();
+              //   },
+              //   isVisible: !widget.isForIndividual &&
+              //       widget.viewModel.meetingDetails.features!
+              //           .isRaiseHandAllowed(),
+              // ),
             ],
           ),
         ),
