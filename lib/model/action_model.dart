@@ -1,3 +1,4 @@
+import 'package:daakia_vc_flutter_sdk/model/raised_hand.dart';
 import 'package:daakia_vc_flutter_sdk/model/reaction_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 
@@ -26,6 +27,7 @@ class ActionModel {
   final String? requestByName;
   final bool? isScreenShareAllowed;
   final List<Map<String, dynamic>>? messages;
+  final List<RaisedHand>? raisedHands;
 
   // ✅ ADD NEW FIELD
 
@@ -52,6 +54,7 @@ class ActionModel {
     this.requestByName,
     this.isScreenShareAllowed,
     this.messages,
+    this.raisedHands,
     // ✅ ADD NEW FIELD
   });
 
@@ -123,6 +126,9 @@ class ActionModel {
     if (messages != null) {
       data['messages'] = messages;
     }
+    if (raisedHands != null) {
+      data['raisedHands'] = raisedHands!.map((p) => p.toJson()).toList();
+    }
     // ✅ ADD NEW FIELD
     return data;
   }
@@ -156,6 +162,9 @@ class ActionModel {
       requestByName: json['request_by_name'] as String? ?? "",
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
       messages: json['messages'] as List<Map<String, dynamic>>?,
+      raisedHands: (json['raisedHands'] as List<dynamic>?)
+          ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
+          .toList(),
       // ✅ ADD NEW FIELD
     );
   }

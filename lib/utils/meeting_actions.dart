@@ -21,6 +21,7 @@ import 'package:flutter/foundation.dart';
 class MeetingActions {
   static const String raiseHand = "raise_hand";
   static const String stopRaiseHand = "stop_raise_hand";
+  static const String lowerHand = "lower_hand";
   static const String stopRaiseHandAll = "stop_raise_hand_all";
   static const String sendPrivateMessage = "send_private_message";
   static const String sendPublicMessage = "send_public_message";
@@ -88,6 +89,10 @@ class MeetingActions {
 
   static const String sendPrivateChat = "send_private_chat";
 
+  static const String requestRaisedHands = "request_raised_hands";
+
+  static const String responseRaisedHands = "response_raised_hands";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -106,6 +111,7 @@ class MeetingActions {
   static final Set<String> _validActions = {
     raiseHand,
     stopRaiseHand,
+    lowerHand,
     stopRaiseHandAll,
     sendPrivateMessage,
     sendPublicMessage,
@@ -147,6 +153,8 @@ class MeetingActions {
     requestPublicChat,
     responsePublicChat,
     sendPrivateChat,
+    requestRaisedHands,
+    responseRaisedHands,
     // ✅ Add new fields here
   };
 }

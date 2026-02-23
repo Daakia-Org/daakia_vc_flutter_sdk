@@ -29,6 +29,7 @@ import '../model/emoji_message.dart';
 import '../model/language_model.dart';
 import '../model/meeting_details.dart';
 import '../model/private_chat_model.dart';
+import '../model/raised_hand.dart';
 import '../model/send_message_model.dart';
 import '../rtc/widgets/participant_info.dart';
 import '../utils/chat_message_mapper.dart';
@@ -46,6 +47,7 @@ class RtcViewmodel extends ChangeNotifier {
   final List<ParticipantTrack> _participantTracks = [];
 
   final Map<String, bool> _raisedHandMap = {};
+  final List<RaisedHand> _raisedHandQueue = [];
 
   bool _isMyHandRaised = false;
 
@@ -660,14 +662,47 @@ class RtcViewmodel extends ChangeNotifier {
     return isHandRaised;
   }
 
+  int? getRaisePosition(String identity) {
+    final index = _raisedHandQueue.indexWhere((e) => e.identity == identity);
+
+    if (index == -1) return null;
+
+    return index + 1; // 1-based index like Teams
+  }
+
   void setHandRaised(RemoteActivityData remoteData) {
-    _raisedHandMap[remoteData.identity?.identity ?? ""] =
-        (remoteData.action == "raise_hand");
+    final id = remoteData.identity?.identity ?? "";
+
+    if (remoteData.action == "raise_hand") {
+      // prevent duplicate
+      if (!_raisedHandMap.containsKey(id) || _raisedHandMap[id] == false) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: remoteData.timeStamp ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+    }
+
     notifyListeners();
   }
 
+  void clearRaiseHandMemory(String? identity) {
+    if (identity == null) return;
+    _raisedHandMap[identity] = false;
+    _raisedHandQueue.removeWhere((e) => e.identity == identity);
+  }
+
+
   void stopHandRaisedForAll() {
     _raisedHandMap.clear();
+    _raisedHandQueue.clear();
     _isMyHandRaised = false;
     notifyListeners();
   }
@@ -679,9 +714,71 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool get isMyHandRaised => _isMyHandRaised;
 
+  List<RaisedHand> get raisedHandQueue => List.unmodifiable(_raisedHandQueue);
+
+  void syncRaiseHand(List<RaisedHand>? serverList) {
+    if (serverList == null) return;
+    // clear existing state
+    _raisedHandMap.clear();
+    _raisedHandQueue.clear();
+
+    // sort to ensure correct order (safety)
+    serverList.sort((a, b) => a.timeStamp.compareTo(b.timeStamp));
+
+    for (final item in serverList) {
+      _raisedHandMap[item.identity] = true;
+      _raisedHandQueue.add(item);
+    }
+
+    // update my hand state
+    final localId = room.localParticipant?.identity ?? "";
+    _isMyHandRaised = _raisedHandMap[localId] ?? false;
+
+    notifyListeners();
+  }
+
+  void requestRaiseHand() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestRaisedHands, userIdentity: room.localParticipant?.identity),
+      participant.identity,
+    );
+  }
+
+  void responseRaiseHand(RemoteActivityData action) {
+    final identity = action.userIdentity;
+    if(identity == null) return;
+    if (_raisedHandQueue.isEmpty) return;
+    sendPrivateAction(ActionModel(
+      action: MeetingActions.responseRaisedHands,
+      raisedHands: _raisedHandQueue,
+    ), identity);
+  }
+
+
   void setHandRaisedForLocal(ActionModel action) {
-    _raisedHandMap[room.localParticipant?.identity ?? ""] =
-        (action.action == MeetingActions.raiseHand);
+    final id = room.localParticipant?.identity ?? "";
+
+    if (action.action == MeetingActions.raiseHand) {
+      if (!(_raisedHandMap[id] ?? false)) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+
+      _isMyHandRaised = true;
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+      _isMyHandRaised = false;
+    }
+
     notifyListeners();
   }
 
@@ -1467,11 +1564,23 @@ class RtcViewmodel extends ChangeNotifier {
 
     final metadataSessionId =
         Utils.getMetadataSessionUid(room.localParticipant?.metadata);
-    if (metadataSessionId.isNotEmpty && metadataSessionId != "null") {
+    if (metadataSessionId != null && metadataSessionId != "null" && metadataSessionId.isNotEmpty) {
       return metadataSessionId;
     }
 
     return meetingDetails.meetingBasicDetails?.currentSessionUid;
+  }
+
+  Future<void> fetchAndStoreSessionUid() async {
+    networkRequestHandler(
+      apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+      onSuccess: (data) async {
+        if (data?.id != null) {
+          final sessionUid = data!.id.toString();
+          StorageHelper().setSessionUid(sessionUid);
+        }
+      },
+    );
   }
 
   void checkSessionStatus({bool asUser = false, Function? callBack}) {
@@ -1480,6 +1589,7 @@ class RtcViewmodel extends ChangeNotifier {
         onSuccess: (data) {
           if (data != null) {
             sessionId = data.id.toString();
+            StorageHelper().setSessionUid(sessionId);
           }
 
           if (data?.recordingConsentActive == 1) {
@@ -2372,9 +2482,12 @@ class RtcViewmodel extends ChangeNotifier {
   void storeMeetingDetails() {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
+    final sessionUid = Utils.getMetadataSessionUid(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
-    storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+    if (sessionUid != null) {
+      storageHelper.setSessionUid(sessionUid);
+    }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
   }
 
@@ -2424,6 +2537,16 @@ class RtcViewmodel extends ChangeNotifier {
             chats: messages));
     notifyListeners();
     sendPrivateChatEvent(UpdateView());
+  }
+
+  void lowerHand(String? identity) {
+    if (identity == null) return;
+    if (room.localParticipant?.identity == identity) {
+      setMyHandRaised(false);
+      sendAction(ActionModel(action: MeetingActions.stopRaiseHand));
+    } else {
+      sendPrivateAction(ActionModel(action: MeetingActions.lowerHand), identity);
+    }
   }
 
 }

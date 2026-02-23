@@ -142,6 +142,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             callBack: () {
               showRecordingConsentDialog(viewModel);
             });
+      } else {
+        viewModel?.fetchAndStoreSessionUid();
       }
 
       if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
@@ -163,6 +165,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.registerCaption();
       viewModel?.storeMeetingDetails();
       viewModel?.requestChatHistory();
+      viewModel?.requestRaiseHand();
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -355,6 +358,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           .removeParticipantFromConsentList(event.participant.identity);
       _livekitProviderKey.currentState?.viewModel
           .getAttendanceListForParticipant();
+      _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
       _sortParticipants();
     })
     ..on<RoomRecordingStatusChanged>((event) {
@@ -456,6 +460,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.setHandRaised(remoteData);
         break;
 
+      case MeetingActions.lowerHand:
+        viewModel?.lowerHand(widget.room.localParticipant?.identity);
+        break;
+
       case MeetingActions.stopRaiseHandAll:
         viewModel?.stopHandRaisedForAll();
         break;
@@ -518,7 +526,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           final storageHelper = StorageHelper();
           storageHelper
               .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
-          storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+
+          final sessionUid = Utils.getMetadataSessionUid(metadata);
+
+          if (sessionUid != null) {
+            storageHelper.setSessionUid(sessionUid);
+          }
+
           storageHelper
               .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
           storageHelper.setHostToken(remoteData.token ?? "");
@@ -687,6 +701,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.sendPrivateChat:
         viewModel?.restorePrivateChat(remoteData);
+        break;
+
+      case MeetingActions.requestRaisedHands:
+        viewModel?.responseRaiseHand(remoteData);
+        break;
+
+      case MeetingActions.responseRaisedHands:
+        viewModel?.syncRaiseHand(remoteData.raisedHands);
         break;
 
       case "":
