@@ -685,12 +685,15 @@ class _PreJoinState extends State<PreJoinScreen> {
           livekitToken: livekitToken,
           features: features,
           meetingBasicDetails: widget.basicMeetingDetails);
-      if (context.mounted) {
-        await Navigator.push<void>(
-          context,
+      if (mounted) {
+        final navigator = Navigator.of(this.context);
+        await navigator.push<void>(
           MaterialPageRoute(
               builder: (_) => RoomPage(room, listener, meetingDetails)),
         );
+        if (mounted && navigator.canPop()) {
+          navigator.pop();
+        }
       }
     } catch (error) {
       if (kDebugMode) {
