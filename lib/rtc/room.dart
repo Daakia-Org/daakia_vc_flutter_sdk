@@ -252,6 +252,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     })
     ..on<RoomDisconnectedEvent>((event) async {
       if (event.reason != null) {
+        _isProgrammaticPop = true;
         DatadogDisconnectLogger.logDisconnectEvent(
             meetingId: widget.meetingDetails.meetingUid,
             room: widget.room,
@@ -1217,7 +1218,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // When closing the meeting programmatically
   void closeMeetingProgrammatically(BuildContext context) {
     _isProgrammaticPop = true; // Set the flag
-    Navigator.popUntil(context, (route) => route.isFirst); // Close all routes
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _meetingEndLogic(RtcViewmodel? viewModel) {

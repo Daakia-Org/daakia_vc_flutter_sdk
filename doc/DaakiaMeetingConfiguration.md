@@ -1,7 +1,7 @@
 # DaakiaMeetingConfiguration
 
 The `DaakiaMeetingConfiguration` class allows advanced customization for the Daakia Video Conference SDK.  
-It includes optional metadata for participants and participant name behavior.
+It includes optional metadata, participant name behavior, and pre-join flow behavior.
 
 > **Note:** This is optional. If not provided, default behavior will be used.
 
@@ -11,6 +11,7 @@ It includes optional metadata for participants and participant name behavior.
 - [Usage](#usage)
 - [Metadata](#metadata)
 - [Participant Name Configuration](#participant-name-configuration)
+- [Skip Pre-Join Page](#skip-pre-join-page)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 
@@ -36,6 +37,7 @@ await Navigator.push<void>(
           name: 'John Doe',
           isEditable: false,
         ),
+        skipPreJoinPage: false,
       ),
     ),
   ),
@@ -94,6 +96,30 @@ DaakiaMeetingConfiguration(
 ```
 
 ---
+## Skip Pre-Join Page
+
+The `skipPreJoinPage` flag lets you bypass the interactive pre-join UI and start joining immediately with a loader screen.
+
+### Use Cases
+
+- 1:1 video call flows where camera/mic/name/password setup UI is not needed.
+- Fast join experiences with configuration managed by the host app.
+
+### Example
+
+```dart
+DaakiaMeetingConfiguration(
+  participantNameConfig: ParticipantNameConfig(
+    name: 'Quick Caller',
+    isEditable: false,
+  ),
+  skipPreJoinPage: true,
+);
+```
+
+> ⚠️ If the meeting requires user-entered password/email verification, keep this flag `false` unless your app handles those checks externally.
+
+---
 ## Examples
 
 ### Example 1: Basic Metadata
@@ -129,6 +155,7 @@ DaakiaMeetingConfiguration(
     name: 'John Doe',
     isEditable: true,
   ),
+  skipPreJoinPage: false,
 );
 ```
 

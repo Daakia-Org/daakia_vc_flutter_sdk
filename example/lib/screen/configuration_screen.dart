@@ -19,6 +19,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   bool _customizeConfigName = false;
   bool _isNameEditable = true;
+  bool _skipPreJoinPage = false;
   final TextEditingController _configNameController = TextEditingController();
 
   void _addMetadataField() {
@@ -72,6 +73,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                 : _isNameEditable)
             : true,
       ),
+      skipPreJoinPage: _skipPreJoinPage,
     );
   }
 
@@ -100,6 +102,8 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
           );
         }
       }
+
+      _skipPreJoinPage = config.skipPreJoinPage == true;
     }
   }
 
@@ -187,6 +191,18 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           if (!value) {
                             _metadataControllers.clear();
                           }
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text("Skip Pre-Join Page"),
+                      subtitle: const Text(
+                        "Directly join with loader screen (no pre-join UI)",
+                      ),
+                      value: _skipPreJoinPage,
+                      onChanged: (value) {
+                        setState(() {
+                          _skipPreJoinPage = value;
                         });
                       },
                     ),

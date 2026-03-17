@@ -70,6 +70,8 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   TextEditingController? _nameController;
   bool _isNameEditable = true;
+  bool _autoJoinStarted = false;
+  String _skipJoinErrorMessage = "";
 
   //============== RTC ===============
   StreamSubscription? _subscription;
@@ -95,14 +97,93 @@ class _PreJoinState extends State<PreJoinScreen> {
     Hardware.instance.enumerateDevices().then(_loadDevices);
     setUserName();
     // Schedule verifyCoHost after widget is built
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      verifyCoHost();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await verifyCoHost();
       meetingManager = MeetingManager(
           endDate: getMeetingEndDate(),
           endMeetingCallBack: (event) {},
           context: context);
+      unawaited(_startAutoJoinIfRequired());
     });
     super.initState();
+  }
+
+  bool get _shouldSkipPreJoin => widget.configuration?.skipPreJoinPage == true;
+
+  Future<void> _startAutoJoinIfRequired() async {
+    if (!_shouldSkipPreJoin || _autoJoinStarted || !mounted) {
+      return;
+    }
+
+    _autoJoinStarted = true;
+    _skipJoinErrorMessage = "";
+    isNeedToCancelApiCall = false;
+
+    if (name.trim().isEmpty) {
+      final resolvedName = await getUserName();
+      if (!mounted) return;
+      name = resolvedName.trim().isNotEmpty ? resolvedName : "Guest";
+      _nameController?.text = name;
+    }
+
+    final validationError = _getSkipPreJoinValidationError();
+    if (validationError != null) {
+      _skipJoinErrorMessage = validationError;
+      isLoading = false;
+      if (mounted) {
+        setState(() {});
+      }
+      return;
+    }
+
+    isLoading = true;
+    if (mounted) {
+      setState(() {});
+    }
+
+    if (widget.isHost && !isHostVerified) {
+      final token = widget.configuration?.vcConfig?.hostToken;
+      if (token != null && token.isNotEmpty) {
+        hostToken = token;
+        isHostVerified = true;
+        getFeaturesAndJoinMeeting(_autoStopLoading);
+        return;
+      }
+      _getHostToken(_autoStopLoading);
+      return;
+    }
+
+    checkMeetingType(_autoStopLoading);
+  }
+
+  String? _getSkipPreJoinValidationError() {
+    if (_isCoHostVerified) {
+      return null;
+    }
+    if (widget.isHost &&
+        widget.basicMeetingDetails?.hostPinVerificationRequired == 1 &&
+        (widget.configuration?.vcConfig?.hostToken?.isEmpty ?? true)) {
+      return "Host verification is required. Please provide host token in configuration or disable skipPreJoinPage.";
+    }
+    if (!widget.isHost &&
+        widget.basicMeetingDetails?.isStandardPassword == true) {
+      return "This meeting requires email/password verification. Disable skipPreJoinPage for this meeting type.";
+    }
+    if (!widget.isHost &&
+        widget.basicMeetingDetails?.isCommonPassword == true) {
+      return "This meeting requires a password. Disable skipPreJoinPage for this meeting type.";
+    }
+    return null;
+  }
+
+  void _autoStopLoading() {
+    isLoading = false;
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   void setUserName() async {
@@ -284,6 +365,9 @@ class _PreJoinState extends State<PreJoinScreen> {
         }
       },
       onError: (message) {
+        if (_shouldSkipPreJoin) {
+          _skipJoinErrorMessage = message;
+        }
         setState(() {
           isLoading = false;
           isNeedToCancelApiCall = true;
@@ -309,6 +393,9 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   void _handleRejection(Function stopLoading) {
     isRejected = true;
+    if (_shouldSkipPreJoin) {
+      _skipJoinErrorMessage = alertMessage;
+    }
     stopLoading.call();
     if (mounted) {
       setState(() => Utils.showSnackBar(context, message: alertMessage));
@@ -334,6 +421,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           getFeaturesAndJoinMeeting(stopLoading);
         },
         onError: (message) {
+          if (_shouldSkipPreJoin) {
+            _skipJoinErrorMessage = message;
+          }
           if (mounted) {
             Utils.showSnackBar(context, message: message);
           }
@@ -371,6 +461,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           });
         },
         onError: (message) {
+          if (_shouldSkipPreJoin) {
+            _skipJoinErrorMessage = message;
+          }
           if (mounted) {
             Utils.showSnackBar(context, message: message);
           }
@@ -399,6 +492,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           startAddingParticipantsPool(stopLoading);
         },
         onError: (message) {
+          if (_shouldSkipPreJoin) {
+            _skipJoinErrorMessage = message;
+          }
           if (mounted) {
             Utils.showSnackBar(context, message: message);
           }
@@ -589,16 +685,22 @@ class _PreJoinState extends State<PreJoinScreen> {
           livekitToken: livekitToken,
           features: features,
           meetingBasicDetails: widget.basicMeetingDetails);
-      if (context.mounted) {
-        await Navigator.push<void>(
-          context,
+      if (mounted) {
+        final navigator = Navigator.of(this.context);
+        await navigator.push<void>(
           MaterialPageRoute(
               builder: (_) => RoomPage(room, listener, meetingDetails)),
         );
+        if (mounted && navigator.canPop()) {
+          navigator.pop();
+        }
       }
     } catch (error) {
       if (kDebugMode) {
         print('Could not connect $error');
+      }
+      if (_shouldSkipPreJoin) {
+        _skipJoinErrorMessage = error.toString();
       }
       if (context.mounted) {
         await context.showErrorDialog(error);
@@ -613,6 +715,10 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_shouldSkipPreJoin) {
+      return _buildSkipPreJoinLoader();
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -897,7 +1003,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
                             if (token != null && token.isNotEmpty) {
                               hostToken = token;
-                              isHostVerified == true;
+                              isHostVerified = true;
                               isNeedToCancelApiCall = false;
                               getFeaturesAndJoinMeeting(stopLoading);
                               return;
@@ -921,6 +1027,61 @@ class _PreJoinState extends State<PreJoinScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSkipPreJoinLoader() {
+    final hasError = _skipJoinErrorMessage.trim().isNotEmpty;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (isLoading) ...[
+                  const CircularProgressIndicator(color: themeColor),
+                  const SizedBox(height: 16),
+                  const Text(
+                    "Joining call...",
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ],
+                if (!isLoading && hasError) ...[
+                  Text(
+                    _skipJoinErrorMessage,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.red, fontSize: 14),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton(
+                        onPressed: () {
+                          _autoJoinStarted = false;
+                          unawaited(_startAutoJoinIfRequired());
+                        },
+                        child: const Text("Retry"),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton(
+                        onPressed: () {
+                          if (mounted) {
+                            Navigator.of(context).pop();
+                          }
+                        },
+                        child: const Text("Back"),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -984,6 +1145,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           }
         },
         onError: (message) {
+          if (_shouldSkipPreJoin) {
+            _skipJoinErrorMessage = message;
+          }
           setState(() {
             isLoading = false;
             isNeedToCancelApiCall = true;
@@ -1199,7 +1363,13 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   void passwordNotVerified(Function stopLoading,
       {String message = "Something went wrong!"}) {
+    if (_shouldSkipPreJoin) {
+      _skipJoinErrorMessage = message;
+    }
     stopLoading();
+    if (_shouldSkipPreJoin && mounted) {
+      setState(() {});
+    }
     Utils.showSnackBar(context, message: message);
   }
 
