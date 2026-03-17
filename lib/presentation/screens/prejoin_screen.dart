@@ -72,6 +72,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   bool _isNameEditable = true;
   bool _autoJoinStarted = false;
   String _skipJoinErrorMessage = "";
+  bool _initialMediaStateResolved = false;
 
   //============== RTC ===============
   StreamSubscription? _subscription;
@@ -91,14 +92,14 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void initState() {
-    checkPermission();
     _subscription =
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
-    Hardware.instance.enumerateDevices().then(_loadDevices);
+    unawaited(_initializeMediaState());
     setUserName();
     // Schedule verifyCoHost after widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await verifyCoHost();
+      if (!mounted) return;
       meetingManager = MeetingManager(
           endDate: getMeetingEndDate(),
           endMeetingCallBack: (event) {},
@@ -109,6 +110,57 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   bool get _shouldSkipPreJoin => widget.configuration?.skipPreJoinPage == true;
+  bool get _shouldEnableAudioByDefault =>
+      widget.configuration?.enableMicrophoneByDefault == true;
+  bool get _shouldEnableVideoByDefault =>
+      widget.configuration?.enableCameraByDefault == true;
+
+  Future<void> _initializeMediaState() async {
+    try {
+      final devices = await Hardware.instance.enumerateDevices();
+      if (!mounted) return;
+      _loadDevices(devices, updateState: false);
+      await _applyConfiguredMediaDefaults();
+    } finally {
+      _initialMediaStateResolved = true;
+      if (mounted) {
+        setState(() {});
+      }
+    }
+  }
+
+  Future<void> _applyConfiguredMediaDefaults() async {
+    final canEnableAudio = _shouldEnableAudioByDefault &&
+        await _hasPermission(Permission.microphone);
+    final canEnableVideo =
+        _shouldEnableVideoByDefault && await _hasPermission(Permission.camera);
+
+    _enableAudio = canEnableAudio && _selectedAudioDevice != null;
+    _enableVideo = canEnableVideo && _selectedVideoDevice != null;
+
+    if (_enableAudio) {
+      try {
+        await _changeLocalAudioTrack();
+      } catch (_) {
+        _enableAudio = false;
+        _audioTrack = null;
+      }
+    }
+
+    if (_enableVideo) {
+      try {
+        await _changeLocalVideoTrack();
+      } catch (_) {
+        _enableVideo = false;
+        _videoTrack = null;
+      }
+    }
+  }
+
+  Future<bool> _hasPermission(Permission permission) async {
+    final status = await permission.status;
+    return status.isGranted || status.isLimited;
+  }
 
   Future<void> _startAutoJoinIfRequired() async {
     if (!_shouldSkipPreJoin || _autoJoinStarted || !mounted) {
@@ -118,6 +170,11 @@ class _PreJoinState extends State<PreJoinScreen> {
     _autoJoinStarted = true;
     _skipJoinErrorMessage = "";
     isNeedToCancelApiCall = false;
+
+    if (!_initialMediaStateResolved) {
+      await _initializeMediaState();
+      if (!mounted) return;
+    }
 
     if (name.trim().isEmpty) {
       final resolvedName = await getUserName();
@@ -215,7 +272,8 @@ class _PreJoinState extends State<PreJoinScreen> {
         widget.basicMeetingDetails?.endDate;
   }
 
-  void _loadDevices(List<MediaDevice> devices) async {
+  void _loadDevices(List<MediaDevice> devices,
+      {bool updateState = true}) async {
     _audioInputs = devices.where((d) => d.kind == 'audioinput').toList();
     _videoInputs = devices.where((d) => d.kind == 'videoinput').toList();
 
@@ -231,7 +289,9 @@ class _PreJoinState extends State<PreJoinScreen> {
       );
     }
 
-    setState(() {}); // Update the UI with selected devices
+    if (updateState && mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _setEnableAudio(bool value) async {
@@ -602,11 +662,6 @@ class _PreJoinState extends State<PreJoinScreen> {
         );
       },
     );
-  }
-
-  void checkPermission() async {
-    await [Permission.camera, Permission.microphone, Permission.notification]
-        .request();
   }
 
   void _join(BuildContext context, Function stopLoading,
