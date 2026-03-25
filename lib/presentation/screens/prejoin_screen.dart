@@ -1176,8 +1176,20 @@ class _PreJoinState extends State<PreJoinScreen> {
               isNeedToCancelApiCall = true;
               stopLoading.call();
             });
-            Utils.showSnackBar(context,
-                message: "The meeting has already ended!");
+            if (!mounted) return;
+
+            Utils.showSnackBar(
+              context,
+              message: "The meeting has already ended!",
+            );
+
+            if (widget.configuration?.skipPreJoinPage == true) {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted && Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+              });
+            }
             return;
           }
           if (meetingManager.isMeetingEnded() &&
@@ -1189,8 +1201,20 @@ class _PreJoinState extends State<PreJoinScreen> {
               isNeedToCancelApiCall = true;
               stopLoading.call();
             });
-            Utils.showSnackBar(context,
-                message: "The meeting has already ended!");
+            if (!mounted) return;
+
+            Utils.showSnackBar(
+              context,
+              message: "The meeting has already ended!",
+            );
+
+            if (widget.configuration?.skipPreJoinPage == true) {
+              Future.delayed(const Duration(milliseconds: 300), () {
+                if (mounted && Navigator.of(context).canPop()) {
+                  Navigator.of(context).pop();
+                }
+              });
+            }
             return;
           }
           if (isLobby) {
