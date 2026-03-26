@@ -1,7 +1,7 @@
 # DaakiaMeetingConfiguration
 
 The `DaakiaMeetingConfiguration` class allows advanced customization for the Daakia Video Conference SDK.  
-It includes optional metadata, participant name behavior, and pre-join flow behavior.
+It includes optional metadata, participant name behavior, pre-join flow behavior, and default local media state.
 
 > **Note:** This is optional. If not provided, default behavior will be used.
 
@@ -12,6 +12,7 @@ It includes optional metadata, participant name behavior, and pre-join flow beha
 - [Metadata](#metadata)
 - [Participant Name Configuration](#participant-name-configuration)
 - [Skip Pre-Join Page](#skip-pre-join-page)
+- [Default Mic and Camera State](#default-mic-and-camera-state)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 
@@ -98,16 +99,48 @@ DaakiaMeetingConfiguration(
 ---
 ## Skip Pre-Join Page
 
-The `skipPreJoinPage` flag lets you bypass the interactive pre-join UI and start joining immediately with a loader screen.
+The `skipPreJoinPage` flag lets you bypass the interactive pre-join UI
+and start joining immediately with a loader screen.
 
 ### Use Cases
 
-- 1:1 video call flows where camera/mic/name/password setup UI is not needed.
-- Fast join experiences with configuration managed by the host app.
+-   1:1 video call flows where camera/mic/name setup UI is not needed\
+-   Fast join experiences where everything is pre-configured by the host
+    app
+
+------------------------------------------------------------------------
+
+### ⚠️ When to Use
+
+This flag should **only be enabled when the meeting does NOT require any
+pre-join interaction**.
+
+Ensure the meeting is created with the following API configuration:
+
+``` json
+{
+  "allow_common_password": false,
+  "is_lobby_mode": false,
+  "allow_standard_password": false,
+  "is_participant_mode": true
+}
+```
+
+------------------------------------------------------------------------
+
+### ❗ Important Notes
+
+-   All the above conditions **must be strictly satisfied**
+-   If any of these flags differ, enabling `skipPreJoinPage` will result
+    in **unexpected behavior or join failure**
+-   This feature is intended only for **fully automated join flows**
+    where no validation or user input is required
+
+------------------------------------------------------------------------
 
 ### Example
 
-```dart
+``` dart
 DaakiaMeetingConfiguration(
   participantNameConfig: ParticipantNameConfig(
     name: 'Quick Caller',
@@ -117,7 +150,40 @@ DaakiaMeetingConfiguration(
 );
 ```
 
-> ⚠️ If the meeting requires user-entered password/email verification, keep this flag `false` unless your app handles those checks externally.
+---
+## Default Mic and Camera State
+
+The `enableMicrophoneByDefault` and `enableCameraByDefault` flags control the initial local media state used by the SDK.
+
+### Behavior
+
+- Both fields are optional.
+- If not provided, both default to `false` to preserve the existing SDK behavior.
+- The SDK only starts with mic/camera enabled when the corresponding field is explicitly set to `true`.
+- If the required permission is already granted, the SDK starts with that device enabled.
+- If permission is not granted yet, the SDK safely falls back to the disabled state.
+- When `skipPreJoinPage` is `true` and you want mic/camera to be enabled immediately, request the corresponding permission before opening the SDK.
+
+### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `enableMicrophoneByDefault` | `bool` | Controls whether the local microphone should start enabled. Defaults to `false`. Falls back to disabled if microphone permission is unavailable. |
+| `enableCameraByDefault` | `bool` | Controls whether the local camera should start enabled. Defaults to `false`. Falls back to disabled if camera permission is unavailable. |
+
+### Example
+
+```dart
+DaakiaMeetingConfiguration(
+  skipPreJoinPage: true,
+  participantNameConfig: ParticipantNameConfig(
+    name: 'Quick Caller',
+    isEditable: false,
+  ),
+  enableMicrophoneByDefault: true,
+  enableCameraByDefault: false,
+);
+```
 
 ---
 ## Examples
@@ -170,3 +236,4 @@ DaakiaMeetingConfiguration(
 - **Consistency:** Use consistent keys and naming conventions in `metadata` across all participants for easier data handling.
 - **Security:** Avoid storing sensitive information in `metadata` as it may be accessible on the client side.
 - **Future-Proofing:** Since this is a BETA feature, keep your implementation flexible to accommodate future updates or new fields.
+- **Permission Flow:** If you use `skipPreJoinPage` and expect mic/camera to start enabled, request camera/microphone permission in your app before opening the SDK. Otherwise the SDK joins with those devices disabled.

@@ -33,6 +33,27 @@ class DaakiaMeetingConfiguration {
   ///   should keep this false, unless those checks are handled externally.
   final bool? skipPreJoinPage;
 
+  /// Controls whether the local microphone should start enabled by default.
+  ///
+  /// Defaults to `false` when not provided, preserving the existing SDK
+  /// behavior.
+  ///
+  /// If microphone permission has not been granted yet, the SDK falls back to
+  /// joining with the microphone disabled. To start with the microphone enabled
+  /// when [skipPreJoinPage] is `true`, request permission before launching the
+  /// SDK.
+  final bool? enableMicrophoneByDefault;
+
+  /// Controls whether the local camera should start enabled by default.
+  ///
+  /// Defaults to `false` when not provided, preserving the existing SDK
+  /// behavior.
+  ///
+  /// If camera permission has not been granted yet, the SDK falls back to
+  /// joining with the camera disabled. To start with the camera enabled when
+  /// [skipPreJoinPage] is `true`, request permission before launching the SDK.
+  final bool? enableCameraByDefault;
+
   /// Defines configuration settings for initializing and customizing
   /// a Daakia meeting session.
   ///
@@ -59,6 +80,8 @@ class DaakiaMeetingConfiguration {
     this.metadata,
     this.participantNameConfig,
     this.skipPreJoinPage,
+    this.enableMicrophoneByDefault,
+    this.enableCameraByDefault,
     this.vcConfig,
   });
 }
