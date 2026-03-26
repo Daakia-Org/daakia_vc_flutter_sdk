@@ -135,7 +135,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 var raisedHand = viewModel.isMyHandRaised
                     ? MeetingActions.raiseHand
                     : MeetingActions.stopRaiseHand;
-                viewModel.sendAction(ActionModel(action: raisedHand));
+                viewModel.sendAction(ActionModel(action: raisedHand, timeStamp: DateTime.now().millisecondsSinceEpoch));
                 Navigator.pop(context);
               }),
               // Reaction
@@ -251,7 +251,12 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
     final participant = viewModel.room.localParticipant;
 
     if (viewModel.isScreenSharePermissionNeeded()) {
-      viewModel.sendMessageToUI("Screen share request sent to the ${viewModel.getAdminType()}.");
+      final adminType = viewModel.getAdminType();
+      final message = adminType == null
+          ? "No Host or Co-Host available to approve screen sharing."
+          : "Screen share request sent to the $adminType.";
+
+      viewModel.sendMessageToUI(message);
       return;
     }
 

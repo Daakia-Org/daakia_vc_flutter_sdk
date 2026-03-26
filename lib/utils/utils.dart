@@ -141,18 +141,20 @@ class Utils {
     }
   }
 
-  static String getMetadataSessionUid(String? metadata) {
-    if (metadata == null) return '';
+  static String? getMetadataSessionUid(String? metadata) {
+    if (metadata == null || metadata.isEmpty) return null;
 
     try {
-      // Parse the JSON string
       final Map<String, dynamic> jsonData = jsonDecode(metadata);
-      // Return the `meeting_attendance_id` if it exists, otherwise null
-      return jsonData['current_session_uid'].toString();
+
+      final sessionUid = jsonData['current_session_uid'];
+
+      if (sessionUid == null) return null;
+
+      return sessionUid.toString();
     } catch (e) {
-      // Handle JSON parsing errors
       debugPrint('Error parsing JSON: $e');
-      return "";
+      return null;
     }
   }
 
@@ -199,6 +201,19 @@ class Utils {
   static bool isUrl(String text) {
     final uri = Uri.tryParse(text.trim());
     return uri != null && uri.hasScheme && uri.host.isNotEmpty;
+  }
+
+  static final _urlRegex = RegExp(
+    r'(https?:\/\/[^\s]+)',
+    caseSensitive: false,
+  );
+
+  static List<String> extractLinks(String text) {
+    return _urlRegex.allMatches(text).map((m) => m.group(0)!).toList();
+  }
+
+  static String extractTextWithoutLinks(String text) {
+    return text.replaceAll(_urlRegex, '').trim();
   }
 
   static bool isFileLink(String url) {
@@ -274,30 +289,30 @@ class Utils {
 
     if (mimeType != null) {
       if (mimeType.startsWith('audio/')) {
-        if (fileSize <= 16 * 1024 * 1024) {
+        if (fileSize <= Constant.audioMaxSize * 1024 * 1024) {
           return true; // Valid audio file
         } else {
-          onError("Audio file exceeds the size limit (16 MB)");
+          onError("Audio file exceeds the size limit (${Constant.audioMaxSize} MB)");
         }
       }
       if (Constant.documentFileTypes()
           .any((type) => mimeType.startsWith(type))) {
-        if (fileSize <= 20 * 1024 * 1024) {
+        if (fileSize <= Constant.documentMaxSize * 1024 * 1024) {
           return true; // Valid text file
         } else {
-          onError("Text file exceeds the size limit (20 MB)");
+          onError("Document file exceeds the size limit (${Constant.documentMaxSize} MB)");
         }
       } else if (mimeType.startsWith('image/')) {
-        if (fileSize <= 5 * 1024 * 1024) {
+        if (fileSize <= Constant.imageMaxSize * 1024 * 1024) {
           return true; // Valid image file
         } else {
-          onError("Image file exceeds the size limit (5 MB)");
+          onError("Image file exceeds the size limit (${Constant.imageMaxSize} MB)");
         }
       } else if (mimeType.startsWith('video/')) {
-        if (fileSize <= 16 * 1024 * 1024) {
+        if (fileSize <= Constant.videoMaxSize * 1024 * 1024) {
           return true; // Valid video file
         } else {
-          onError("Video file exceeds the size limit (16 MB)");
+          onError("Video file exceeds the size limit (${Constant.videoMaxSize} MB)");
         }
       } else {
         onError("Unsupported file type: $mimeType");

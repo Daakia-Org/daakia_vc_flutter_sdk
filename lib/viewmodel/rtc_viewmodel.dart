@@ -14,6 +14,7 @@ import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_model.dart';
 import 'package:daakia_vc_flutter_sdk/resources/json/language_json.dart';
+import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -28,8 +29,10 @@ import '../model/emoji_message.dart';
 import '../model/language_model.dart';
 import '../model/meeting_details.dart';
 import '../model/private_chat_model.dart';
+import '../model/raised_hand.dart';
 import '../model/send_message_model.dart';
 import '../rtc/widgets/participant_info.dart';
+import '../utils/chat_message_mapper.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/meeting_actions.dart';
@@ -44,6 +47,7 @@ class RtcViewmodel extends ChangeNotifier {
   final List<ParticipantTrack> _participantTracks = [];
 
   final Map<String, bool> _raisedHandMap = {};
+  final List<RaisedHand> _raisedHandQueue = [];
 
   bool _isMyHandRaised = false;
 
@@ -182,6 +186,10 @@ class RtcViewmodel extends ChangeNotifier {
     return _privateChat[identity]?.chats ?? [];
   }
 
+  bool hasPrivateChat(String identity) {
+    return _privateChat[identity]?.chats.isNotEmpty ?? false;
+  }
+
   Future<void> sendPublicMessage(String userMessage) async {
     if (!Utils.isMessageSizeValid(userMessage)) {
       sendMessageToUI("Message is too long! Please shorten it and try again.");
@@ -209,6 +217,7 @@ class RtcViewmodel extends ChangeNotifier {
     addMessage(
       RemoteActivityData(
           identity: null,
+          fromUserId: room.localParticipant?.identity,
           id: message.id,
           message: message.message,
           timestamp: message.timestamp,
@@ -653,14 +662,47 @@ class RtcViewmodel extends ChangeNotifier {
     return isHandRaised;
   }
 
+  int? getRaisePosition(String identity) {
+    final index = _raisedHandQueue.indexWhere((e) => e.identity == identity);
+
+    if (index == -1) return null;
+
+    return index + 1; // 1-based index like Teams
+  }
+
   void setHandRaised(RemoteActivityData remoteData) {
-    _raisedHandMap[remoteData.identity?.identity ?? ""] =
-        (remoteData.action == "raise_hand");
+    final id = remoteData.identity?.identity ?? "";
+
+    if (remoteData.action == "raise_hand") {
+      // prevent duplicate
+      if (!_raisedHandMap.containsKey(id) || _raisedHandMap[id] == false) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: remoteData.timeStamp ?? DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+    }
+
     notifyListeners();
   }
 
+  void clearRaiseHandMemory(String? identity) {
+    if (identity == null) return;
+    _raisedHandMap[identity] = false;
+    _raisedHandQueue.removeWhere((e) => e.identity == identity);
+  }
+
+
   void stopHandRaisedForAll() {
     _raisedHandMap.clear();
+    _raisedHandQueue.clear();
     _isMyHandRaised = false;
     notifyListeners();
   }
@@ -672,9 +714,71 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool get isMyHandRaised => _isMyHandRaised;
 
+  List<RaisedHand> get raisedHandQueue => List.unmodifiable(_raisedHandQueue);
+
+  void syncRaiseHand(List<RaisedHand>? serverList) {
+    if (serverList == null) return;
+    // clear existing state
+    _raisedHandMap.clear();
+    _raisedHandQueue.clear();
+
+    // sort to ensure correct order (safety)
+    serverList.sort((a, b) => a.timeStamp.compareTo(b.timeStamp));
+
+    for (final item in serverList) {
+      _raisedHandMap[item.identity] = true;
+      _raisedHandQueue.add(item);
+    }
+
+    // update my hand state
+    final localId = room.localParticipant?.identity ?? "";
+    _isMyHandRaised = _raisedHandMap[localId] ?? false;
+
+    notifyListeners();
+  }
+
+  void requestRaiseHand() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestRaisedHands, userIdentity: room.localParticipant?.identity),
+      participant.identity,
+    );
+  }
+
+  void responseRaiseHand(RemoteActivityData action) {
+    final identity = action.userIdentity;
+    if(identity == null) return;
+    if (_raisedHandQueue.isEmpty) return;
+    sendPrivateAction(ActionModel(
+      action: MeetingActions.responseRaisedHands,
+      raisedHands: _raisedHandQueue,
+    ), identity);
+  }
+
+
   void setHandRaisedForLocal(ActionModel action) {
-    _raisedHandMap[room.localParticipant?.identity ?? ""] =
-        (action.action == MeetingActions.raiseHand);
+    final id = room.localParticipant?.identity ?? "";
+
+    if (action.action == MeetingActions.raiseHand) {
+      if (!(_raisedHandMap[id] ?? false)) {
+        _raisedHandMap[id] = true;
+
+        _raisedHandQueue.add(
+          RaisedHand(
+            identity: id,
+            timeStamp: DateTime.now().millisecondsSinceEpoch,
+          ),
+        );
+      }
+
+      _isMyHandRaised = true;
+    } else {
+      _raisedHandMap[id] = false;
+      _raisedHandQueue.removeWhere((e) => e.identity == id);
+      _isMyHandRaised = false;
+    }
+
     notifyListeners();
   }
 
@@ -1460,11 +1564,23 @@ class RtcViewmodel extends ChangeNotifier {
 
     final metadataSessionId =
         Utils.getMetadataSessionUid(room.localParticipant?.metadata);
-    if (metadataSessionId.isNotEmpty && metadataSessionId != "null") {
+    if (metadataSessionId != null && metadataSessionId != "null" && metadataSessionId.isNotEmpty) {
       return metadataSessionId;
     }
 
     return meetingDetails.meetingBasicDetails?.currentSessionUid;
+  }
+
+  Future<void> fetchAndStoreSessionUid() async {
+    networkRequestHandler(
+      apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+      onSuccess: (data) async {
+        if (data?.id != null) {
+          final sessionUid = data!.id.toString();
+          StorageHelper().setSessionUid(sessionUid);
+        }
+      },
+    );
   }
 
   void checkSessionStatus({bool asUser = false, Function? callBack}) {
@@ -1473,6 +1589,7 @@ class RtcViewmodel extends ChangeNotifier {
         onSuccess: (data) {
           if (data != null) {
             sessionId = data.id.toString();
+            StorageHelper().setSessionUid(sessionId);
           }
 
           if (data?.recordingConsentActive == 1) {
@@ -2057,7 +2174,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool isScreenSharePermissionNeeded() {
     var localParticipant = room.localParticipant;
-    if (Utils.isCoHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
+    if (Utils.isHost(localParticipant?.metadata) || Utils.isCoHost(localParticipant?.metadata)) return false;
     if (!_isScreenShareEnable) {
       if (isScreenShareRequestAccepted) return false;
       if(adminList.isEmpty) return true;
@@ -2079,12 +2196,12 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  String getAdminType() {
-    if(adminList.isEmpty) return "Unknown";
+  String? getAdminType() {
+    if(adminList.isEmpty) return null;
     final metadata = adminList[0]?.metadata;
     if (Utils.isHost(metadata)) return "Host";
     if (Utils.isCoHost(metadata)) return "Co-Host";
-    return "Unknown";
+    return null;
   }
 
   List<RemoteActivityData> _screenShareRequestList = [];
@@ -2113,6 +2230,13 @@ class RtcViewmodel extends ChangeNotifier {
   void removeScreenShareRequest(RemoteActivityData data) {
     _screenShareRequestList.removeWhere(
           (item) => item.identity == data.identity,
+    );
+    notifyListeners();
+  }
+
+  void clearScreenShareRequest(String identity) {
+    _screenShareRequestList.removeWhere(
+          (item) => item.identity?.identity == identity,
     );
     notifyListeners();
   }
@@ -2353,6 +2477,76 @@ class RtcViewmodel extends ChangeNotifier {
 
   void unregisterCaption() {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
+  }
+
+  void storeMeetingDetails() {
+    final storageHelper = StorageHelper();
+    final metadata = room.localParticipant?.metadata;
+    final sessionUid = Utils.getMetadataSessionUid(metadata);
+    storageHelper
+        .setMeetingUid(meetingDetails.meetingUid);
+    if (sessionUid != null) {
+      storageHelper.setSessionUid(sessionUid);
+    }
+    storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+  }
+
+  void requestChatHistory() {
+    if (room.remoteParticipants.values.isEmpty) return;
+    final participant = room.remoteParticipants.values.first;
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.requestPublicChat, userIdentity: room.localParticipant?.identity),
+      participant.identity,
+    );
+  }
+
+  void sendPublicChatHistory(String? identity) {
+    if (identity == null) return;
+    final payload = ChatMessageMapper.toApiList(getMessageList());
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.responsePublicChat, messages: payload, userIdentity: room.localParticipant?.identity),
+      identity,
+    );
+  }
+
+  void restorePublicChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    addAllMessage(messages);
+  }
+
+
+  void sendPrivateChatHistory(String? identity) {
+    if (identity == null) return;
+    if (!hasPrivateChat(identity)) return;
+    final payload = ChatMessageMapper.toApiList(getPrivateMessage()[identity]?.chats ?? []);
+    sendPrivateAction(
+      ActionModel(action: MeetingActions.sendPrivateChat, userIdentity: room.localParticipant?.identity, messages: payload),
+      identity,
+    );
+  }
+
+  void restorePrivateChat(RemoteActivityData remoteData) {
+    final messages = ChatMessageMapper.fromApiList(remoteData.messages ?? []);
+    final identity = remoteData.userIdentity;
+    final name = getParticipantNameByIdentity(identity);
+    _privateChat.putIfAbsent(
+        identity ?? "Unknown",
+            () => PrivateChatModel(
+            identity: identity ?? "Unknown",
+            name: name,
+            chats: messages));
+    notifyListeners();
+    sendPrivateChatEvent(UpdateView());
+  }
+
+  void lowerHand(String? identity) {
+    if (identity == null) return;
+    if (room.localParticipant?.identity == identity) {
+      setMyHandRaised(false);
+      sendAction(ActionModel(action: MeetingActions.stopRaiseHand));
+    } else {
+      sendPrivateAction(ActionModel(action: MeetingActions.lowerHand), identity);
+    }
   }
 
 }

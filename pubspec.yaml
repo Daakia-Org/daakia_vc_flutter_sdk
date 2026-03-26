@@ -1,6 +1,6 @@
 name: daakia_vc_flutter_sdk
 description: "A ready-to-use Flutter SDK for seamless audio/video calls, group meetings, and scalable conferencing solutions."
-version: 4.3.0
+version: 4.4.0
 homepage: https://github.com/daakia/daakia_vc_flutter_sdk
 
 environment:
@@ -20,7 +20,7 @@ dependencies:
   json_annotation: ^4.9.0
   dio: ^5.9.0
   loading_btn: ^1.0.3
-  livekit_client: ^2.5.0+hotfix.3
+  livekit_client: ^2.5.3
   fluttertoast: ^8.2.8
   pretty_dio_logger: ^1.4.0
 

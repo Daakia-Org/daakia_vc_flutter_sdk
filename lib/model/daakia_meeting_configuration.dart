@@ -22,6 +22,38 @@ class DaakiaMeetingConfiguration {
   /// If `name` is not provided or is empty, the name field will always be editable.
   final ParticipantNameConfig? participantNameConfig;
 
+  /// When true, the SDK skips rendering the interactive pre-join UI and
+  /// directly starts the join flow with a loader screen.
+  ///
+  /// Use this for 1:1 or quick-call style experiences where pre-join controls
+  /// are not required.
+  ///
+  /// Note:
+  /// - Meetings that require participant credential input (password/email)
+  ///   should keep this false, unless those checks are handled externally.
+  final bool? skipPreJoinPage;
+
+  /// Controls whether the local microphone should start enabled by default.
+  ///
+  /// Defaults to `false` when not provided, preserving the existing SDK
+  /// behavior.
+  ///
+  /// If microphone permission has not been granted yet, the SDK falls back to
+  /// joining with the microphone disabled. To start with the microphone enabled
+  /// when [skipPreJoinPage] is `true`, request permission before launching the
+  /// SDK.
+  final bool? enableMicrophoneByDefault;
+
+  /// Controls whether the local camera should start enabled by default.
+  ///
+  /// Defaults to `false` when not provided, preserving the existing SDK
+  /// behavior.
+  ///
+  /// If camera permission has not been granted yet, the SDK falls back to
+  /// joining with the camera disabled. To start with the camera enabled when
+  /// [skipPreJoinPage] is `true`, request permission before launching the SDK.
+  final bool? enableCameraByDefault;
+
   /// Defines configuration settings for initializing and customizing
   /// a Daakia meeting session.
   ///
@@ -47,6 +79,9 @@ class DaakiaMeetingConfiguration {
   const DaakiaMeetingConfiguration({
     this.metadata,
     this.participantNameConfig,
+    this.skipPreJoinPage,
+    this.enableMicrophoneByDefault,
+    this.enableCameraByDefault,
     this.vcConfig,
   });
 }

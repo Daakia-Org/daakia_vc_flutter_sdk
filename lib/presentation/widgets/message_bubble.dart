@@ -37,11 +37,14 @@ class MessageBubble extends StatefulWidget {
 class _MessageBubbleState extends State<MessageBubble> {
   @override
   Widget build(BuildContext context) {
-    final String userName = widget.chat.identity?.name ?? "Unknown";
+    final participant = widget.chat.identity;
+    final String userName = participant == null ? widget.viewModel.getParticipantNameByIdentity(widget.chat.fromUserId) : participant.name;
     final String message = widget.chat.message ?? "";
     final String time = Utils.formatTimestampToTime(widget.chat.timestamp);
-    final bool isSender = widget.chat.isSender;
+    final bool isSender = (widget.chat.isSender || widget.chat.fromUserId == widget.viewModel.room.localParticipant?.identity);
     final bool isEdited = widget.chat.isEdited;
+    final links = Utils.extractLinks(message);
+    final text = Utils.extractTextWithoutLinks(message);
     return Align(
       alignment: isSender ? Alignment.centerRight : Alignment.centerLeft,
       child: Padding(
@@ -182,10 +185,10 @@ class _MessageBubbleState extends State<MessageBubble> {
                                 isSender: isSender,
                               ),
                             ),
-                          // Main message content
-                          if (Utils.isOnlyLink(message) ||
-                              Utils.isLink(message))
-                            Center(
+
+                          /// 🔗 Show preview for each link
+                          ...links.map(
+                            (url) => Center(
                               child: Card(
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
@@ -193,12 +196,19 @@ class _MessageBubbleState extends State<MessageBubble> {
                                 elevation: 0,
                                 shadowColor: Colors.transparent,
                                 color: Colors.transparent,
-                                child: FilePreviewWidget(fileUrl: message, isChatAttachmentDownloadEnable: widget.viewModel.isChatAttachmentDownloadEnable),
+                                child: FilePreviewWidget(
+                                  fileUrl: url,
+                                  isChatAttachmentDownloadEnable: widget
+                                      .viewModel.isChatAttachmentDownloadEnable,
+                                ),
                               ),
-                            )
-                          else
+                            ),
+                          ),
+
+                          /// 📝 Show remaining text
+                          if (text.isNotEmpty)
                             Text(
-                              Utils.extractNonLinkText(message),
+                              text,
                               style: const TextStyle(color: Colors.white),
                             ),
 

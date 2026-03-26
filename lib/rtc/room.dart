@@ -142,6 +142,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             callBack: () {
               showRecordingConsentDialog(viewModel);
             });
+      } else {
+        viewModel?.fetchAndStoreSessionUid();
       }
 
       if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
@@ -161,6 +163,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       );
 
       viewModel?.registerCaption();
+      viewModel?.storeMeetingDetails();
+      viewModel?.requestChatHistory();
+      viewModel?.requestRaiseHand();
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -247,6 +252,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     })
     ..on<RoomDisconnectedEvent>((event) async {
       if (event.reason != null) {
+        _isProgrammaticPop = true;
         DatadogDisconnectLogger.logDisconnectEvent(
             meetingId: widget.meetingDetails.meetingUid,
             room: widget.room,
@@ -322,11 +328,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
       }
     })
-    ..on<ParticipantConnectedEvent>((event) {
-      var viewModel = _livekitProviderKey.currentState?.viewModel;
-      viewModel?.setRecording(widget.room.isRecording);
-      _sortParticipants();
-    })
     ..on<ParticipantEvent>((event) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       viewModel?.setRecording(widget.room.isRecording);
@@ -344,17 +345,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       });
     })
     ..on<ParticipantConnectedEvent>((event) {
-      _livekitProviderKey.currentState?.viewModel
-          .getAttendanceListForParticipant();
-      _livekitProviderKey.currentState?.viewModel
-          .addParticipantToConsentList(event.participant);
+      var viewModel = _livekitProviderKey.currentState?.viewModel;
+      viewModel?.setRecording(widget.room.isRecording);
+      viewModel?.getAttendanceListForParticipant();
+      viewModel?.addParticipantToConsentList(event.participant);
+      viewModel?.sendPrivateChatHistory(event.participant.identity);
       _sortParticipants();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
       _livekitProviderKey.currentState?.viewModel
+          .clearScreenShareRequest(event.participant.identity);
+      _livekitProviderKey.currentState?.viewModel
           .removeParticipantFromConsentList(event.participant.identity);
       _livekitProviderKey.currentState?.viewModel
           .getAttendanceListForParticipant();
+      _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
       _sortParticipants();
     })
     ..on<RoomRecordingStatusChanged>((event) {
@@ -456,6 +461,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.setHandRaised(remoteData);
         break;
 
+      case MeetingActions.lowerHand:
+        viewModel?.lowerHand(widget.room.localParticipant?.identity);
+        break;
+
       case MeetingActions.stopRaiseHandAll:
         viewModel?.stopHandRaisedForAll();
         break;
@@ -518,7 +527,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           final storageHelper = StorageHelper();
           storageHelper
               .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
-          storageHelper.setSessionUid(Utils.getMetadataSessionUid(metadata));
+
+          final sessionUid = Utils.getMetadataSessionUid(metadata);
+
+          if (sessionUid != null) {
+            storageHelper.setSessionUid(sessionUid);
+          }
+
           storageHelper
               .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
           storageHelper.setHostToken(remoteData.token ?? "");
@@ -526,7 +541,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         } else {
           viewModel?.setCoHost(false);
-          StorageHelper().clearSdkData();
           clearConsentList(viewModel);
           showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         }
@@ -534,7 +548,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
-        StorageHelper().clearSdkData();
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
@@ -677,6 +690,26 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.canDownloadChatAttachment:
         viewModel?.isChatAttachmentDownloadEnable = remoteData.value;
+        break;
+
+      case MeetingActions.requestPublicChat:
+        viewModel?.sendPublicChatHistory(remoteData.userIdentity);
+        break;
+
+      case MeetingActions.responsePublicChat:
+        viewModel?.restorePublicChat(remoteData);
+        break;
+
+      case MeetingActions.sendPrivateChat:
+        viewModel?.restorePrivateChat(remoteData);
+        break;
+
+      case MeetingActions.requestRaisedHands:
+        viewModel?.responseRaiseHand(remoteData);
+        break;
+
+      case MeetingActions.responseRaisedHands:
+        viewModel?.syncRaiseHand(remoteData.raisedHands);
         break;
 
       case "":
@@ -1185,7 +1218,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // When closing the meeting programmatically
   void closeMeetingProgrammatically(BuildContext context) {
     _isProgrammaticPop = true; // Set the flag
-    Navigator.popUntil(context, (route) => route.isFirst); // Close all routes
+    if (Navigator.canPop(context)) {
+      Navigator.of(context).pop();
+    }
   }
 
   void _meetingEndLogic(RtcViewmodel? viewModel) {
@@ -1460,6 +1495,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     viewModel?.unregisterCaption();
     handleAndroidNotification(enable: false);
     _disposePip();
+    DaakiaPiP.disposePiP();
   }
 
   void _disposePip() {

@@ -1,3 +1,4 @@
+import 'package:daakia_vc_flutter_sdk/model/raised_hand.dart';
 import 'package:daakia_vc_flutter_sdk/model/reaction_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
@@ -10,6 +11,7 @@ class RemoteActivityData {
   final String? id;
   final String? message;
   final int? timestamp;
+  final int? timeStamp;
   final String? action;
   final bool isSender;
   final String? requestId;
@@ -37,6 +39,9 @@ class RemoteActivityData {
   final List<Reaction>? reactions;
   final bool removeReaction;
   final bool isScreenShareAllowed;
+  final String? fromUserId;
+  final List<dynamic>? messages;
+  final List<RaisedHand>? raisedHands;
 
   // ✅ ADD NEW FIELD
 
@@ -45,6 +50,7 @@ class RemoteActivityData {
     this.id,
     this.message,
     this.timestamp,
+    this.timeStamp,
     this.action,
     this.isSender = false,
     this.requestId = "",
@@ -72,6 +78,9 @@ class RemoteActivityData {
     this.reactions,
     this.removeReaction = false,
     this.isScreenShareAllowed = false,
+    this.fromUserId,
+    this.messages,
+    this.raisedHands,
     // ✅ ADD NEW FIELD
   });
 
@@ -82,6 +91,7 @@ class RemoteActivityData {
       id: json['id'] as String?,
       message: json['message'] as String?,
       timestamp: json['timestamp'] as int?,
+      timeStamp: json['timeStamp'] as int?,
       action: json['action'] as String?,
       isSender: json['isSender'] as bool? ?? false,
       requestId: json['request_id'] as String? ?? "",
@@ -120,6 +130,11 @@ class RemoteActivityData {
           .toList(),
       removeReaction: json['removeReaction'] as bool? ?? false,
       isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
+      fromUserId: json['from'] as String?,
+      messages: json['messages'] as List<dynamic>?,
+      raisedHands: (json['raisedHands'] as List<dynamic>?)
+          ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
+          .toList(),
       // ✅ ADD NEW FIELD
     );
   }
@@ -130,6 +145,7 @@ class RemoteActivityData {
       'id': id,
       'message': message,
       'timestamp': timestamp,
+      'timeStamp': timeStamp,
       'action': action,
       'isSender': isSender,
       'request_id': requestId,
@@ -157,6 +173,9 @@ class RemoteActivityData {
       'reactions': reactions?.map((e) => e.toJson()).toList(),
       'removeReaction': removeReaction,
       'is_screen_share_allowed': isScreenShareAllowed,
+      'from': fromUserId,
+      'messages': messages,
+      'raisedHands': raisedHands?.map((e) => e.toJson()).toList(),
       // ✅ ADD NEW FIELD
     };
   }
@@ -166,6 +185,7 @@ class RemoteActivityData {
     String? id,
     String? message,
     int? timestamp,
+    int? timeStamp,
     String? action,
     bool? isSender,
     String? requestId,
@@ -193,6 +213,9 @@ class RemoteActivityData {
     List<Reaction>? reactions,
     bool? removeReaction,
     bool? isScreenShareAllowed,
+    String? fromUserId,
+    List<dynamic>? messages,
+    List<RaisedHand>? raisedHands,
     // ✅ ADD NEW FIELD
   }) {
     return RemoteActivityData(
@@ -200,6 +223,7 @@ class RemoteActivityData {
       id: id ?? this.id,
       message: message ?? this.message,
       timestamp: timestamp ?? this.timestamp,
+      timeStamp: timeStamp ?? this.timeStamp,
       action: action ?? this.action,
       isSender: isSender ?? this.isSender,
       requestId: requestId ?? this.requestId,
@@ -228,6 +252,9 @@ class RemoteActivityData {
       reactions: reactions ?? this.reactions,
       removeReaction: removeReaction ?? this.removeReaction,
       isScreenShareAllowed: isScreenShareAllowed ?? this.isScreenShareAllowed,
+      fromUserId: fromUserId ?? this.fromUserId,
+      messages: messages ?? this.messages,
+      raisedHands: raisedHands ?? this.raisedHands,
       // ✅ ADD NEW FIELD
     );
   }

@@ -5,6 +5,7 @@ import 'package:example/screen/configuration_screen.dart';
 import 'package:example/utils/animate_logo.dart';
 import 'package:example/utils/theme_color.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());
@@ -15,10 +16,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
+    return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Daakia VC Demo',
-      home: DataEntryScreen(), // << this is enough
+      home: const DataEntryScreen(), // << this is enough
+      // 👇 ONLY for edge-to-edge
+      builder: (context, child) {
+        return SafeArea(
+          top: false, // 👈 allow drawing behind status bar
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
     );
   }
 }

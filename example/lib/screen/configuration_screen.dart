@@ -19,6 +19,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
 
   bool _customizeConfigName = false;
   bool _isNameEditable = true;
+  bool _skipPreJoinPage = false;
+  bool _enableMicrophoneByDefault = false;
+  bool _enableCameraByDefault = false;
   final TextEditingController _configNameController = TextEditingController();
 
   void _addMetadataField() {
@@ -72,6 +75,9 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                 : _isNameEditable)
             : true,
       ),
+      skipPreJoinPage: _skipPreJoinPage,
+      enableMicrophoneByDefault: _enableMicrophoneByDefault,
+      enableCameraByDefault: _enableCameraByDefault,
     );
   }
 
@@ -100,9 +106,12 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
           );
         }
       }
+
+      _skipPreJoinPage = config.skipPreJoinPage == true;
+      _enableMicrophoneByDefault = config.enableMicrophoneByDefault == true;
+      _enableCameraByDefault = config.enableCameraByDefault == true;
     }
   }
-
 
   @override
   void dispose() {
@@ -187,6 +196,42 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                           if (!value) {
                             _metadataControllers.clear();
                           }
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text("Skip Pre-Join Page"),
+                      subtitle: const Text(
+                        "Directly join with loader screen (no pre-join UI)",
+                      ),
+                      value: _skipPreJoinPage,
+                      onChanged: (value) {
+                        setState(() {
+                          _skipPreJoinPage = value;
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text("Enable Microphone By Default"),
+                      subtitle: const Text(
+                        "Start with mic on only when permission is already granted",
+                      ),
+                      value: _enableMicrophoneByDefault,
+                      onChanged: (value) {
+                        setState(() {
+                          _enableMicrophoneByDefault = value;
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text("Enable Camera By Default"),
+                      subtitle: const Text(
+                        "Start with camera on only when permission is already granted",
+                      ),
+                      value: _enableCameraByDefault,
+                      onChanged: (value) {
+                        setState(() {
+                          _enableCameraByDefault = value;
                         });
                       },
                     ),

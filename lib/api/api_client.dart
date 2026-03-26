@@ -98,6 +98,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated("No longer needed the dispatch id")
   @GET("rtc/recording/dispatchId")
   Future<BaseResponse<RecordingDispatchData>> getRecordingDispatchedId(
       @Header("Authorization") String token,
