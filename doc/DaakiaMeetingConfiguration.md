@@ -99,16 +99,48 @@ DaakiaMeetingConfiguration(
 ---
 ## Skip Pre-Join Page
 
-The `skipPreJoinPage` flag lets you bypass the interactive pre-join UI and start joining immediately with a loader screen.
+The `skipPreJoinPage` flag lets you bypass the interactive pre-join UI
+and start joining immediately with a loader screen.
 
 ### Use Cases
 
-- 1:1 video call flows where camera/mic/name/password setup UI is not needed.
-- Fast join experiences with configuration managed by the host app.
+-   1:1 video call flows where camera/mic/name setup UI is not needed\
+-   Fast join experiences where everything is pre-configured by the host
+    app
+
+------------------------------------------------------------------------
+
+### ⚠️ When to Use
+
+This flag should **only be enabled when the meeting does NOT require any
+pre-join interaction**.
+
+Ensure the meeting is created with the following API configuration:
+
+``` json
+{
+  "allow_common_password": false,
+  "is_lobby_mode": false,
+  "allow_standard_password": false,
+  "is_participant_mode": true
+}
+```
+
+------------------------------------------------------------------------
+
+### ❗ Important Notes
+
+-   All the above conditions **must be strictly satisfied**
+-   If any of these flags differ, enabling `skipPreJoinPage` will result
+    in **unexpected behavior or join failure**
+-   This feature is intended only for **fully automated join flows**
+    where no validation or user input is required
+
+------------------------------------------------------------------------
 
 ### Example
 
-```dart
+``` dart
 DaakiaMeetingConfiguration(
   participantNameConfig: ParticipantNameConfig(
     name: 'Quick Caller',
@@ -117,8 +149,6 @@ DaakiaMeetingConfiguration(
   skipPreJoinPage: true,
 );
 ```
-
-> ⚠️ If the meeting requires user-entered password/email verification, keep this flag `false` unless your app handles those checks externally.
 
 ---
 ## Default Mic and Camera State
