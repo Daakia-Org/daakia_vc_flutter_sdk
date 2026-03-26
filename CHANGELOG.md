@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## v4.4.0 – (2026-03)
+
+### 🚀 New Features
+- **Skip Pre-Join Flow**
+    - Added `skipPreJoinPage` option to bypass pre-join UI for faster meeting join.
+- **Default Media State Configuration**
+    - Added support to configure **microphone and camera default state** before joining a meeting.
+- **UI Enhancements (Example App)**
+    - Added **edge-to-edge UI support** for improved visual experience.
+
+---
+
+### 🧩 Improvements
+- Improved meeting join experience for **faster and automated flows**
+- Enhanced developer control over **initial media states (mic/camera)**
+- Updated documentation for `skipPreJoinPage` with **strict usage conditions**
+
+---
+
+### 🐞 Bug Fixes
+- Fixed issue with **automatic navigation when meeting ends** while pre-join is skipped
+- Improved meeting closure and navigation handling across flows
+
 ## v4.3.0 – (2025-12)
 
 ### 🚀 New Features
