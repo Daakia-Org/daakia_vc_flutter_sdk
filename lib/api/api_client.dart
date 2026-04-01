@@ -30,49 +30,59 @@ part 'api_client.g.dart';
 abstract class RestClient {
   factory RestClient(Dio dio, {String? baseUrl}) = _RestClient;
 
+
+  //-------------------[PRE-JOIN]-------------------
+
   @POST("rtc/meeting/join")
   Future<BaseResponse<RtcData>> getMeetingJoinDetail(
     @Header("Authorization") String token,
     @Body() Map<String, dynamic> body,
   );
 
-  @POST("rtc/meeting/delete")
-  Future<BaseResponse> endMeeting(
-    @Body() Map<String, dynamic> body,
-  );
-
   @POST("meeting/verifyHost")
   Future<BaseResponse<HostTokenModel>> verifyHostToken(
-    @Body() Map<String, dynamic> body,
-  );
+      @Body() Map<String, dynamic> body,
+      );
 
   @GET("saas/host/token")
   Future<BaseResponse<HostTokenModel>> getHostToken(
-    @Query("meeting_uid") String meetingUid,
-  );
+      @Query("meeting_uid") String meetingUid,
+      );
+
+  @GET("saas/meeting/features")
+  Future<BaseResponse<FeatureData>> getFeatures(
+      @Query("meeting_uid") String meetingUid);
+
+  @POST("rtc/meeting/verify/commonPassword")
+  Future<BaseResponse<EventPasswordProtectedData>> verifyCommonMeetingPassword(
+      @Body() Map<String, dynamic> body,
+      );
+
+  @POST("meeting/verify/password")
+  Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
+      @Body() Map<String, dynamic> body,
+      );
+
+  @POST("rtc/meeting/addParticipant/toLobby")
+  Future<BaseResponse<RtcData>> addParticipantToLobby(
+      @Body() Map<String, dynamic> body,
+      );
 
   @POST("saas/sdk/verify/key")
   Future<BaseResponse<LicenceVerifyModel>> licenceVerify(
-    @Body() Map<String, dynamic> body,
-  );
+      @Body() Map<String, dynamic> body,
+      );
 
   @GET("saas/sdk/meeting/basic/detail")
   Future<BaseResponse<MeetingDetailsModel>> getMeetingDetails(
       @Query("meeting_uid") String meetingUid, @Header("secret") String secret);
 
-  @POST("rtc/meeting/verify/commonPassword")
-  Future<BaseResponse<EventPasswordProtectedData>> verifyCommonMeetingPassword(
+  //-------------------[RTC]-------------------
+
+  @POST("rtc/meeting/delete")
+  Future<BaseResponse> endMeeting(
     @Body() Map<String, dynamic> body,
   );
-
-  @POST("meeting/verify/password")
-  Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
-    @Body() Map<String, dynamic> body,
-  );
-
-  @GET("saas/meeting/features")
-  Future<BaseResponse<FeatureData>> getFeatures(
-      @Query("meeting_uid") String meetingUid);
 
   @POST("rtc/meeting/remove/participant")
   Future<BaseResponse> removeParticipant(
@@ -103,11 +113,6 @@ abstract class RestClient {
   Future<BaseResponse<RecordingDispatchData>> getRecordingDispatchedId(
       @Header("Authorization") String token,
       @Query("meeting_id") String meetingUid);
-
-  @POST("rtc/meeting/addParticipant/toLobby")
-  Future<BaseResponse<RtcData>> addParticipantToLobby(
-    @Body() Map<String, dynamic> body,
-  );
 
   @PUT("rtc/meeting/update/participantLobbyStatus")
   Future<BaseResponse<RtcData>> acceptParticipantInLobby(
