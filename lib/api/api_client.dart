@@ -30,7 +30,6 @@ part 'api_client.g.dart';
 abstract class RestClient {
   factory RestClient(Dio dio, {String? baseUrl}) = _RestClient;
 
-
   //-------------------[PRE-JOIN]-------------------
 
   @POST("rtc/meeting/join")
@@ -41,13 +40,13 @@ abstract class RestClient {
 
   @POST("meeting/verifyHost")
   Future<BaseResponse<HostTokenModel>> verifyHostToken(
-      @Body() Map<String, dynamic> body,
-      );
+    @Body() Map<String, dynamic> body,
+  );
 
   @GET("saas/host/token")
   Future<BaseResponse<HostTokenModel>> getHostToken(
-      @Query("meeting_uid") String meetingUid,
-      );
+    @Query("meeting_uid") String meetingUid,
+  );
 
   @GET("saas/meeting/features")
   Future<BaseResponse<FeatureData>> getFeatures(
@@ -55,23 +54,23 @@ abstract class RestClient {
 
   @POST("rtc/meeting/verify/commonPassword")
   Future<BaseResponse<EventPasswordProtectedData>> verifyCommonMeetingPassword(
-      @Body() Map<String, dynamic> body,
-      );
+    @Body() Map<String, dynamic> body,
+  );
 
   @POST("meeting/verify/password")
   Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
-      @Body() Map<String, dynamic> body,
-      );
+    @Body() Map<String, dynamic> body,
+  );
 
   @POST("rtc/meeting/addParticipant/toLobby")
   Future<BaseResponse<RtcData>> addParticipantToLobby(
-      @Body() Map<String, dynamic> body,
-      );
+    @Body() Map<String, dynamic> body,
+  );
 
   @POST("saas/sdk/verify/key")
   Future<BaseResponse<LicenceVerifyModel>> licenceVerify(
-      @Body() Map<String, dynamic> body,
-      );
+    @Body() Map<String, dynamic> body,
+  );
 
   @GET("saas/sdk/meeting/basic/detail")
   Future<BaseResponse<MeetingDetailsModel>> getMeetingDetails(
