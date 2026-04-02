@@ -5,6 +5,7 @@ import 'package:daakia_vc_flutter_sdk/model/features.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
@@ -1373,7 +1374,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     final shouldReuse = cachedMeetingUid == widget.meetingId &&
         cachedSessionUid == widget.basicMeetingDetails?.currentSessionUid &&
         cachedAttendanceId != "" &&
-        cachedAttendanceRole == "cohost";
+        cachedAttendanceRole == AttendanceRole.cohost;
     return shouldReuse;
   }
 

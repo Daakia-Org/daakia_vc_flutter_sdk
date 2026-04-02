@@ -1,5 +1,7 @@
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
+import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
@@ -12,6 +14,28 @@ final apiClient = RestClient(setDio());
 Dio setDio() {
   final dio = Dio();
   dio.options.baseUrl = Constant.baseUrl;
+
+  dio.interceptors.add(
+    PrettyDioLogger(
+      requestHeader: true,
+      requestBody: true,
+      responseBody: true,
+      responseHeader: false,
+      error: true,
+      compact: true,
+      maxWidth: 90,
+      enabled: kDebugMode,
+      filter: (options, args) {
+        // Don't print requests with URIs containing '/posts'
+        if (options.path.contains('/posts')) {
+          return false;
+        }
+
+        // Don't print responses with Uint8List data
+        return !args.isResponse || !args.hasUint8ListData;
+      },
+    ),
+  );
 
   dio.interceptors.add(
     InterceptorsWrapper(

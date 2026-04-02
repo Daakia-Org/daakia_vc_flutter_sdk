@@ -23,6 +23,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:uuid/uuid.dart';
 
 import '../enum/chat_type_enum.dart';
+import '../enum/attendance_role_enum.dart';
 import '../model/action_model.dart';
 import '../model/caption_data.dart';
 import '../model/emoji_message.dart';
@@ -2495,7 +2496,8 @@ class RtcViewmodel extends ChangeNotifier {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
-    storageHelper.setAttendanceRole(isCoHost ? "cohost" : "participant");
+    storageHelper.setAttendanceRole(
+        isCoHost ? AttendanceRole.cohost : AttendanceRole.participant);
   }
 
   void requestChatHistory() {
