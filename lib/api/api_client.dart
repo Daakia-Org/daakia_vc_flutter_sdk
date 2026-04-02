@@ -80,30 +80,35 @@ abstract class RestClient {
 
   @POST("rtc/meeting/delete")
   Future<BaseResponse> endMeeting(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/remove/participant")
   Future<BaseResponse> removeParticipant(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/create/cohost")
   Future<BaseResponse> makeCoHost(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/recording/start")
   Future<BaseResponse<EgressData>> startRecording(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/recording/stop")
   Future<BaseResponse> stopRecording(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
@@ -111,10 +116,12 @@ abstract class RestClient {
   @GET("rtc/recording/dispatchId")
   Future<BaseResponse<RecordingDispatchData>> getRecordingDispatchedId(
       @Header("Authorization") String token,
+      @Header("x-self-identity") String selfIdentity,
       @Query("meeting_id") String meetingUid);
 
   @PUT("rtc/meeting/update/participantLobbyStatus")
   Future<BaseResponse<RtcData>> acceptParticipantInLobby(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
@@ -126,103 +133,122 @@ abstract class RestClient {
   @POST("rtc/meeting/update/transcriptionLanguage")
   Future<BaseResponse> setTranscriptionLanguage(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/transcription/start")
   Future<BaseResponse> startTranscription(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/text/translation")
   Future<BaseResponse<TranslationData>> translateText(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/updateParticipant/name")
   Future<BaseResponse> updateParticipantName(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/time/extend")
   Future<BaseResponse> meetingTimeExtend(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/meeting/whiteboard/get")
   Future<BaseListResponse<WhiteboardData>> getWhiteBoardData(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_id") String meetingId,
   );
 
   @GET("rtc/meeting/invitee/participantsList")
   Future<BaseListResponse<ParticipantAttendanceData>>
       getAttendanceListForParticipant(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_uid") String meetingId,
   );
 
   @PUT("rtc/meeting/updateRecording/consentStatus")
   Future<BaseResponse<ConsentStatusData>> updateRecordingConsent(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/meeting/session/detail")
   Future<BaseResponse<SessionDetailsData>> getSessionDetails(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_uid") String meetingId,
   );
 
   @POST("rtc/meeting/startRecording/consent")
   Future<BaseResponse> startRecordingConsent(
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/meeting/participant/consentList")
   Future<BaseListResponse<RemoteParticipantConsent>> getParticipantConsentList(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_uid") String meetingId,
     @Query("session_id") String sessionId,
   );
 
   @GET("rtc/screenShareConsent")
   Future<BaseResponse<ScreenShareConsentModel>> getScreenShareConsent(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_id") String meetingId,
   );
 
   @PUT("rtc/screenShareConsent")
   Future<BaseResponse<ScreenShareConsentModel>> updateScreenShareConsent(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/chatAttachmentDownloadConsent")
   Future<BaseResponse<ChatAttachmentConsentModel>> getChatAttachmentConsent(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_id") String meetingId,
   );
 
   @PUT("rtc/chatAttachmentDownloadConsent")
   Future<BaseResponse<ChatAttachmentConsentModel>> updateChatAttachmentConsent(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/audioPermission")
   Future<BaseResponse<WebinarPermissionModel>> getAudioPermission(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_id") String meetingId,
   );
 
   @PUT("rtc/audioPermission")
   Future<BaseResponse<WebinarPermissionModel>> updateAudioPermission(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
   @GET("rtc/videoPermission")
   Future<BaseResponse<WebinarPermissionModel>> getVideoPermission(
+    @Header("x-self-identity") String selfIdentity,
     @Query("meeting_id") String meetingId,
   );
 
   @PUT("rtc/videoPermission")
   Future<BaseResponse<WebinarPermissionModel>> updateVideoPermission(
     @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 }
