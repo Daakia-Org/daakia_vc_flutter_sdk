@@ -2488,12 +2488,14 @@ class RtcViewmodel extends ChangeNotifier {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
     final sessionUid = Utils.getMetadataSessionUid(metadata);
+    final isCoHost = Utils.isCoHost(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
     if (sessionUid != null) {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+    storageHelper.setAttendanceRole(isCoHost ? "cohost" : "participant");
   }
 
   void requestChatHistory() {
