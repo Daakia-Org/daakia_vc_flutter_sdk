@@ -13,6 +13,7 @@ import 'package:daakia_vc_flutter_sdk/model/webinar_permission_model.dart';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
+import '../model/agent_dispatch_data.dart';
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
 import '../model/event_password_protected_data.dart';
@@ -130,6 +131,7 @@ abstract class RestClient {
   Future<BaseResponse<UploadData>> uploadFile(@Part() File file,
       {@SendProgress() ProgressCallback? onSendProgress});
 
+  @Deprecated("This API is no longer supported.")
   @POST("rtc/meeting/update/transcriptionLanguage")
   Future<BaseResponse> setTranscriptionLanguage(
     @Header("Authorization") String token,
@@ -137,10 +139,16 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated("This API is no longer supported. Please use dispatchAgent instead.")
   @POST("rtc/meeting/transcription/start")
   Future<BaseResponse> startTranscription(
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
+  );
+
+  @POST("rtc/meeting/dispatch/agent")
+  Future<BaseResponse<AgentDispatchData>> dispatchAgent(
+      @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/text/translation")

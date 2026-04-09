@@ -703,6 +703,39 @@ class _RestClient implements RestClient {
   }
 
   @override
+  Future<BaseResponse<AgentDispatchData>> dispatchAgent(
+    Map<String, dynamic> body,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    final _headers = <String, dynamic>{};
+    final _data = <String, dynamic>{};
+    _data.addAll(body);
+    final _options = _setStreamType<BaseResponse<AgentDispatchData>>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            'rtc/meeting/dispatch/agent',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BaseResponse<AgentDispatchData> _value;
+    try {
+      _value = BaseResponse<AgentDispatchData>.fromJson(
+        _result.data!,
+        (json) => AgentDispatchData.fromJson(json as Map<String, dynamic>),
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<BaseResponse<TranslationData>> translateText(
     String selfIdentity,
     Map<String, dynamic> body,
