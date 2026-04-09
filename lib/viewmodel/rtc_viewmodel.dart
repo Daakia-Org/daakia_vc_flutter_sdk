@@ -1148,6 +1148,21 @@ class RtcViewmodel extends ChangeNotifier {
     return data.map((item) => LanguageModel.fromJson(item)).toList();
   }
 
+  void startTranscriptionAgent(LanguageModel selectedLanguage) {
+    var body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "agent_id": Constant.liveCaptionAgentId,
+      "agent_name": Constant.liveCaptionAgentName,
+      "metadata": {
+        "language": selectedLanguage.code,
+      }
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.dispatchAgent(body),
+        onSuccess: (data) {},
+        onError: (message) => sendMessageToUI(message));
+  }
+
   void setTranscriptionLanguage(
       LanguageModel selectedLanguage, Function transcriptionEnabled) {
     Map<String, dynamic> body = {
@@ -2382,7 +2397,8 @@ class RtcViewmodel extends ChangeNotifier {
 
   //===============================[Live Caption]===============================
 
-  void handleCaptionTranscription(CaptionData data) {
+  @Deprecated("Use handleCaptionTranscription() instead")
+  void handleCaptionTranscriptionOld(CaptionData data) {
     final name = getParticipantNameByIdentity(data.participantIdentity);
 
     final isFinal = data.speechEventType == Constant.captionAgentFinalTranscript;
@@ -2465,21 +2481,127 @@ class RtcViewmodel extends ChangeNotifier {
       }
     }
   }
-
-  void registerCaption() {
+  @Deprecated("Use registerCaption() instead")
+  void registerCaptionOld() {
     room.registerTextStreamHandler(Constant.liveCaptionAgent, (TextStreamReader reader, String participantIdentity) async {
         final raw = await reader.readAll();
         try {
           final jsonData = jsonDecode(raw);
           final caption = CaptionData.fromJson(jsonData);
 
-          handleCaptionTranscription(caption);
+          handleCaptionTranscriptionOld(caption);
         } catch (e) {
           debugPrint("[ERROR] Failed to parse caption: $e");
         }
       },
     );
   }
+
+  void handleCaptionFromRaw(
+      String text,
+      bool isFinal,
+      String participantIdentity,
+      ) {
+    final name = getParticipantNameByIdentity(participantIdentity);
+
+    final sourceLang =
+        transcriptionLanguageData?.sourceLang ?? ""; // fallback if needed
+
+    final targetLang = translationLanguage?.code ??
+        transcriptionLanguageData?.sourceLang ??
+        sourceLang;
+
+    // -------------------- FINAL ---------------------
+    if (isFinal) {
+      if (particalTranscription != null) {
+        // Finalize existing partial
+        particalTranscription = particalTranscription!.copyWith(
+          name: name,
+          transcription: text,
+          isFinal: true,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        _updateTranscriptionInList(particalTranscription!);
+
+        if (sourceLang != targetLang) {
+          translateText(particalTranscription!);
+        }
+      } else {
+        // No partial → create fresh final
+        final newTranscription = TranscriptionModel(
+          id: const Uuid().v4(),
+          name: name,
+          transcription: text,
+          timestamp: Utils.formatTimestampToTime(
+            DateTime.now().millisecondsSinceEpoch,
+          ),
+          isFinal: true,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        addTranscription(newTranscription);
+
+        if (sourceLang != targetLang) {
+          translateText(newTranscription);
+        }
+      }
+
+      // Clear partial after final
+      particalTranscription = null;
+    }
+
+    // -------------------- PARTIAL ---------------------
+    else {
+      if (particalTranscription != null) {
+        // Update existing partial (live typing effect)
+        particalTranscription = particalTranscription!.copyWith(
+          name: name,
+          transcription: text,
+          isFinal: false,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        _updateTranscriptionInList(particalTranscription!);
+      } else {
+        // Create new partial
+        particalTranscription = TranscriptionModel(
+          id: const Uuid().v4(),
+          name: name,
+          transcription: text,
+          timestamp: Utils.formatTimestampToTime(
+            DateTime.now().millisecondsSinceEpoch,
+          ),
+          isFinal: false,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        addTranscription(particalTranscription!);
+      }
+    }
+  }
+
+  void registerCaption() {
+    room.registerTextStreamHandler(
+      Constant.liveCaptionAgent,
+          (TextStreamReader reader, String participantIdentity) async {
+        final message = await reader.readAll();
+
+        final attributes = reader.info?.attributes;
+
+        if (attributes == null) return;
+
+        final isFinal = attributes["lk.transcription_final"] == "true";
+
+        handleCaptionFromRaw(message, isFinal, participantIdentity);
+      },
+    );
+  }
+
 
   void unregisterCaption() {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
