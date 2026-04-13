@@ -358,7 +358,13 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     isLoading = true;
 
-    var token = hostToken;
+    final configuredToken = widget.configuration?.vcConfig?.hostToken;
+    if (hostToken.isEmpty &&
+        configuredToken != null &&
+        configuredToken.isNotEmpty) {
+      hostToken = configuredToken;
+    }
+
     Map<String, dynamic> body = {
       "meeting_uid": widget.meetingId,
       "preferred_video_server_id": "ap1",
@@ -383,6 +389,8 @@ class _PreJoinState extends State<PreJoinScreen> {
         }
       }
     }
+
+    final token = hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
@@ -413,7 +421,8 @@ class _PreJoinState extends State<PreJoinScreen> {
             return;
           }
 
-          if (it.participantCanJoin == true) {
+          final canJoinAsCoHost = it.roleName == AttendanceRole.cohost.name;
+          if (it.participantCanJoin == true || canJoinAsCoHost) {
             _handleJoin(it, stopLoading);
           }
         } else {
