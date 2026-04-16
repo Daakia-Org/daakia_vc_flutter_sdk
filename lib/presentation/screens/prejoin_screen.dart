@@ -5,6 +5,7 @@ import 'package:daakia_vc_flutter_sdk/model/features.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
@@ -1331,7 +1332,8 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<void> checkMeetingType(Function stopLoading) async {
     var event = widget.basicMeetingDetails;
-    if (await shouldAddAttendanceId()) {
+    final shouldReuseAttendance = await shouldAddAttendanceId();
+    if (shouldReuseAttendance) {
       // If shouldAddAttendanceId is true, bypass other checks
       getFeaturesAndJoinMeeting(stopLoading);
       return;
@@ -1354,7 +1356,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       }
       verifyCommonPasswordProtectedMeeting(stopLoading);
     } else {
-      if (event?.isLobbyMode == true && !await shouldAddAttendanceId()) {
+      if (event?.isLobbyMode == true && !shouldReuseAttendance) {
         addParticipantToLobby(stopLoading);
         // startAddingParticipantsPool(stopLoading);
       } else {
@@ -1365,10 +1367,15 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<bool> shouldAddAttendanceId() async {
     final cacheData = StorageHelper();
-    return await cacheData.getMeetingUid() == widget.meetingId &&
-        await cacheData.getSessionUid() ==
-            widget.basicMeetingDetails?.currentSessionUid &&
-        await cacheData.getAttendanceId() != "";
+    final cachedMeetingUid = await cacheData.getMeetingUid();
+    final cachedSessionUid = await cacheData.getSessionUid();
+    final cachedAttendanceId = await cacheData.getAttendanceId();
+    final cachedAttendanceRole = await cacheData.getAttendanceRole();
+    final shouldReuse = cachedMeetingUid == widget.meetingId &&
+        cachedSessionUid == widget.basicMeetingDetails?.currentSessionUid &&
+        cachedAttendanceId != "" &&
+        cachedAttendanceRole == AttendanceRole.cohost;
+    return shouldReuse;
   }
 
   Future<void> verifyCoHost() async {

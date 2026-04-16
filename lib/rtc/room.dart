@@ -6,6 +6,7 @@ import 'package:animated_emoji/emojis.g.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
@@ -536,11 +537,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
           storageHelper
               .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
+          storageHelper.setAttendanceRole(AttendanceRole.cohost);
           storageHelper.setHostToken(remoteData.token ?? "");
           viewModel?.getAttendanceListForParticipant();
           showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         } else {
           viewModel?.setCoHost(false);
+          StorageHelper().setAttendanceRole(AttendanceRole.participant);
           clearConsentList(viewModel);
           showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         }
@@ -548,6 +551,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
+        StorageHelper().setAttendanceRole(AttendanceRole.participant);
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;

@@ -23,6 +23,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:uuid/uuid.dart';
 
 import '../enum/chat_type_enum.dart';
+import '../enum/attendance_role_enum.dart';
 import '../model/action_model.dart';
 import '../model/caption_data.dart';
 import '../model/emoji_message.dart';
@@ -394,6 +395,8 @@ class RtcViewmodel extends ChangeNotifier {
 
   LocalParticipant get participant => room.localParticipant!;
 
+  String get selfIdentity => room.localParticipant?.identity ?? "";
+
   void disableAudio() async {
     await participant.setMicrophoneEnabled(false);
     notifyListeners();
@@ -439,7 +442,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.removeParticipant(meetingDetails.authorizationToken, body),
+          apiClient.removeParticipant(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) => sendMessageToUI("Participant Removed"),
       onError: (message) => sendMessageToUI(message),
     );
@@ -464,7 +467,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.makeCoHost(meetingDetails.authorizationToken, body),
+          apiClient.makeCoHost(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) => {
         sendPrivateAction(
             ActionModel(
@@ -514,7 +517,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.startRecording(meetingDetails.authorizationToken, body),
+          apiClient.startRecording(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
         isRecordingStartByMe = true;
         dispatchId = data?.dispatchId.id;
@@ -564,7 +567,7 @@ class RtcViewmodel extends ChangeNotifier {
 
     networkRequestHandler(
       apiCall: () =>
-          apiClient.stopRecording(meetingDetails.authorizationToken, body),
+          apiClient.stopRecording(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) {
         _stopRecordingRetried = false;
         isRecordingStartByMe = false;
@@ -615,6 +618,7 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () => apiClient.getRecordingDispatchedId(
         meetingDetails.authorizationToken,
+        selfIdentity,
         meetingDetails.meetingUid,
       ),
       onSuccess: (data) {
@@ -843,7 +847,7 @@ class RtcViewmodel extends ChangeNotifier {
       body["is_admit_all"] = acceptAll;
     }
     networkRequestHandler(
-        apiCall: () => apiClient.acceptParticipantInLobby(body),
+        apiCall: () => apiClient.acceptParticipantInLobby(selfIdentity, body),
         onSuccess: (_) {},
         onError: (message) => sendMessageToUI(message));
   }
@@ -1154,7 +1158,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
         apiCall: () => apiClient.setTranscriptionLanguage(
-            meetingDetails.authorizationToken, body),
+            meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isTranscriptionLanguageSelected = true;
           var transcriptionData = TranscriptionActionModel(
@@ -1175,7 +1179,7 @@ class RtcViewmodel extends ChangeNotifier {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
     };
-    networkRequestHandler(apiCall: () => apiClient.startTranscription(body));
+    networkRequestHandler(apiCall: () => apiClient.startTranscription(selfIdentity, body));
   }
 
   TranscriptionActionModel? _transcriptionLanguageData;
@@ -1375,7 +1379,7 @@ class RtcViewmodel extends ChangeNotifier {
       "text": transcriptionData.transcription,
     };
     networkRequestHandler(
-        apiCall: () => apiClient.translateText(body),
+        apiCall: () => apiClient.translateText(selfIdentity, body),
         onSuccess: (data) {
           _updateTranscriptionInList(transcriptionData.copyWith(
             translatedTranscription: data?.translatedText,
@@ -1394,7 +1398,7 @@ class RtcViewmodel extends ChangeNotifier {
       "meeting_uid": meetingDetails.meetingUid,
     };
     networkRequestHandler(
-      apiCall: () => apiClient.endMeeting(body),
+      apiCall: () => apiClient.endMeeting(selfIdentity, body),
       onSuccess: (_) => sendEvent(EndMeeting(reason: "roomDeleted")),
       onError: (message) => sendMessageToUI(message),
     );
@@ -1408,7 +1412,7 @@ class RtcViewmodel extends ChangeNotifier {
       "new_name": newName,
     };
     networkRequestHandler(
-        apiCall: () => apiClient.updateParticipantName(body),
+        apiCall: () => apiClient.updateParticipantName(selfIdentity, body),
         onError: (message) => sendMessageToUI(message));
   }
 
@@ -1433,7 +1437,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
         apiCall: () => apiClient.meetingTimeExtend(
-            meetingDetails.authorizationToken, body),
+            meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (_) => sendAction(
             ActionModel(action: MeetingActions.extendMeetingEndTime)));
   }
@@ -1456,6 +1460,7 @@ class RtcViewmodel extends ChangeNotifier {
   void getWhiteboardData() {
     networkListRequestHandler(
         apiCall: () => apiClient.getWhiteBoardData(
+            selfIdentity,
             meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
         onSuccess: (data) {
           final whiteboard = data!.first;
@@ -1488,7 +1493,7 @@ class RtcViewmodel extends ChangeNotifier {
     _attendanceDebounceTimer = Timer(const Duration(seconds: 1), () {
       networkListRequestHandler(
           apiCall: () => apiClient
-              .getAttendanceListForParticipant(meetingDetails.meetingUid),
+              .getAttendanceListForParticipant(selfIdentity, meetingDetails.meetingUid),
           onSuccess: (data) {
             collectInactiveParticipant(data);
           });
@@ -1530,7 +1535,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-        apiCall: () => apiClient.updateRecordingConsent(body),
+        apiCall: () => apiClient.updateRecordingConsent(selfIdentity, body),
         onSuccess: (data) {
           if (data?.canStartRecording == true) {
             startRecording();
@@ -1573,7 +1578,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   Future<void> fetchAndStoreSessionUid() async {
     networkRequestHandler(
-      apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+      apiCall: () => apiClient.getSessionDetails(selfIdentity, meetingDetails.meetingUid),
       onSuccess: (data) async {
         if (data?.id != null) {
           final sessionUid = data!.id.toString();
@@ -1585,7 +1590,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void checkSessionStatus({bool asUser = false, Function? callBack}) {
     networkRequestHandler(
-        apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+        apiCall: () => apiClient.getSessionDetails(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           if (data != null) {
             sessionId = data.id.toString();
@@ -1623,7 +1628,7 @@ class RtcViewmodel extends ChangeNotifier {
       "attendance_id": Utils.getMetadataAttendanceId(metadata),
     };
     networkRequestHandler(
-        apiCall: () => apiClient.startRecordingConsent(body),
+        apiCall: () => apiClient.startRecordingConsent(selfIdentity, body),
         onSuccess: (_) {
           sendAction(ActionModel(
               action: MeetingActions.recordingConsentModal, value: true));
@@ -1637,6 +1642,7 @@ class RtcViewmodel extends ChangeNotifier {
   void getParticipantConsentList({VoidCallback? onLoaded}) {
     networkListRequestHandler(
         apiCall: () => apiClient.getParticipantConsentList(
+            selfIdentity,
             meetingDetails.meetingUid, getSessionId() ?? ""),
         onSuccess: (data) {
           if (data != null) {
@@ -2140,7 +2146,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getScreenShareConsent() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getScreenShareConsent(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getScreenShareConsent(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isScreenShareEnable = data?.screenShareConsent == true;
         },
@@ -2158,7 +2164,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-      apiCall: ()=> apiClient.updateScreenShareConsent(meetingDetails.authorizationToken, body),
+      apiCall: ()=> apiClient.updateScreenShareConsent(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
         isScreenShareEnable = data?.screenShareConsent == true;
         sendAction(ActionModel(action: MeetingActions.allowScreenShareForAll, value: _isScreenShareEnable));
@@ -2272,7 +2278,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getChatAttachmentConsent() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getChatAttachmentConsent(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getChatAttachmentConsent(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isChatAttachmentDownloadEnable = data?.chatAttachmentDownloadConsent == true;
         },
@@ -2290,7 +2296,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateChatAttachmentConsent(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateChatAttachmentConsent(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isChatAttachmentDownloadEnable = data?.chatAttachmentDownloadConsent == true;
           sendAction(ActionModel(action: MeetingActions.canDownloadChatAttachment, value: _isChatAttachmentDownloadEnable));
@@ -2306,7 +2312,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getAudioPermission() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getAudioPermission(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getAudioPermission(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
@@ -2325,7 +2331,7 @@ class RtcViewmodel extends ChangeNotifier {
       "permission_granted": value,
     };
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateAudioPermission(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateAudioPermission(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
@@ -2341,7 +2347,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getVideoPermission() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getVideoPermission(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getVideoPermission(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
@@ -2360,7 +2366,7 @@ class RtcViewmodel extends ChangeNotifier {
       "permission_granted": value,
     };
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateVideoPermission(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateVideoPermission(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
@@ -2483,12 +2489,15 @@ class RtcViewmodel extends ChangeNotifier {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
     final sessionUid = Utils.getMetadataSessionUid(metadata);
+    final isCoHost = Utils.isCoHost(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
     if (sessionUid != null) {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+    storageHelper.setAttendanceRole(
+        isCoHost ? AttendanceRole.cohost : AttendanceRole.participant);
   }
 
   void requestChatHistory() {

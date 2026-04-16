@@ -1,0 +1,4 @@
+enum AttendanceRole {
+  participant,
+  cohost,
+}
