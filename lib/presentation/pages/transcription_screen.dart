@@ -145,9 +145,18 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     });
   }
 
+  @Deprecated("This API is no longer supported. Please use `_startTranscriptionAgent()` instead.")
   void _handleLanguageSelection(LanguageModel selectedLanguage) {
     widget.viewModel.setTranscriptionLanguage(selectedLanguage, () {
       _startTranscription();
+    });
+  }
+
+  void _startTranscriptionAgent(LanguageModel selectedLanguage) {
+    widget.viewModel.setTranscriptionLanguage(selectedLanguage, () {
+      if (widget.viewModel.isTranscriptionLanguageSelected) {
+        widget.viewModel.startTranscriptionAgent(selectedLanguage);
+      }
     });
   }
 
@@ -236,7 +245,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
                                 language.language ?? '',
                                 style: const TextStyle(color: Colors.white),
                               ),
-                              onTap: () => _handleLanguageSelection(language),
+                              onTap: () => _startTranscriptionAgent(language),
                             );
                           },
                         ),
