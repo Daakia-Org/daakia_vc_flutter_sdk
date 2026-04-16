@@ -115,6 +115,10 @@ class _PreJoinState extends State<PreJoinScreen> {
       widget.configuration?.enableMicrophoneByDefault == true;
   bool get _shouldEnableVideoByDefault =>
       widget.configuration?.enableCameraByDefault == true;
+  bool get _isConfiguredCoHost =>
+      widget.configuration?.vcConfig?.isCoHost == true;
+  bool get _shouldBypassParticipantChecks =>
+      _isCoHostVerified || _isConfiguredCoHost;
 
   Future<void> _initializeMediaState() async {
     try {
@@ -215,7 +219,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   String? _getSkipPreJoinValidationError() {
-    if (_isCoHostVerified) {
+    if (_shouldBypassParticipantChecks) {
       return null;
     }
     if (widget.isHost &&
@@ -358,7 +362,13 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     isLoading = true;
 
-    var token = hostToken;
+    final configuredToken = widget.configuration?.vcConfig?.hostToken;
+    if (hostToken.isEmpty &&
+        configuredToken != null &&
+        configuredToken.isNotEmpty) {
+      hostToken = configuredToken;
+    }
+
     Map<String, dynamic> body = {
       "meeting_uid": widget.meetingId,
       "preferred_video_server_id": "ap1",
@@ -383,6 +393,8 @@ class _PreJoinState extends State<PreJoinScreen> {
         }
       }
     }
+
+    final token = hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
@@ -413,7 +425,8 @@ class _PreJoinState extends State<PreJoinScreen> {
             return;
           }
 
-          if (it.participantCanJoin == true) {
+          final canJoinAsCoHost = it.roleName == AttendanceRole.cohost.name;
+          if (it.participantCanJoin == true || canJoinAsCoHost) {
             _handleJoin(it, stopLoading);
           }
         } else {
@@ -940,7 +953,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                   ),
                   Visibility(
                     visible: !widget.isHost &&
-                        !_isCoHostVerified &&
+                        !_shouldBypassParticipantChecks &&
                         (widget.basicMeetingDetails?.isStandardPassword ==
                             true),
                     child: Container(
@@ -967,7 +980,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                   ),
                   Visibility(
                     visible: !widget.isHost &&
-                        !_isCoHostVerified &&
+                        !_shouldBypassParticipantChecks &&
                         (widget.basicMeetingDetails?.isCommonPassword == true ||
                             widget.basicMeetingDetails?.isStandardPassword ==
                                 true),
@@ -1030,7 +1043,9 @@ class _PreJoinState extends State<PreJoinScreen> {
                               message: "Please enter your name");
                           return;
                         }
-                        if (!widget.isHost && !await shouldAddAttendanceId()) {
+                        if (!widget.isHost &&
+                            !_shouldBypassParticipantChecks &&
+                            !await shouldAddAttendanceId()) {
                           var event = widget.basicMeetingDetails;
                           if (event?.isStandardPassword == true) {
                             if (!checkValidity()) {
@@ -1332,9 +1347,10 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<void> checkMeetingType(Function stopLoading) async {
     var event = widget.basicMeetingDetails;
-    final shouldReuseAttendance = await shouldAddAttendanceId();
+    final shouldReuseAttendance =
+        _shouldBypassParticipantChecks || await shouldAddAttendanceId();
     if (shouldReuseAttendance) {
-      // If shouldAddAttendanceId is true, bypass other checks
+      // Configured or cached co-host bypasses participant checks.
       getFeaturesAndJoinMeeting(stopLoading);
       return;
     }
@@ -1461,6 +1477,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<void> passwordVerified(Function stopLoading) async {
     if (widget.basicMeetingDetails?.isLobbyMode == true &&
+        !_shouldBypassParticipantChecks &&
         !await shouldAddAttendanceId()) {
       // startAddingParticipantsPool(stopLoading);
       addParticipantToLobby(stopLoading);
