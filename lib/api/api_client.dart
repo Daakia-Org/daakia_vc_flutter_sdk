@@ -10,6 +10,7 @@ import 'package:daakia_vc_flutter_sdk/model/screen_share_consent_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/session_details_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/translation_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/webinar_permission_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/workshop_permission_model.dart';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
@@ -148,7 +149,7 @@ abstract class RestClient {
 
   @POST("rtc/meeting/dispatch/agent")
   Future<BaseResponse<AgentDispatchData>> dispatchAgent(
-      @Body() Map<String, dynamic> body,
+    @Body() Map<String, dynamic> body,
   );
 
   @POST("rtc/meeting/text/translation")
@@ -255,6 +256,20 @@ abstract class RestClient {
 
   @PUT("rtc/videoPermission")
   Future<BaseResponse<WebinarPermissionModel>> updateVideoPermission(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @PUT("meeting/update/participantMicPermission")
+  Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopMicPermission(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @PUT("meeting/update/participantVideoPermission")
+  Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopVideoPermission(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
