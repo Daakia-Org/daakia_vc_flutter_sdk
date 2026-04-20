@@ -165,6 +165,8 @@ class MeetingActions {
     responseRaisedHands,
     allowMicPermission,
     allowVideoPermission,
+    revokeMicPermission,
+    revokeVideoPermission,
     // ✅ Add new fields here
   };
 }
