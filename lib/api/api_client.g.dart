@@ -1373,7 +1373,7 @@ class _RestClient implements RestClient {
       Options(method: 'PUT', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            'meeting/update/participantMicPermission',
+            'rtc/meeting/update/participantMicPermission',
             queryParameters: queryParameters,
             data: _data,
           )
@@ -1413,7 +1413,7 @@ class _RestClient implements RestClient {
       Options(method: 'PUT', headers: _headers, extra: _extra)
           .compose(
             _dio.options,
-            'meeting/update/participantVideoPermission',
+            'rtc/meeting/update/participantVideoPermission',
             queryParameters: queryParameters,
             data: _data,
           )

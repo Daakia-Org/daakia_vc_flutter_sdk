@@ -261,14 +261,14 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
-  @PUT("meeting/update/participantMicPermission")
+  @PUT("rtc/meeting/update/participantMicPermission")
   Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopMicPermission(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 
-  @PUT("meeting/update/participantVideoPermission")
+  @PUT("rtc/meeting/update/participantVideoPermission")
   Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopVideoPermission(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
