@@ -419,12 +419,18 @@ class RtcViewmodel extends ChangeNotifier {
 
   double getMicAlpha() {
     if (isHost() || isCoHost()) return 1.0;
-    return isAudioPermissionEnable ? 1.0 : 0.5;
+    if (!isAudioPermissionEnable) {
+      return isMicPermissionGranted ? 1.0 : 0.5;
+    }
+    return 1.0;
   }
 
   double getCameraAlpha() {
     if (isHost() || isCoHost()) return 1.0;
-    return isVideoPermissionEnable ? 1.0 : 0.5;
+    if (!isVideoPermissionEnable) {
+      return isVideoPermissionGranted ? 1.0 : 0.5;
+    }
+    return 1.0;
   }
 
   bool isVisibleForHost(String role, String targetRole) {
@@ -2324,6 +2330,48 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   //===============================[Webinar Control]===============================
+
+  /// Controls microphone permission state for the **local participant**.
+  ///
+  /// This is specifically used in **Workshop Mode**, where each participant's
+  /// media permissions (mic/video) are managed independently rather than globally.
+  ///
+  /// Even if system-level permission is granted, this flag can be used to
+  /// logically enable/disable mic access within the app UI or business logic.
+  bool _isMicPermissionGranted = false;
+
+  /// Returns whether the microphone is allowed for the **local participant**
+  /// in Workshop Mode.
+  bool get isMicPermissionGranted => _isMicPermissionGranted;
+
+  /// Updates microphone permission state for the local participant
+  /// and notifies listeners to refresh the UI accordingly.
+  ///
+  /// Note: This does not request OS-level permission. It only controls
+  /// app-level behavior.
+  set isMicPermissionGranted(bool value) {
+    _isMicPermissionGranted = value;
+    notifyListeners();
+  }
+
+  /// Controls camera permission state for the **local participant**.
+  ///
+  /// Used in **Workshop Mode** to handle participant-level video control.
+  /// This allows enabling/disabling video independent of system permissions.
+  bool _isVideoPermissionGranted = false;
+
+  /// Returns whether the camera is allowed for the **local participant**
+  /// in Workshop Mode.
+  bool get isVideoPermissionGranted => _isVideoPermissionGranted;
+
+  /// Updates camera permission state for the local participant
+  /// and notifies listeners to update UI.
+  ///
+  /// Note: This is an app-level control, not a system permission request.
+  set isVideoPermissionGranted(bool value) {
+    _isVideoPermissionGranted = value;
+    notifyListeners();
+  }
 
   void getAudioPermission() {
     networkRequestHandler(

@@ -716,6 +716,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.syncRaiseHand(remoteData.raisedHands);
         break;
 
+      case MeetingActions.allowMicPermission:
+        viewModel?.isMicPermissionGranted = true;
+        showSnackBar(message: "Your mic permission has been granted");
+        break;
+
+      case MeetingActions.revokeMicPermission:
+        viewModel?.isMicPermissionGranted = false;
+        viewModel?.disableAudio();
+        showSnackBar(message: "Your mic permission has been revoked");
+        break;
+
+      case MeetingActions.allowVideoPermission:
+        viewModel?.isVideoPermissionGranted = true;
+        showSnackBar(message: "Your video permission has been granted");
+        break;
+
+      case MeetingActions.revokeVideoPermission:
+        viewModel?.isVideoPermissionGranted = false;
+        viewModel?.disableVideo();
+        showSnackBar(message: "Your video permission has been revoked");
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
