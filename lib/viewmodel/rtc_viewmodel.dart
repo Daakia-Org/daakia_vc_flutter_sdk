@@ -2395,6 +2395,50 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  void updateAudioPermissionForParticipant(String participantIdentity, bool value) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "is_mic_enabled": value,
+    };
+
+    networkRequestHandler(
+        apiCall: ()=> apiClient.updateWorkshopMicPermission(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          if (data == null) return;
+          if (data.isUpdated == true) {
+            final isAllow = data.audioPermission == true;
+            sendPrivateAction(ActionModel(action: isAllow ? MeetingActions.allowMicPermission : MeetingActions.revokeMicPermission), participantIdentity);
+          }
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+        }
+    );
+  }
+
+  void updateVideoPermissionForParticipant(String participantIdentity, bool value) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "is_video_enabled": value,
+    };
+
+    networkRequestHandler(
+        apiCall: ()=> apiClient.updateWorkshopVideoPermission(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          if (data == null) return;
+          if (data.isUpdated == true) {
+            final isAllow = data.videoPermission == true;
+            sendPrivateAction(ActionModel(action: isAllow ? MeetingActions.allowVideoPermission : MeetingActions.revokeVideoPermission), participantIdentity);
+          }
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+        }
+    );
+  }
+
   //===============================[Live Caption]===============================
 
   @Deprecated("Use handleCaptionTranscription() instead")

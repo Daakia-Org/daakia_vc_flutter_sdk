@@ -61,7 +61,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                               : MeetingActions.askToUnmuteMic),
                       widget.participant.identity);
                 },
-                isVisible: (widget.isForIndividual &&
+                isVisible: (widget.isForIndividual && (!widget.viewModel.isWebinarModeEnable) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
@@ -78,7 +78,31 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                               : MeetingActions.askToUnmuteCamera),
                       widget.participant.identity);
                 },
-                isVisible: (widget.isForIndividual &&
+                isVisible: (widget.isForIndividual && (!widget.viewModel.isWebinarModeEnable) &&
+                    (Utils.isHost(myRoleMataData) ||
+                        Utils.isCoHost(myRoleMataData))),
+              ),
+              CustomTextItem(
+                text: !Utils.isMicEnabled(widget.participant.attributes)
+                    ? "Allow Mic Permission"
+                    : "Revoke Mic Permission",
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.viewModel.updateAudioPermissionForParticipant(widget.participant.identity, !Utils.isMicEnabled(widget.participant.attributes));
+                },
+                isVisible: (widget.isForIndividual && widget.viewModel.isWebinarModeEnable &&
+                    (Utils.isHost(myRoleMataData) ||
+                        Utils.isCoHost(myRoleMataData))),
+              ),
+              CustomTextItem(
+                text: !Utils.isVideoEnabled(widget.participant.attributes)
+                    ? "Allow Video Permission"
+                    : "Revoke Video Permission",
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.viewModel.updateVideoPermissionForParticipant(widget.participant.identity, !Utils.isVideoEnabled(widget.participant.attributes));
+                },
+                isVisible: (widget.isForIndividual && widget.viewModel.isWebinarModeEnable &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
