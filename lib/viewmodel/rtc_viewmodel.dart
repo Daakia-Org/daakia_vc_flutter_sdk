@@ -2379,6 +2379,7 @@ class RtcViewmodel extends ChangeNotifier {
         onSuccess: (data) {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
+          isMicPermissionGranted = Utils.isMicEnabled(room.localParticipant?.attributes);
         },
         onError: (message) {
           sendMessageToUI(message);
@@ -2414,6 +2415,7 @@ class RtcViewmodel extends ChangeNotifier {
         onSuccess: (data) {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
+          isVideoPermissionGranted = Utils.isVideoEnabled(room.localParticipant?.attributes);
         },
         onError: (message) {
           sendMessageToUI(message);
