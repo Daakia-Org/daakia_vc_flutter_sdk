@@ -95,7 +95,11 @@ class MeetingActions {
 
   static const String allowMicPermission = "allow-mic-permission";
 
+  static const String revokeMicPermission = "revoke-mic-permission";
+
   static const String allowVideoPermission = "allow-video-permission";
+
+  static const String revokeVideoPermission = "revoke-video-permission";
 
   // ✅ Add new fields here
 
