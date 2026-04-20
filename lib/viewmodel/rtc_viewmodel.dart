@@ -825,7 +825,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   set isAudioModeEnable(bool value) {
     _isAudioModeEnable = value;
-    _isWebinarModeEnable = (_isAudioModeEnable && _isVideoModeEnable);
+    _isWebinarModeEnable = (_isAudioModeEnable || _isVideoModeEnable);
     notifyListeners();
   }
 
@@ -834,7 +834,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   set isVideoModeEnable(bool value) {
     _isVideoModeEnable = value;
-    _isWebinarModeEnable = (_isAudioModeEnable && _isVideoModeEnable);
+    _isWebinarModeEnable = (_isAudioModeEnable || _isVideoModeEnable);
     notifyListeners();
   }
 
