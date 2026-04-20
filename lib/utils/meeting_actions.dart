@@ -93,6 +93,10 @@ class MeetingActions {
 
   static const String responseRaisedHands = "response_raised_hands";
 
+  static const String allowMicPermission = "allow-mic-permission";
+
+  static const String allowVideoPermission = "allow-video-permission";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -155,6 +159,8 @@ class MeetingActions {
     sendPrivateChat,
     requestRaisedHands,
     responseRaisedHands,
+    allowMicPermission,
+    allowVideoPermission,
     // ✅ Add new fields here
   };
 }
