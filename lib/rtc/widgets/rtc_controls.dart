@@ -102,7 +102,7 @@ class _RtcControlState extends State<RtcControls> {
               final isHostOrCoHost = viewModel.isHost() ||
                   viewModel.isCoHost();
 
-              if (isHostOrCoHost || viewModel.isVideoPermissionEnable) {
+              if (isHostOrCoHost || viewModel.isVideoPermissionEnable || viewModel.isVideoPermissionGranted) {
                 participant.isCameraEnabled()
                     ? viewModel.disableVideo()
                     : viewModel.enableVideo();
@@ -121,7 +121,7 @@ class _RtcControlState extends State<RtcControls> {
               final isHostOrCoHost = viewModel.isHost() ||
                   viewModel.isCoHost();
 
-              if (isHostOrCoHost || viewModel.isAudioPermissionEnable) {
+              if (isHostOrCoHost || viewModel.isAudioPermissionEnable || viewModel.isMicPermissionGranted) {
                 participant.isMicrophoneEnabled()
                     ? viewModel.disableAudio()
                     : viewModel.enableAudio();
