@@ -103,7 +103,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
               buildOption(context,
                   icon: Icons.security, // Replace with your host control icon
                   text: 'Host Control',
-                  isVisible: viewModel.isHost(), onTap: () {
+                  isVisible: viewModel.isHost() || viewModel.isCoHost(), onTap: () {
                 Navigator.pop(context);
                 showWebinarControls();
               }),
