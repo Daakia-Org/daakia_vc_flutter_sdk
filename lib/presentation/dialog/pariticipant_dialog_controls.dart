@@ -90,7 +90,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                   Navigator.pop(context);
                   widget.viewModel.updateAudioPermissionForParticipant(widget.participant.identity, !Utils.isMicEnabled(widget.participant.attributes));
                 },
-                isVisible: (widget.isForIndividual && widget.viewModel.isWebinarModeEnable &&
+                isVisible: (widget.isForIndividual && widget.viewModel.isAudioModeEnable &&
+                    (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
@@ -102,7 +103,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                   Navigator.pop(context);
                   widget.viewModel.updateVideoPermissionForParticipant(widget.participant.identity, !Utils.isVideoEnabled(widget.participant.attributes));
                 },
-                isVisible: (widget.isForIndividual && widget.viewModel.isWebinarModeEnable &&
+                isVisible: (widget.isForIndividual && widget.viewModel.isVideoModeEnable &&
+                    (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
