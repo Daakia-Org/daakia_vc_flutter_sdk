@@ -140,6 +140,13 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @POST("rtc/meeting/update/participantLanguage")
+  Future<BaseResponse> updateTranscriptionLanguage(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
   @Deprecated("This API is no longer supported. Please use dispatchAgent instead.")
   @POST("rtc/meeting/transcription/start")
   Future<BaseResponse> startTranscription(
