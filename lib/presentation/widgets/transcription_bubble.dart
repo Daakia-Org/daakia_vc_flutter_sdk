@@ -1,123 +1,126 @@
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_viewmodel.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 
 import '../../model/transcription_model.dart';
 
-class TranscriptionBubble extends StatefulWidget {
+class TranscriptionBubble extends StatelessWidget {
   final TranscriptionModel transcriptionData;
   final RtcViewmodel viewModel;
+  final bool showTranslation;
 
-  const TranscriptionBubble(
-      {required this.viewModel, required this.transcriptionData, super.key});
-
-  @override
-  State<TranscriptionBubble> createState() => _TranscriptionBubbleState();
-}
-
-class _TranscriptionBubbleState extends State<TranscriptionBubble> {
-  bool _isTranslating = false; // State to track if translation is in progress
+  const TranscriptionBubble({
+    required this.transcriptionData,
+    required this.viewModel,
+    this.showTranslation = true,
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Sender Name
-            Text(
-              widget.transcriptionData.name,
+    final hasTranslation = showTranslation &&
+        transcriptionData.translatedTranscription != null &&
+        transcriptionData.translatedTranscription!.isNotEmpty;
+
+    final initial = transcriptionData.name.isNotEmpty
+        ? transcriptionData.name[0].toUpperCase()
+        : '?';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: Colors.blueGrey.shade700,
+            child: Text(
+              initial,
               style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
+                fontSize: 14,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 5.0),
-
-            // Message Bubble
-            Card(
-              color: const Color(0xFF303030),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 200, minWidth: 100),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10.0, vertical: 5.0),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        transcriptionData.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    Text(
+                      transcriptionData.timestamp,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1C1C2E),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Transcription Text
                       Text(
-                        widget.transcriptionData.translatedTranscription ??
-                            widget.transcriptionData.transcription,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      if ((widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() == true) &&
-                      widget.transcriptionData.isFinal &&
-                          (widget.transcriptionData.targetLang !=
-                              (widget.viewModel.translationLanguage?.code ??
-                                  widget.transcriptionData.targetLang)))
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: _isTranslating
-                              ? const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    color: Colors.white,
-                                    strokeWidth: 2.0,
-                                  ),
-                                )
-                              : GestureDetector(
-                                  child: SvgPicture.asset(
-                                    'assets/icons/ic_translate_chats_colored.svg',
-                                    package: 'daakia_vc_flutter_sdk',
-                                    fit: BoxFit.fill,
-                                    height: 20,
-                                    width: 20,
-                                  ),
-                                  onTap: () {
-                                    setState(() {
-                                      _isTranslating =
-                                          true; // Start the translation task
-                                    });
-
-                                    widget.viewModel.translateText(
-                                        widget.transcriptionData, callBack: () {
-                                      setState(() {
-                                        _isTranslating =
-                                            false; // Task completed
-                                      });
-                                    });
-                                  },
-                                ),
+                        transcriptionData.transcription,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
                         ),
-                      const SizedBox(height: 5.0),
-                      // Sent Time
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          widget.transcriptionData.timestamp,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 8.0,
+                      ),
+                      if (hasTranslation) ...[
+                        const SizedBox(height: 8),
+                        IntrinsicHeight(
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Container(
+                                width: 3,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  transcriptionData.translatedTranscription!,
+                                  style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

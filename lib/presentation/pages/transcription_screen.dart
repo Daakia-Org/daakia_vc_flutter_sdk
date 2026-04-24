@@ -1,15 +1,12 @@
-import 'dart:async';
-
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/widgets/language_selection_bottom_sheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/loader.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/transcription_bubble.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 
 import '../../model/language_model.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
-import '../dialog/language_select_dialog.dart';
 import '../dialog/transcript_download_choice_dialog.dart';
 
 class TranscriptionScreen extends StatefulWidget {
@@ -22,133 +19,103 @@ class TranscriptionScreen extends StatefulWidget {
 }
 
 class _TranscriptionScreenState extends State<TranscriptionScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  List<LanguageModel> _filteredLanguages = [];
-  var _isLoading = false;
-  Timer? _pollingTimer;
+  bool _isLoading = false;
+  bool _isTranslationEnabled = false;
+  bool _isSmartScrollEnabled = true;
+  final ScrollController _scrollController = ScrollController();
+
+  // Remembers the last chosen translation language when the toggle is turned off.
+  LanguageModel? _savedTranslationLanguage;
 
   @override
-  initState() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      fetchTranscriptionLanguage();
-      _searchController.addListener(_filterLanguages);
-      _startTranscription();
-    });
+  void initState() {
     super.initState();
+    _isTranslationEnabled = widget.viewModel.translationLanguage != null;
+    _savedTranslationLanguage = widget.viewModel.translationLanguage;
+    widget.viewModel.addListener(_onViewModelChanged);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchLanguagesIfNeeded();
+      // Hosts/co-hosts who haven't started transcription are dropped straight
+      // into the language picker so they can kick things off.
+      if (!widget.viewModel.isTranscriptionLanguageSelected &&
+          (widget.viewModel.isHost() || widget.viewModel.isCoHost())) {
+        _openLanguagePicker();
+      }
+    });
   }
 
   @override
   void dispose() {
-    _searchController.removeListener(_filterLanguages);
-    _pollingTimer?.cancel(); // Stop the polling when the screen is closed
+    widget.viewModel.removeListener(_onViewModelChanged);
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _startTranscription() {
-    if (widget.viewModel.isTranscriptionLanguageSelected) {
-      widget.viewModel.startTranscription();
+  void _onViewModelChanged() {
+    if (!mounted) return;
+    setState(() {});
+    if (_isSmartScrollEnabled && _scrollController.hasClients) {
+      _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
     }
   }
 
-  void fetchTranscriptionLanguage() async {
-    setState(() {
-      _isLoading = true;
-    });
+  Future<void> _fetchLanguagesIfNeeded() async {
+    if (widget.viewModel.languages.isNotEmpty) return;
+    setState(() => _isLoading = true);
     try {
-      if (widget.viewModel.languages.isNotEmpty) {
-        _filteredLanguages = List.from(widget.viewModel.languages);
-      } else {
-        final languages = await widget.viewModel.fetchLanguages();
-        widget.viewModel.languages = languages;
-        _filteredLanguages = List.from(widget.viewModel.languages);
-      }
-    } on Exception catch (e) {
+      final languages = await widget.viewModel.fetchLanguages();
+      widget.viewModel.languages = languages;
+    } catch (e) {
       debugPrint('Error fetching languages: $e');
     } finally {
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> handleDownloadButtonPressed() async {
-    String formattedTranscript;
+  void _openLanguagePicker() {
+    final sourceLangCode =
+        widget.viewModel.transcriptionLanguageData?.sourceLang;
+    final sourceLanguage = sourceLangCode != null
+        ? widget.viewModel.languages.firstWhere(
+            (l) => l.code == sourceLangCode,
+            orElse: () =>
+                LanguageModel(code: sourceLangCode, language: sourceLangCode),
+          )
+        : null;
 
-    final isTranslationAllowed = widget.viewModel.meetingDetails.features!
-        .isVoiceTextTranslationAllowed();
-
-    if (isTranslationAllowed) {
-      final choice = await showDialog<TranscriptDownloadChoice>(
-        context: context,
-        builder: (context) => TranscriptDownloadChoiceDialog(
-          isEnabled: widget.viewModel.translationLanguage != null,
-        ),
-      );
-
-      if (choice == null) return;
-
-      setState(() {
-        _isLoading = true;
-      });
-
-      formattedTranscript = (choice == TranscriptDownloadChoice.translated)
-          ? Utils.getTranslatedTranscriptFormattedToSave(
-              widget.viewModel.transcriptionList)
-          : Utils.getTranscriptFormattedToSave(
-              widget.viewModel.transcriptionList);
-    } else {
-      setState(() {
-        _isLoading = true;
-      });
-      formattedTranscript = Utils.getTranscriptFormattedToSave(
-          widget.viewModel.transcriptionList);
-    }
-
-    final result = await Utils.saveDataToFile(
-      formattedTranscript,
-      "caption_${widget.viewModel.meetingDetails.meetingUid}_${DateTime.now().millisecondsSinceEpoch}",
-    );
-
-    setState(() {
-      _isLoading = false;
-    });
-
-    if (result.isSuccess) {
-      widget.viewModel.sendEvent(ShowTranscriptionDownload(
-        message: "File saved successfully!",
-        path: result.filePath,
-      ));
-    } else {
-      widget.viewModel.sendMessageToUI("Failed to save file!");
-    }
-  }
-
-  void handleSelectTranslationButtonPressed() {
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (_) => LanguageSelectDialog(
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => LanguageSelectionBottomSheet(
         languages: widget.viewModel.languages,
-        // Provide the list of languages
-        onLanguageSelected: (language) {
-          widget.viewModel.translationLanguage = language;
-        },
+        initialSourceLanguage: sourceLanguage,
+        initialTargetLanguage: _savedTranslationLanguage,
+        onApply: _onLanguageApplied,
       ),
     );
   }
 
-  void _filterLanguages() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      _filteredLanguages = widget.viewModel.languages
-          .where((lang) => lang.language!.toLowerCase().contains(query))
-          .toList();
-    });
-  }
+  void _onLanguageApplied(LanguageModel source, LanguageModel? target) {
+    if (!widget.viewModel.isTranscriptionLanguageSelected) {
+      // First time: start the transcription agent with the chosen source language.
+      _startTranscriptionAgent(source);
+    } else {
+      // Already running: update source language via the participant language API.
+      widget.viewModel.updateParticipantLanguage(
+          source, target ?? source);
+    }
 
-  @Deprecated("This API is no longer supported. Please use `_startTranscriptionAgent()` instead.")
-  void _handleLanguageSelection(LanguageModel selectedLanguage) {
-    widget.viewModel.setTranscriptionLanguage(selectedLanguage, () {
-      _startTranscription();
+    // Update translation target on the viewmodel (drives per-message translation).
+    widget.viewModel.translationLanguage = target;
+    _savedTranslationLanguage = target;
+
+    setState(() {
+      _isTranslationEnabled = target != null;
     });
   }
 
@@ -160,119 +127,358 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     });
   }
 
+  Future<void> _handleDownload() async {
+    final isTranslationAllowed = widget.viewModel.meetingDetails.features!
+        .isVoiceTextTranslationAllowed();
+
+    String formattedTranscript;
+
+    if (isTranslationAllowed) {
+      final choice = await showDialog<TranscriptDownloadChoice>(
+        context: context,
+        builder: (context) => TranscriptDownloadChoiceDialog(
+          isEnabled: widget.viewModel.translationLanguage != null,
+        ),
+      );
+      if (choice == null) return;
+      setState(() => _isLoading = true);
+      formattedTranscript = (choice == TranscriptDownloadChoice.translated)
+          ? Utils.getTranslatedTranscriptFormattedToSave(
+              widget.viewModel.transcriptionList)
+          : Utils.getTranscriptFormattedToSave(
+              widget.viewModel.transcriptionList);
+    } else {
+      setState(() => _isLoading = true);
+      formattedTranscript = Utils.getTranscriptFormattedToSave(
+          widget.viewModel.transcriptionList);
+    }
+
+    final result = await Utils.saveDataToFile(
+      formattedTranscript,
+      "caption_${widget.viewModel.meetingDetails.meetingUid}_${DateTime.now().millisecondsSinceEpoch}",
+    );
+
+    setState(() => _isLoading = false);
+
+    if (result.isSuccess) {
+      widget.viewModel.sendEvent(ShowTranscriptionDownload(
+        message: "File saved successfully!",
+        path: result.filePath,
+      ));
+    } else {
+      widget.viewModel.sendMessageToUI("Failed to save file!");
+    }
+  }
+
+  String _languageLabel() {
+    final sourceLangCode =
+        widget.viewModel.transcriptionLanguageData?.sourceLang;
+    if (sourceLangCode == null) return 'Set language';
+
+    final sourceName = widget.viewModel.languages.isNotEmpty
+        ? (widget.viewModel.languages
+                .firstWhere(
+                  (l) => l.code == sourceLangCode,
+                  orElse: () => LanguageModel(
+                      code: sourceLangCode, language: sourceLangCode),
+                )
+                .language ??
+            sourceLangCode)
+        : sourceLangCode;
+
+    final targetName = widget.viewModel.translationLanguage?.language;
+    return targetName != null ? '$sourceName → $targetName ▾' : '$sourceName ▾';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isTranslationAllowed =
+        widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() ==
+            true;
+    final canDownload = widget.viewModel.isTranscriptionLanguageSelected &&
+        (widget.viewModel.isHost() || widget.viewModel.isCoHost());
+    final transcriptionStarted =
+        widget.viewModel.isTranscriptionLanguageSelected;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF000000),
+      backgroundColor: const Color(0xFF0D0D0D),
       appBar: AppBar(
+        backgroundColor: const Color(0xFF0D0D0D),
+        automaticallyImplyLeading: false,
+        centerTitle: true,
         title: const Text(
-          "Live Captions",
+          'Live Caption',
           style: TextStyle(color: Colors.white),
         ),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (widget.viewModel.meetingDetails.features!
-                  .isVoiceTextTranslationAllowed() &&
-              widget.viewModel.isTranscriptionLanguageSelected)
+          if (canDownload)
             IconButton(
-              icon: SvgPicture.asset(
-                'assets/icons/ic_translate_chats_colored.svg',
-                package: 'daakia_vc_flutter_sdk',
-                fit: BoxFit.fill,
-                height: 25,
-                width: 25,
-              ),
-              color: Colors.white,
-              onPressed: () => handleSelectTranslationButtonPressed(),
+              icon: const Icon(Icons.download, color: Colors.white),
+              onPressed: _handleDownload,
             ),
-          if (widget.viewModel.isTranscriptionLanguageSelected &&
-              (widget.viewModel.isHost() || widget.viewModel.isCoHost()))
-            IconButton(
-              icon: const Icon(Icons.download),
-              color: Colors.white,
-              onPressed: () => handleDownloadButtonPressed(),
-            ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
         ],
-        automaticallyImplyLeading: true,
-        centerTitle: true,
-        elevation: 5,
       ),
       body: Stack(
         children: [
-          // Main UI
-          if ((widget.viewModel.isHost() || widget.viewModel.isCoHost()) &&
-              !widget.viewModel.isTranscriptionLanguageSelected)
-            Column(
-              children: [
-                const SizedBox(
-                  height: 20,
+          Column(
+            children: [
+              if (transcriptionStarted && isTranslationAllowed)
+                _LiveTranslationCard(
+                  isEnabled: _isTranslationEnabled,
+                  languageLabel: _languageLabel(),
+                  onToggle: (value) {
+                    setState(() => _isTranslationEnabled = value);
+                    if (!value) {
+                      _savedTranslationLanguage =
+                          widget.viewModel.translationLanguage;
+                      widget.viewModel.translationLanguage = null;
+                    } else {
+                      widget.viewModel.translationLanguage =
+                          _savedTranslationLanguage;
+                      if (_savedTranslationLanguage == null) {
+                        _openLanguagePicker();
+                      }
+                    }
+                  },
+                  onLanguageTap: _openLanguagePicker,
                 ),
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search languages...',
-                      hintStyle: const TextStyle(color: Colors.white54),
-                      prefixIcon: const Icon(Icons.search, color: Colors.white),
-                      filled: true,
-                      fillColor: Colors.grey[800],
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8.0),
-                        borderSide: BorderSide.none,
+              if (transcriptionStarted)
+                _SmartScrollCard(
+                  isEnabled: _isSmartScrollEnabled,
+                  onToggle: (value) =>
+                      setState(() => _isSmartScrollEnabled = value),
+                ),
+              Expanded(child: _buildTranscriptionList(transcriptionStarted)),
+            ],
+          ),
+          if (_isLoading) const CustomLoader(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTranscriptionList(bool transcriptionStarted) {
+    if (!transcriptionStarted) {
+      return const Center(
+        child: Text(
+          'Live captions have not started yet.',
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+
+    if (widget.viewModel.transcriptionList.isEmpty) {
+      return const Center(
+        child: Text(
+          'Waiting for captions…',
+          style: TextStyle(color: Colors.white54),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      controller: _scrollController,
+      reverse: true,
+      itemCount: widget.viewModel.transcriptionList.length,
+      itemBuilder: (context, index) {
+        final reversedIndex =
+            widget.viewModel.transcriptionList.length - 1 - index;
+        return TranscriptionBubble(
+          transcriptionData:
+              widget.viewModel.transcriptionList[reversedIndex],
+          viewModel: widget.viewModel,
+          showTranslation: _isTranslationEnabled,
+        );
+      },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private card widgets
+// ---------------------------------------------------------------------------
+
+class _LiveTranslationCard extends StatelessWidget {
+  final bool isEnabled;
+  final String languageLabel;
+  final ValueChanged<bool> onToggle;
+  final VoidCallback onLanguageTap;
+
+  const _LiveTranslationCard({
+    required this.isEnabled,
+    required this.languageLabel,
+    required this.onToggle,
+    required this.onLanguageTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.translate, color: Colors.blue, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Live Translation',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
                       ),
                     ),
-                    style: const TextStyle(color: Colors.white),
-                  ),
+                    const SizedBox(width: 6),
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: isEnabled ? Colors.green : Colors.grey,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
                 ),
-                // Language List
-                Expanded(
-                  child: _filteredLanguages.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No languages found',
-                            style: TextStyle(color: Colors.white),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _filteredLanguages.length,
-                          itemBuilder: (context, index) {
-                            final language = _filteredLanguages[index];
-                            return ListTile(
-                              title: Text(
-                                language.language ?? '',
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              onTap: () => _startTranscriptionAgent(language),
-                            );
-                          },
-                        ),
+                GestureDetector(
+                  onTap: onLanguageTap,
+                  child: Text(
+                    languageLabel,
+                    style: const TextStyle(
+                      color: Colors.white60,
+                      fontSize: 13,
+                    ),
+                  ),
                 ),
               ],
             ),
-          if (widget.viewModel.isTranscriptionLanguageSelected)
-            ListView.builder(
-              reverse: true,
-              itemCount: widget.viewModel.transcriptionList.length,
-              itemBuilder: (context, index) {
-                final reversedIndex =
-                    widget.viewModel.transcriptionList.length - 1 - index;
-                final transcriptionData =
-                    widget.viewModel.transcriptionList[reversedIndex];
-                return TranscriptionBubble(
-                  transcriptionData: transcriptionData,
-                  viewModel: widget.viewModel,
-                );
-              },
-            ),
-          const SizedBox(
-            height: 30,
           ),
-          // Loader Overlay
-          if (_isLoading) const CustomLoader()
+          _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle),
         ],
+      ),
+    );
+  }
+}
+
+class _SmartScrollCard extends StatelessWidget {
+  final bool isEnabled;
+  final ValueChanged<bool> onToggle;
+
+  const _SmartScrollCard({required this.isEnabled, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(Icons.vertical_align_bottom,
+                color: Colors.blue, size: 22),
+          ),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Smart Scroll',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                Text(
+                  'Keep view on latest updates',
+                  style: TextStyle(color: Colors.white60, fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: isEnabled,
+            onChanged: onToggle,
+            activeThumbColor: Colors.blue,
+            activeTrackColor: Colors.blue.withValues(alpha: 0.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TranslationToggle extends StatelessWidget {
+  final bool isEnabled;
+  final ValueChanged<bool> onChanged;
+
+  const _TranslationToggle(
+      {required this.isEnabled, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => onChanged(!isEnabled),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isEnabled ? Colors.blue : const Color(0xFF2A2A3E),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              isEnabled ? 'On' : 'Off',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              isEnabled
+                  ? Icons.check_circle_outline
+                  : Icons.pause_circle_outline,
+              color: Colors.white,
+              size: 16,
+            ),
+          ],
+        ),
       ),
     );
   }
