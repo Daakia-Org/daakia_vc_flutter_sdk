@@ -50,7 +50,7 @@ class WebinarControls extends StatelessWidget {
 
               // Webinar Mode Switch
               HostControlSwitch(
-                title: 'Webinar mode',
+                title: 'Workshop mode',
                 subtitle:
                     'If turned ON, all participants except Hosts / CoHosts stay muted with their camera off.',
                 value: viewModel.isWebinarModeEnable,

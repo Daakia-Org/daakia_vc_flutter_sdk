@@ -492,4 +492,37 @@ class Utils {
     return ReplyMessage(name: name ?? (chat.identity?.name ?? ""), message: chat.message ?? "", id: chat.id ?? "", identity: chat.userIdentity ?? "");
   }
 
+  static bool isMicEnabled(Map<String, dynamic>? attributes) {
+    final value = attributes?['is_mic_enabled'];
+    return _toBool(value);
+  }
+
+  static bool isVideoEnabled(Map<String, dynamic>? attributes) {
+    final value = attributes?['is_video_enabled'];
+    return _toBool(value);
+  }
+
+  static bool _toBool(dynamic value) {
+    if (value == null) return false;
+
+    if (value is bool) return value;
+
+    if (value is String) {
+      switch (value.toLowerCase()) {
+        case 'true':
+        case '1':
+        case 'yes':
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    return false;
+  }
+
 }

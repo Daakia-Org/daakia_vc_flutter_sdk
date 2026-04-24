@@ -29,6 +29,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background/flutter_background.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -557,15 +558,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.forceMuteAll:
-        viewModel?.isAudioPermissionEnable = !remoteData.value;
-        if (!(viewModel?.isAudioPermissionEnable ?? false)) {
+        final isAudioModeEnabled = remoteData.value == true;
+        viewModel?.isAudioModeEnable = isAudioModeEnabled;
+        viewModel?.isAudioPermissionEnable = !isAudioModeEnabled;
+        if (isAudioModeEnabled) {
           viewModel?.disableAudio();
         }
         break;
 
       case MeetingActions.forceVideoOffAll:
-        viewModel?.isVideoPermissionEnable = !remoteData.value;
-        if (!(viewModel?.isVideoPermissionEnable ?? false)) {
+        final isVideoModeEnabled = remoteData.value == true;
+        viewModel?.isVideoModeEnable = isVideoModeEnabled;
+        viewModel?.isVideoPermissionEnable = !isVideoModeEnabled;
+        if (isVideoModeEnabled) {
           viewModel?.disableVideo();
         }
         break;
@@ -714,6 +719,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.responseRaisedHands:
         viewModel?.syncRaiseHand(remoteData.raisedHands);
+        break;
+
+      case MeetingActions.allowMicPermission:
+        viewModel?.isMicPermissionGranted = true;
+        showSnackBar(message: "Your mic permission has been granted");
+        break;
+
+      case MeetingActions.revokeMicPermission:
+        viewModel?.isMicPermissionGranted = false;
+        viewModel?.disableAudio();
+        showSnackBar(message: "Your mic permission has been revoked");
+        break;
+
+      case MeetingActions.allowVideoPermission:
+        viewModel?.isVideoPermissionGranted = true;
+        showSnackBar(message: "Your video permission has been granted");
+        break;
+
+      case MeetingActions.revokeVideoPermission:
+        viewModel?.isVideoPermissionGranted = false;
+        viewModel?.disableVideo();
+        showSnackBar(message: "Your video permission has been revoked");
         break;
 
       case "":
@@ -1025,6 +1052,27 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                             ),
                                         ],
                                       ),
+                                      Consumer<RtcViewmodel>(
+                                        builder: (context, viewModel, _) {
+                                          if (!viewModel.isWebinarModeEnable) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          return Positioned(
+                                            left: 0,
+                                            right: 0,
+                                            top: 10,
+                                            child: IgnorePointer(
+                                              child: Center(
+                                                child: _buildTopStatusIndicator(
+                                                  label: 'Workshop',
+                                                  indicatorColor:
+                                                      const Color(0xFF34C759),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                       if (_livekitProviderKey.currentState
                                               ?.viewModel.isRecording ==
                                           true)
@@ -1115,6 +1163,51 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           },
         ) ??
         false;
+  }
+
+  Widget _buildTopStatusIndicator({
+    required String label,
+    required Color indicatorColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: indicatorColor.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: indicatorColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: indicatorColor.withValues(alpha: 0.7),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void showSnackBar(
