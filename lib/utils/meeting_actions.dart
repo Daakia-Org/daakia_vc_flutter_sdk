@@ -44,6 +44,7 @@ class MeetingActions {
   static const String forceVideoOffAll = "force_video_off_all";
 
   static const String showLiveCaption = "show-live-caption";
+  static const String stopLiveCaption = "stop-live-caption";
   static const String liveCaption = "live-caption";
   static const String requestLiveCaptionDrawerState = "request-livecaption-drawer-state";
 
@@ -167,6 +168,7 @@ class MeetingActions {
     allowVideoPermission,
     revokeMicPermission,
     revokeVideoPermission,
+    stopLiveCaption,
     // ✅ Add new fields here
   };
 }
