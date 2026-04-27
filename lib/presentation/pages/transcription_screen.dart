@@ -29,14 +29,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   // the active→stopped transition and auto-close the screen for everyone.
   bool _wasTranscriptionActive = false;
 
-  // Remembers the last chosen translation language when the toggle is turned off.
-  LanguageModel? _savedTranslationLanguage;
 
   @override
   void initState() {
     super.initState();
-    _isTranslationEnabled = widget.viewModel.translationLanguage != null;
-    _savedTranslationLanguage = widget.viewModel.translationLanguage;
+    _isTranslationEnabled = widget.viewModel.isTranslationActive;
     _wasTranscriptionActive = widget.viewModel.isTranscriptionLanguageSelected;
     // Physics reads _isSmartScrollEnabled at call time via the closure, so one
     // stable instance is enough — no need to recreate on every build.
@@ -119,7 +116,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       builder: (_) => LanguageSelectionBottomSheet(
         languages: widget.viewModel.languages,
         initialSourceLanguage: sourceLanguage,
-        initialTargetLanguage: _savedTranslationLanguage,
+        initialTargetLanguage: widget.viewModel.translationLanguage,
         isSourceLanguageLocked: widget.viewModel.isTranscriptionStarter ||
             widget.viewModel.hasUsedParticipantLanguage,
         isTranslationAllowed: isTranslationAllowed,
@@ -139,13 +136,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     }
     // else: source is locked — starter or already used one-time change.
 
-    // Update translation target on the viewmodel (drives per-message translation).
+    // Update translation target and activate/deactivate translation.
     widget.viewModel.translationLanguage = target;
-    _savedTranslationLanguage = target;
-
-    setState(() {
-      _isTranslationEnabled = target != null;
-    });
+    final translationOn = target != null;
+    widget.viewModel.isTranslationActive = translationOn;
+    setState(() => _isTranslationEnabled = translationOn);
   }
 
   void _startTranscriptionAgent(LanguageModel selectedLanguage) {
@@ -257,16 +252,10 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
                   onToggle: isTranslationAllowed
                       ? (value) {
                           setState(() => _isTranslationEnabled = value);
-                          if (!value) {
-                            _savedTranslationLanguage =
-                                widget.viewModel.translationLanguage;
-                            widget.viewModel.translationLanguage = null;
-                          } else {
-                            widget.viewModel.translationLanguage =
-                                _savedTranslationLanguage;
-                            if (_savedTranslationLanguage == null) {
-                              _openLanguagePicker();
-                            }
+                          widget.viewModel.isTranslationActive = value;
+                          if (value &&
+                              widget.viewModel.translationLanguage == null) {
+                            _openLanguagePicker();
                           }
                         }
                       : null,
@@ -321,7 +310,6 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           transcriptionData:
               widget.viewModel.transcriptionList[reversedIndex],
           viewModel: widget.viewModel,
-          showTranslation: _isTranslationEnabled,
         );
       },
     );
@@ -432,8 +420,6 @@ class _LiveTranslationCard extends StatelessWidget {
               ),
             ],
             const Spacer(),
-            if (isTranslationAllowed && onToggle != null)
-              _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle!),
             GestureDetector(
               onTap: onExpansionToggle,
               child: const Icon(Icons.expand_more, color: Colors.white38),

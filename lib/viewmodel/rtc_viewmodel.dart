@@ -1192,6 +1192,13 @@ class RtcViewmodel extends ChangeNotifier {
   bool _hasUsedParticipantLanguage = false;
   bool get hasUsedParticipantLanguage => _hasUsedParticipantLanguage;
 
+  bool _isTranslationActive = false;
+  bool get isTranslationActive => _isTranslationActive;
+  set isTranslationActive(bool value) {
+    _isTranslationActive = value;
+    notifyListeners();
+  }
+
   void setTranscriptionLanguage(
       LanguageModel selectedLanguage, Function transcriptionEnabled) {
     Map<String, dynamic> body = {
@@ -1277,6 +1284,7 @@ class RtcViewmodel extends ChangeNotifier {
     translationLanguage = null;
     _isTranscriptionStarter = false;
     _hasUsedParticipantLanguage = false;
+    _isTranslationActive = false;
   }
 
   @Deprecated(
@@ -1299,9 +1307,10 @@ class RtcViewmodel extends ChangeNotifier {
         // Replace the existing transcription in the list with the finalized one
         _updateTranscriptionInList(particalTranscription!);
 
-        // Trigger translation if source and target languages differ
-        if (particalTranscription?.sourceLang !=
-            particalTranscription?.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            particalTranscription?.sourceLang !=
+                particalTranscription?.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -1319,8 +1328,9 @@ class RtcViewmodel extends ChangeNotifier {
         );
         addTranscription(newTranscription);
 
-        // Trigger translation if source and target languages differ
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -2568,8 +2578,9 @@ class RtcViewmodel extends ChangeNotifier {
 
         _updateTranscriptionInList(particalTranscription!);
 
-        if (particalTranscription!.sourceLang !=
-            particalTranscription!.targetLang) {
+        if (_isTranslationActive &&
+            particalTranscription!.sourceLang !=
+                particalTranscription!.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -2588,7 +2599,8 @@ class RtcViewmodel extends ChangeNotifier {
 
         addTranscription(newTranscription);
 
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -2674,7 +2686,7 @@ class RtcViewmodel extends ChangeNotifier {
 
         _updateTranscriptionInList(particalTranscription!);
 
-        if (sourceLang != targetLang) {
+        if (_isTranslationActive && sourceLang != targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -2693,7 +2705,7 @@ class RtcViewmodel extends ChangeNotifier {
 
         addTranscription(newTranscription);
 
-        if (sourceLang != targetLang) {
+        if (_isTranslationActive && sourceLang != targetLang) {
           translateText(newTranscription);
         }
       }
