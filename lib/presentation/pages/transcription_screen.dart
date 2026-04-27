@@ -106,6 +106,10 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           )
         : null;
 
+    final isTranslationAllowed =
+        widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() ==
+            true;
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -116,6 +120,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         initialTargetLanguage: _savedTranslationLanguage,
         isSourceLanguageLocked: widget.viewModel.isTranscriptionStarter ||
             widget.viewModel.hasUsedParticipantLanguage,
+        isTranslationAllowed: isTranslationAllowed,
         onApply: _onLanguageApplied,
       ),
     );
@@ -236,24 +241,27 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         children: [
           Column(
             children: [
-              if (transcriptionStarted && isTranslationAllowed)
+              if (transcriptionStarted)
                 _LiveTranslationCard(
+                  isTranslationAllowed: isTranslationAllowed,
                   isEnabled: _isTranslationEnabled,
                   languageLabel: _languageLabel(),
-                  onToggle: (value) {
-                    setState(() => _isTranslationEnabled = value);
-                    if (!value) {
-                      _savedTranslationLanguage =
-                          widget.viewModel.translationLanguage;
-                      widget.viewModel.translationLanguage = null;
-                    } else {
-                      widget.viewModel.translationLanguage =
-                          _savedTranslationLanguage;
-                      if (_savedTranslationLanguage == null) {
-                        _openLanguagePicker();
-                      }
-                    }
-                  },
+                  onToggle: isTranslationAllowed
+                      ? (value) {
+                          setState(() => _isTranslationEnabled = value);
+                          if (!value) {
+                            _savedTranslationLanguage =
+                                widget.viewModel.translationLanguage;
+                            widget.viewModel.translationLanguage = null;
+                          } else {
+                            widget.viewModel.translationLanguage =
+                                _savedTranslationLanguage;
+                            if (_savedTranslationLanguage == null) {
+                              _openLanguagePicker();
+                            }
+                          }
+                        }
+                      : null,
                   onLanguageTap: _openLanguagePicker,
                 ),
               if (transcriptionStarted)
@@ -357,16 +365,19 @@ class _AnchoredScrollPhysics extends ScrollPhysics {
 // ---------------------------------------------------------------------------
 
 class _LiveTranslationCard extends StatelessWidget {
+  final bool isTranslationAllowed;
   final bool isEnabled;
   final String languageLabel;
-  final ValueChanged<bool> onToggle;
+  // Null when translation is not allowed (toggle is hidden in that case).
+  final ValueChanged<bool>? onToggle;
   final VoidCallback onLanguageTap;
 
   const _LiveTranslationCard({
+    required this.isTranslationAllowed,
     required this.isEnabled,
     required this.languageLabel,
-    required this.onToggle,
     required this.onLanguageTap,
+    this.onToggle,
   });
 
   @override
@@ -396,23 +407,27 @@ class _LiveTranslationCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    const Text(
-                      'Live Translation',
-                      style: TextStyle(
+                    Text(
+                      isTranslationAllowed
+                          ? 'Live Translation'
+                          : 'Speak Language',
+                      style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                         fontSize: 15,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: isEnabled ? Colors.green : Colors.grey,
-                        shape: BoxShape.circle,
+                    if (isTranslationAllowed) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        width: 7,
+                        height: 7,
+                        decoration: BoxDecoration(
+                          color: isEnabled ? Colors.green : Colors.grey,
+                          shape: BoxShape.circle,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
                 GestureDetector(
@@ -428,7 +443,8 @@ class _LiveTranslationCard extends StatelessWidget {
               ],
             ),
           ),
-          _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle),
+          if (isTranslationAllowed && onToggle != null)
+            _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle!),
         ],
       ),
     );

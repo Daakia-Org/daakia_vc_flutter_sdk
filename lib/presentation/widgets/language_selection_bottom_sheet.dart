@@ -9,6 +9,9 @@ class LanguageSelectionBottomSheet extends StatefulWidget {
   // When true, source language is locked (transcription already running) and
   // the speak-language picker is hidden. Only translation language can change.
   final bool isSourceLanguageLocked;
+  // When false, translation is not part of the plan — the read-language picker
+  // and target-language field are hidden entirely.
+  final bool isTranslationAllowed;
   final void Function(LanguageModel source, LanguageModel? target) onApply;
 
   const LanguageSelectionBottomSheet({
@@ -17,6 +20,7 @@ class LanguageSelectionBottomSheet extends StatefulWidget {
     this.initialSourceLanguage,
     this.initialTargetLanguage,
     this.isSourceLanguageLocked = false,
+    this.isTranslationAllowed = true,
     super.key,
   });
 
@@ -116,16 +120,19 @@ class _LanguageSelectionBottomSheetState
               ),
               const SizedBox(height: 16),
             ],
-            const Text(
-              'Choose a language you prefer to read.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            _LanguageDropdownTile(
-              label: _targetLanguage?.language ?? 'Select language',
-              onTap: () => _pickLanguage(isSource: false),
-            ),
-            const SizedBox(height: 24),
+            if (widget.isTranslationAllowed) ...[
+              const Text(
+                'Choose a language you prefer to read.',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              _LanguageDropdownTile(
+                label: _targetLanguage?.language ?? 'Select language',
+                onTap: () => _pickLanguage(isSource: false),
+              ),
+              const SizedBox(height: 24),
+            ] else
+              const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
