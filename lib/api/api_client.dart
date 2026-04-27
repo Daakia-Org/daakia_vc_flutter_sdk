@@ -140,7 +140,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
-  @POST("rtc/meeting/update/participantLanguage")
+  @PUT("rtc/meeting/update/participantLanguage")
   Future<BaseResponse> updateTranscriptionLanguage(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
@@ -156,6 +156,8 @@ abstract class RestClient {
 
   @POST("rtc/meeting/dispatch/agent")
   Future<BaseResponse<AgentDispatchData>> dispatchAgent(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
 

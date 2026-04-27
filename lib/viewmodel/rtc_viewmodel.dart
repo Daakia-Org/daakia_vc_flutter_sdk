@@ -1164,7 +1164,7 @@ class RtcViewmodel extends ChangeNotifier {
       }
     };
     networkRequestHandler(
-        apiCall: () => apiClient.dispatchAgent(body),
+        apiCall: () => apiClient.dispatchAgent(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {},
         onError: (message) => sendMessageToUI(message));
   }
