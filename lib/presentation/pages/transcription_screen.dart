@@ -114,6 +114,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         languages: widget.viewModel.languages,
         initialSourceLanguage: sourceLanguage,
         initialTargetLanguage: _savedTranslationLanguage,
+        isSourceLanguageLocked: widget.viewModel.isTranscriptionStarter ||
+            widget.viewModel.hasUsedParticipantLanguage,
         onApply: _onLanguageApplied,
       ),
     );
@@ -123,10 +125,12 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     if (!widget.viewModel.isTranscriptionLanguageSelected) {
       // First time: start the transcription agent with the chosen source language.
       _startTranscriptionAgent(source);
-    } else {
-      // Already running: update source language via the participant language API.
+    } else if (!widget.viewModel.isTranscriptionStarter &&
+        !widget.viewModel.hasUsedParticipantLanguage) {
+      // Non-starters get exactly one source-language change per session.
       widget.viewModel.updateParticipantLanguage(source);
     }
+    // else: source is locked — starter or already used one-time change.
 
     // Update translation target on the viewmodel (drives per-message translation).
     widget.viewModel.translationLanguage = target;

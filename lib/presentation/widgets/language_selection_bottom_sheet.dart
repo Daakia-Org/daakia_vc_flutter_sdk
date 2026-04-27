@@ -6,6 +6,9 @@ class LanguageSelectionBottomSheet extends StatefulWidget {
   final List<LanguageModel> languages;
   final LanguageModel? initialSourceLanguage;
   final LanguageModel? initialTargetLanguage;
+  // When true, source language is locked (transcription already running) and
+  // the speak-language picker is hidden. Only translation language can change.
+  final bool isSourceLanguageLocked;
   final void Function(LanguageModel source, LanguageModel? target) onApply;
 
   const LanguageSelectionBottomSheet({
@@ -13,6 +16,7 @@ class LanguageSelectionBottomSheet extends StatefulWidget {
     required this.onApply,
     this.initialSourceLanguage,
     this.initialTargetLanguage,
+    this.isSourceLanguageLocked = false,
     super.key,
   });
 
@@ -100,16 +104,18 @@ class _LanguageSelectionBottomSheetState
               ],
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Choose a language that you will speak.',
-              style: TextStyle(color: Colors.white70, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            _LanguageDropdownTile(
-              label: _sourceLanguage?.language ?? 'Select language',
-              onTap: () => _pickLanguage(isSource: true),
-            ),
-            const SizedBox(height: 16),
+            if (!widget.isSourceLanguageLocked) ...[
+              const Text(
+                'Choose a language that you will speak.',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              _LanguageDropdownTile(
+                label: _sourceLanguage?.language ?? 'Select language',
+                onTap: () => _pickLanguage(isSource: true),
+              ),
+              const SizedBox(height: 16),
+            ],
             const Text(
               'Choose a language you prefer to read.',
               style: TextStyle(color: Colors.white70, fontSize: 13),
@@ -131,12 +137,13 @@ class _LanguageSelectionBottomSheetState
                     borderRadius: BorderRadius.circular(8),
                   ),
                 ),
-                onPressed: _sourceLanguage == null
-                    ? null
-                    : () {
-                        widget.onApply(_sourceLanguage!, _targetLanguage);
-                        Navigator.pop(context);
-                      },
+                onPressed: () {
+                  final source =
+                      _sourceLanguage ?? widget.initialSourceLanguage;
+                  if (source == null) return;
+                  widget.onApply(source, _targetLanguage);
+                  Navigator.pop(context);
+                },
                 child: const Text(
                   'Apply',
                   style: TextStyle(color: Colors.white, fontSize: 16),

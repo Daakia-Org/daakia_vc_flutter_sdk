@@ -1182,6 +1182,16 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) => sendMessageToUI(message));
   }
 
+  // True for the participant who called setTranscriptionLanguage (the session
+  // starter). Their source language is permanently locked this session.
+  bool _isTranscriptionStarter = false;
+  bool get isTranscriptionStarter => _isTranscriptionStarter;
+
+  // True once a non-starter has consumed their one-time source-language change
+  // via updateParticipantLanguage. Locked after that until transcription resets.
+  bool _hasUsedParticipantLanguage = false;
+  bool get hasUsedParticipantLanguage => _hasUsedParticipantLanguage;
+
   void setTranscriptionLanguage(
       LanguageModel selectedLanguage, Function transcriptionEnabled) {
     Map<String, dynamic> body = {
@@ -1194,6 +1204,7 @@ class RtcViewmodel extends ChangeNotifier {
         apiCall: () => apiClient.setTranscriptionLanguage(
             meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
+          _isTranscriptionStarter = true;
           isTranscriptionLanguageSelected = true;
           var transcriptionData = TranscriptionActionModel(
               showIcon: true,
@@ -1210,6 +1221,11 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void updateParticipantLanguage(LanguageModel transcriptionLanguage) {
+    // Lock immediately (optimistic) so the UI reflects the one-time limit
+    // regardless of whether the API succeeds or fails.
+    _hasUsedParticipantLanguage = true;
+    notifyListeners();
+
     final body = {
       "meeting_uid": meetingDetails.meetingUid,
       "language_code": transcriptionLanguage.code,
@@ -1259,6 +1275,8 @@ class RtcViewmodel extends ChangeNotifier {
     isTranscriptionLanguageSelected = false;
     transcriptionLanguageData = null;
     translationLanguage = null;
+    _isTranscriptionStarter = false;
+    _hasUsedParticipantLanguage = false;
   }
 
   @Deprecated(
