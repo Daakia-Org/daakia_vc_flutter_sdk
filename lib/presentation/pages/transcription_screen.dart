@@ -23,6 +23,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   bool _isTranslationEnabled = false;
   bool _isSmartScrollEnabled = true;
   final ScrollController _scrollController = ScrollController();
+  late final ScrollPhysics _scrollPhysics;
 
   // Remembers the last chosen translation language when the toggle is turned off.
   LanguageModel? _savedTranslationLanguage;
@@ -32,6 +33,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     super.initState();
     _isTranslationEnabled = widget.viewModel.translationLanguage != null;
     _savedTranslationLanguage = widget.viewModel.translationLanguage;
+    // Physics reads _isSmartScrollEnabled at call time via the closure, so one
+    // stable instance is enough — no need to recreate on every build.
+    _scrollPhysics = _AnchoredScrollPhysics(
+      shouldAnchor: () => !_isSmartScrollEnabled,
+    );
     widget.viewModel.addListener(_onViewModelChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchLanguagesIfNeeded();
@@ -282,6 +288,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     return ListView.builder(
       controller: _scrollController,
       reverse: true,
+      physics: _scrollPhysics,
       itemCount: widget.viewModel.transcriptionList.length,
       itemBuilder: (context, index) {
         final reversedIndex =
@@ -293,6 +300,49 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           showTranslation: _isTranslationEnabled,
         );
       },
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Scroll physics that anchors the viewport to the current content when new
+// items are inserted at the leading edge of a reverse:true list.
+//
+// adjustPositionForNewDimensions runs during the layout phase — before paint —
+// so the correction is applied in the same frame and produces zero visual jerk.
+// When shouldAnchor() returns false (smart scroll is on, or user is at the
+// very bottom), it falls through to default behaviour.
+// ---------------------------------------------------------------------------
+
+class _AnchoredScrollPhysics extends ScrollPhysics {
+  final ValueGetter<bool> shouldAnchor;
+
+  const _AnchoredScrollPhysics({required this.shouldAnchor, super.parent});
+
+  @override
+  _AnchoredScrollPhysics applyTo(ScrollPhysics? ancestor) =>
+      _AnchoredScrollPhysics(
+          shouldAnchor: shouldAnchor, parent: buildParent(ancestor));
+
+  @override
+  double adjustPositionForNewDimensions({
+    required ScrollMetrics oldPosition,
+    required ScrollMetrics newPosition,
+    required bool isScrolling,
+    required double velocity,
+  }) {
+    // Only anchor when the user is scrolled away from the bottom (pixels > 0).
+    // At offset 0 the new item appears naturally at the bottom — no adjustment.
+    if (shouldAnchor() && newPosition.pixels > 0) {
+      final delta =
+          newPosition.maxScrollExtent - oldPosition.maxScrollExtent;
+      if (delta > 0) return newPosition.pixels + delta;
+    }
+    return super.adjustPositionForNewDimensions(
+      oldPosition: oldPosition,
+      newPosition: newPosition,
+      isScrolling: isScrolling,
+      velocity: velocity,
     );
   }
 }
