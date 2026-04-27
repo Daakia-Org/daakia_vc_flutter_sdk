@@ -21,6 +21,8 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   bool _isLoading = false;
   bool _isTranslationEnabled = false;
   bool _isSmartScrollEnabled = true;
+  bool _isLanguageCardExpanded = true;
+  bool _isSmartScrollCardExpanded = true;
   final ScrollController _scrollController = ScrollController();
   late final ScrollPhysics _scrollPhysics;
   // Latches to true the moment transcription becomes active; used to detect
@@ -244,8 +246,14 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               if (transcriptionStarted)
                 _LiveTranslationCard(
                   isTranslationAllowed: isTranslationAllowed,
+                  isSourceLanguageLocked:
+                      widget.viewModel.isTranscriptionStarter ||
+                          widget.viewModel.hasUsedParticipantLanguage,
+                  isExpanded: _isLanguageCardExpanded,
                   isEnabled: _isTranslationEnabled,
                   languageLabel: _languageLabel(),
+                  onExpansionToggle: () => setState(
+                      () => _isLanguageCardExpanded = !_isLanguageCardExpanded),
                   onToggle: isTranslationAllowed
                       ? (value) {
                           setState(() => _isTranslationEnabled = value);
@@ -267,6 +275,9 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               if (transcriptionStarted)
                 _SmartScrollCard(
                   isEnabled: _isSmartScrollEnabled,
+                  isExpanded: _isSmartScrollCardExpanded,
+                  onExpansionToggle: () => setState(() =>
+                      _isSmartScrollCardExpanded = !_isSmartScrollCardExpanded),
                   onToggle: (value) =>
                       setState(() => _isSmartScrollEnabled = value),
                 ),
@@ -366,29 +377,77 @@ class _AnchoredScrollPhysics extends ScrollPhysics {
 
 class _LiveTranslationCard extends StatelessWidget {
   final bool isTranslationAllowed;
+  final bool isSourceLanguageLocked;
+  final bool isExpanded;
   final bool isEnabled;
   final String languageLabel;
+  final VoidCallback onExpansionToggle;
   // Null when translation is not allowed (toggle is hidden in that case).
   final ValueChanged<bool>? onToggle;
   final VoidCallback onLanguageTap;
 
   const _LiveTranslationCard({
     required this.isTranslationAllowed,
+    required this.isSourceLanguageLocked,
+    required this.isExpanded,
     required this.isEnabled,
     required this.languageLabel,
+    required this.onExpansionToggle,
     required this.onLanguageTap,
     this.onToggle,
   });
 
   @override
   Widget build(BuildContext context) {
+    final decoration = BoxDecoration(
+      color: const Color(0xFF1A1A2E),
+      borderRadius: BorderRadius.circular(12),
+    );
+
+    if (!isExpanded) {
+      // Collapsed: slim bar — icon box removed, just title + controls.
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: decoration,
+        child: Row(
+          children: [
+            Text(
+              isTranslationAllowed ? 'Live Translation' : 'Speak Language',
+              style: const TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            if (isTranslationAllowed) ...[
+              const SizedBox(width: 6),
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(
+                  color: isEnabled ? Colors.green : Colors.grey,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ],
+            const Spacer(),
+            if (isTranslationAllowed && onToggle != null)
+              _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle!),
+            GestureDetector(
+              onTap: onExpansionToggle,
+              child: const Icon(Icons.expand_more, color: Colors.white38),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Expanded: original layout with lock indicator and chevron.
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: decoration,
       child: Row(
         children: [
           Container(
@@ -432,12 +491,24 @@ class _LiveTranslationCard extends StatelessWidget {
                 ),
                 GestureDetector(
                   onTap: onLanguageTap,
-                  child: Text(
-                    languageLabel,
-                    style: const TextStyle(
-                      color: Colors.white60,
-                      fontSize: 13,
-                    ),
+                  child: Row(
+                    children: [
+                      if (isSourceLanguageLocked)
+                        const Padding(
+                          padding: EdgeInsets.only(right: 4),
+                          child: Icon(Icons.lock_outline,
+                              size: 13, color: Colors.white38),
+                        ),
+                      Flexible(
+                        child: Text(
+                          languageLabel,
+                          style: const TextStyle(
+                              color: Colors.white60, fontSize: 13),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -445,6 +516,10 @@ class _LiveTranslationCard extends StatelessWidget {
           ),
           if (isTranslationAllowed && onToggle != null)
             _TranslationToggle(isEnabled: isEnabled, onChanged: onToggle!),
+          GestureDetector(
+            onTap: onExpansionToggle,
+            child: const Icon(Icons.expand_less, color: Colors.white54),
+          ),
         ],
       ),
     );
@@ -453,19 +528,64 @@ class _LiveTranslationCard extends StatelessWidget {
 
 class _SmartScrollCard extends StatelessWidget {
   final bool isEnabled;
+  final bool isExpanded;
+  final VoidCallback onExpansionToggle;
   final ValueChanged<bool> onToggle;
 
-  const _SmartScrollCard({required this.isEnabled, required this.onToggle});
+  const _SmartScrollCard({
+    required this.isEnabled,
+    required this.isExpanded,
+    required this.onExpansionToggle,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final decoration = BoxDecoration(
+      color: const Color(0xFF1A1A2E),
+      borderRadius: BorderRadius.circular(12),
+    );
+
+    if (!isExpanded) {
+      // Collapsed: slim bar — icon box removed.
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: decoration,
+        child: Row(
+          children: [
+            const Text(
+              'Smart Scroll',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: isEnabled ? Colors.blue : Colors.grey,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const Spacer(),
+            GestureDetector(
+              onTap: onExpansionToggle,
+              child: const Icon(Icons.expand_more, color: Colors.white38),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Expanded: original layout.
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: decoration,
       child: Row(
         children: [
           Container(
@@ -503,6 +623,10 @@ class _SmartScrollCard extends StatelessWidget {
             onChanged: onToggle,
             activeThumbColor: Colors.blue,
             activeTrackColor: Colors.blue.withValues(alpha: 0.5),
+          ),
+          GestureDetector(
+            onTap: onExpansionToggle,
+            child: const Icon(Icons.expand_less, color: Colors.white54),
           ),
         ],
       ),
