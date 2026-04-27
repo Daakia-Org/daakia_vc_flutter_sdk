@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../../model/language_model.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
-import '../dialog/transcript_download_choice_dialog.dart';
 
 class TranscriptionScreen extends StatefulWidget {
   final RtcViewmodel viewModel;
@@ -24,6 +23,9 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   bool _isSmartScrollEnabled = true;
   final ScrollController _scrollController = ScrollController();
   late final ScrollPhysics _scrollPhysics;
+  // Latches to true the moment transcription becomes active; used to detect
+  // the active→stopped transition and auto-close the screen for everyone.
+  bool _wasTranscriptionActive = false;
 
   // Remembers the last chosen translation language when the toggle is turned off.
   LanguageModel? _savedTranslationLanguage;
@@ -33,6 +35,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     super.initState();
     _isTranslationEnabled = widget.viewModel.translationLanguage != null;
     _savedTranslationLanguage = widget.viewModel.translationLanguage;
+    _wasTranscriptionActive = widget.viewModel.isTranscriptionLanguageSelected;
     // Physics reads _isSmartScrollEnabled at call time via the closure, so one
     // stable instance is enough — no need to recreate on every build.
     _scrollPhysics = _AnchoredScrollPhysics(
@@ -59,6 +62,16 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
 
   void _onViewModelChanged() {
     if (!mounted) return;
+
+    final isActive = widget.viewModel.isTranscriptionLanguageSelected;
+
+    // Close the screen for everyone when transcription is stopped.
+    if (_wasTranscriptionActive && !isActive) {
+      Navigator.of(context).maybePop();
+      return;
+    }
+    if (isActive) _wasTranscriptionActive = true;
+
     setState(() {});
     if (_isSmartScrollEnabled && _scrollController.hasClients) {
       _scrollController.animateTo(
@@ -181,10 +194,10 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     final isTranslationAllowed =
         widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() ==
             true;
-    final canDownload = widget.viewModel.isTranscriptionLanguageSelected &&
-        (widget.viewModel.isHost() || widget.viewModel.isCoHost());
     final transcriptionStarted =
         widget.viewModel.isTranscriptionLanguageSelected;
+    final canControl = transcriptionStarted &&
+        (widget.viewModel.isHost() || widget.viewModel.isCoHost());
 
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D0D),
@@ -197,10 +210,17 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
           style: TextStyle(color: Colors.white),
         ),
         actions: [
-          if (canDownload)
+          if (canControl)
             IconButton(
               icon: const Icon(Icons.download, color: Colors.white),
               onPressed: _handleDownload,
+            ),
+          if (canControl)
+            IconButton(
+              tooltip: 'Stop captions',
+              icon: const Icon(Icons.stop_circle_outlined,
+                  color: Colors.redAccent),
+              onPressed: () => widget.viewModel.stopTranscription(),
             ),
           IconButton(
             icon: const Icon(Icons.close, color: Colors.white),
