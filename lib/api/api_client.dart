@@ -167,6 +167,13 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @POST("rtc/meeting/transcription/stop")
+  Future<BaseResponse> stopTranscription(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
   @POST("rtc/meeting/updateParticipant/name")
   Future<BaseResponse> updateParticipantName(
     @Header("x-self-identity") String selfIdentity,

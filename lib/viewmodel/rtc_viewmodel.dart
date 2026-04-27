@@ -1169,6 +1169,19 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) => sendMessageToUI(message));
   }
 
+  void stopTranscription() {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.stopTranscription(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          resetTranscriptionLanguage();
+          sendAction(ActionModel(action: MeetingActions.stopLiveCaption));
+        },
+        onError: (message) => sendMessageToUI(message));
+  }
+
   void setTranscriptionLanguage(
       LanguageModel selectedLanguage, Function transcriptionEnabled) {
     Map<String, dynamic> body = {
@@ -1240,6 +1253,12 @@ class RtcViewmodel extends ChangeNotifier {
     isTranscriptionLanguageSelected =
         liveCaptionsData.isLanguageSelected ?? false;
     transcriptionLanguageData = liveCaptionsData;
+  }
+
+  void resetTranscriptionLanguage() {
+    isTranscriptionLanguageSelected = false;
+    transcriptionLanguageData = null;
+    translationLanguage = null;
   }
 
   @Deprecated(
