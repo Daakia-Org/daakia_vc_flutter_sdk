@@ -34,53 +34,15 @@ class _LanguageSelectionBottomSheetState
   }
 
   Future<void> _pickLanguage({required bool isSource}) async {
+    final currentSelection = isSource ? _sourceLanguage : _targetLanguage;
     final picked = await showModalBottomSheet<LanguageModel>(
       context: context,
       backgroundColor: const Color(0xFF1A1A2E),
       isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.6,
-        maxChildSize: 0.9,
-        minChildSize: 0.4,
-        expand: false,
-        builder: (_, controller) => Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                isSource ? 'From (Source Language)' : 'To (Target Language)',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const Divider(color: Colors.white24, height: 1),
-            Expanded(
-              child: ListView.builder(
-                controller: controller,
-                itemCount: widget.languages.length,
-                itemBuilder: (context, index) {
-                  final lang = widget.languages[index];
-                  final isSelected = isSource
-                      ? lang.code == _sourceLanguage?.code
-                      : lang.code == _targetLanguage?.code;
-                  return ListTile(
-                    title: Text(
-                      lang.language ?? '',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    trailing: isSelected
-                        ? const Icon(Icons.check, color: Colors.blue)
-                        : null,
-                    onTap: () => Navigator.pop(context, lang),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
+      builder: (_) => _LanguagePickerSheet(
+        title: isSource ? 'From (Source Language)' : 'To (Target Language)',
+        languages: widget.languages,
+        selectedLanguage: currentSelection,
       ),
     );
     if (picked != null) {
@@ -187,6 +149,160 @@ class _LanguageSelectionBottomSheetState
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Searchable language picker — opened when the user taps a dropdown tile.
+// ---------------------------------------------------------------------------
+
+class _LanguagePickerSheet extends StatefulWidget {
+  final String title;
+  final List<LanguageModel> languages;
+  final LanguageModel? selectedLanguage;
+
+  const _LanguagePickerSheet({
+    required this.title,
+    required this.languages,
+    this.selectedLanguage,
+  });
+
+  @override
+  State<_LanguagePickerSheet> createState() => _LanguagePickerSheetState();
+}
+
+class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  late List<LanguageModel> _filtered;
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.languages;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.trim().toLowerCase();
+    setState(() {
+      _filtered = query.isEmpty
+          ? widget.languages
+          : widget.languages
+              .where((l) =>
+                  l.language?.toLowerCase().contains(query) == true)
+              .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.65,
+      maxChildSize: 0.92,
+      minChildSize: 0.4,
+      expand: false,
+      builder: (_, scrollController) => Column(
+        children: [
+          // Handle bar
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8),
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white30,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+            child: Text(
+              widget.title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          // Search field
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: TextField(
+              controller: _searchController,
+              autofocus: false,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Search languages…',
+                hintStyle: const TextStyle(color: Colors.white38),
+                prefixIcon:
+                    const Icon(Icons.search, color: Colors.white54, size: 20),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.close,
+                            color: Colors.white54, size: 18),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+                filled: true,
+                fillColor: const Color(0xFF252540),
+                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          Expanded(
+            child: _filtered.isEmpty
+                ? const Center(
+                    child: Text(
+                      'No languages found',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: scrollController,
+                    itemCount: _filtered.length,
+                    itemBuilder: (context, index) {
+                      final lang = _filtered[index];
+                      final isSelected =
+                          lang.code == widget.selectedLanguage?.code;
+                      return ListTile(
+                        title: Text(
+                          lang.language ?? '',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.normal,
+                          ),
+                        ),
+                        trailing: isSelected
+                            ? const Icon(Icons.check, color: Colors.blue)
+                            : null,
+                        onTap: () => Navigator.pop(context, lang),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 class _LanguageDropdownTile extends StatelessWidget {
   final String label;
