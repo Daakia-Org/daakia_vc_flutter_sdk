@@ -115,7 +115,8 @@ class _LanguageSelectionBottomSheetState
               ),
               const SizedBox(height: 8),
               _LanguageDropdownTile(
-                label: _sourceLanguage?.language ?? 'Select language',
+                label: _sourceLanguage?.displayName ?? 'Select language',
+                iconUrl: _sourceLanguage?.icon,
                 onTap: () => _pickLanguage(isSource: true),
               ),
               const SizedBox(height: 16),
@@ -127,7 +128,8 @@ class _LanguageSelectionBottomSheetState
               ),
               const SizedBox(height: 8),
               _LanguageDropdownTile(
-                label: _targetLanguage?.language ?? 'Select language',
+                label: _targetLanguage?.displayName ?? 'Select language',
+                iconUrl: _targetLanguage?.icon,
                 onTap: () => _pickLanguage(isSource: false),
               ),
               const SizedBox(height: 24),
@@ -293,8 +295,9 @@ class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
                       final isSelected =
                           lang.code == widget.selectedLanguage?.code;
                       return ListTile(
+                        leading: _FlagAvatar(iconUrl: lang.icon),
                         title: Text(
-                          lang.language ?? '',
+                          lang.displayName,
                           style: TextStyle(
                             color: Colors.white,
                             fontWeight: isSelected
@@ -318,11 +321,57 @@ class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
 
 // ---------------------------------------------------------------------------
 
+class _FlagAvatar extends StatelessWidget {
+  final String? iconUrl;
+
+  const _FlagAvatar({this.iconUrl});
+
+  // Convert SVG URL (flagcdn.com/xx.svg) to a PNG URL (flagcdn.com/w40/xx.png)
+  // so we can use Image.network with a reliable errorBuilder.
+  static String? _pngUrl(String? svgUrl) {
+    if (svgUrl == null) return null;
+    return svgUrl
+        .replaceFirst('flagcdn.com/', 'flagcdn.com/w40/')
+        .replaceFirst('.svg', '.png');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = _pngUrl(iconUrl);
+    return CircleAvatar(
+      radius: 14,
+      backgroundColor: Colors.white10,
+      child: ClipOval(
+        child: url != null
+            ? Image.network(
+                url,
+                width: 28,
+                height: 28,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Icon(
+                  Icons.language,
+                  size: 16,
+                  color: Colors.white54,
+                ),
+              )
+            : const Icon(Icons.language, size: 16, color: Colors.white54),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 class _LanguageDropdownTile extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final String? iconUrl;
 
-  const _LanguageDropdownTile({required this.label, required this.onTap});
+  const _LanguageDropdownTile({
+    required this.label,
+    required this.onTap,
+    this.iconUrl,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -336,7 +385,7 @@ class _LanguageDropdownTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.language, color: Colors.white70, size: 20),
+            _FlagAvatar(iconUrl: iconUrl),
             const SizedBox(width: 12),
             Expanded(
               child: Text(

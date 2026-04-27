@@ -181,17 +181,16 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
     if (sourceLangCode == null) return 'Set language';
 
     final sourceName = widget.viewModel.languages.isNotEmpty
-        ? (widget.viewModel.languages
-                .firstWhere(
-                  (l) => l.code == sourceLangCode,
-                  orElse: () => LanguageModel(
-                      code: sourceLangCode, language: sourceLangCode),
-                )
-                .language ??
-            sourceLangCode)
+        ? widget.viewModel.languages
+            .firstWhere(
+              (l) => l.code == sourceLangCode,
+              orElse: () =>
+                  LanguageModel(code: sourceLangCode, language: sourceLangCode),
+            )
+            .displayName
         : sourceLangCode;
 
-    final targetName = widget.viewModel.translationLanguage?.language;
+    final targetName = widget.viewModel.translationLanguage?.displayName;
     return targetName != null ? '$sourceName → $targetName ▾' : '$sourceName ▾';
   }
 
