@@ -343,6 +343,11 @@ class Utils {
     });
   }
 
+  @Deprecated(
+      'No longer in use. Replaced by getFormattedTranscriptToSave which handles both '
+          'caption and translated caption in a unified format. Kept for reference in case '
+          'separate original transcript formatting is needed again in the future.'
+  )
   static String getTranscriptFormattedToSave(
       List<TranscriptionModel> transcriptions) {
     StringBuffer contentBuffer = StringBuffer();
@@ -356,7 +361,11 @@ class Utils {
     }
     return contentBuffer.toString();
   }
-
+  @Deprecated(
+      'No longer in use. Replaced by getFormattedTranscriptToSave which handles both '
+          'caption and translated caption in a unified format. Kept for reference in case '
+          'separate translated transcript formatting is needed again in the future.'
+  )
   static String getTranslatedTranscriptFormattedToSave(
       List<TranscriptionModel> transcriptions) {
     StringBuffer contentBuffer = StringBuffer();
@@ -373,6 +382,32 @@ class Utils {
         contentBuffer.writeln();
       }
     }
+    return contentBuffer.toString();
+  }
+
+  static String getFormattedTranscriptToSave(
+      List<TranscriptionModel> transcriptions) {
+    final StringBuffer contentBuffer = StringBuffer();
+
+    for (var entry in transcriptions) {
+      if (!entry.isFinal) continue;
+
+      final String caption = entry.transcription.trim();
+
+      final String translatedCaption =
+      (entry.translatedTranscription != null &&
+          entry.translatedTranscription!.trim().isNotEmpty)
+          ? entry.translatedTranscription!.trim()
+          : caption;
+
+      contentBuffer.writeln('${entry.name} ${entry.timestamp}');
+      contentBuffer.writeln('Caption:');
+      contentBuffer.writeln(caption);
+      contentBuffer.writeln('Translated Caption:');
+      contentBuffer.writeln(translatedCaption);
+      contentBuffer.writeln(); // spacing between entries
+    }
+
     return contentBuffer.toString();
   }
 

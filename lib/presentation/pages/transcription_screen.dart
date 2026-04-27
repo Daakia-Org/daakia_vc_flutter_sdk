@@ -133,30 +133,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   }
 
   Future<void> _handleDownload() async {
-    final isTranslationAllowed = widget.viewModel.meetingDetails.features!
-        .isVoiceTextTranslationAllowed();
+    setState(() => _isLoading = true);
 
-    String formattedTranscript;
-
-    if (isTranslationAllowed) {
-      final choice = await showDialog<TranscriptDownloadChoice>(
-        context: context,
-        builder: (context) => TranscriptDownloadChoiceDialog(
-          isEnabled: widget.viewModel.translationLanguage != null,
-        ),
-      );
-      if (choice == null) return;
-      setState(() => _isLoading = true);
-      formattedTranscript = (choice == TranscriptDownloadChoice.translated)
-          ? Utils.getTranslatedTranscriptFormattedToSave(
-              widget.viewModel.transcriptionList)
-          : Utils.getTranscriptFormattedToSave(
-              widget.viewModel.transcriptionList);
-    } else {
-      setState(() => _isLoading = true);
-      formattedTranscript = Utils.getTranscriptFormattedToSave(
-          widget.viewModel.transcriptionList);
-    }
+    final formattedTranscript = Utils.getFormattedTranscriptToSave(
+      widget.viewModel.transcriptionList,
+    );
 
     final result = await Utils.saveDataToFile(
       formattedTranscript,
