@@ -598,6 +598,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
         break;
 
+      case MeetingActions.stopLiveCaption:
+        viewModel?.stopTranscription();
+        break;
+
       case MeetingActions.liveCaption:
         viewModel?.collectTranscriptionData(remoteData);
         break;
