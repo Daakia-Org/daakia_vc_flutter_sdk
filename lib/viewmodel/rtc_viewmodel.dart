@@ -1196,7 +1196,7 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) => sendMessageToUI(message));
   }
 
-  void updateParticipantLanguage(LanguageModel transcriptionLanguage, LanguageModel translationLanguage) {
+  void updateParticipantLanguage(LanguageModel transcriptionLanguage) {
     final body = {
       "meeting_uid": meetingDetails.meetingUid,
       "language_code": transcriptionLanguage.code,
@@ -1204,7 +1204,12 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
         apiCall: () => apiClient.updateTranscriptionLanguage(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
-
+          transcriptionLanguageData = TranscriptionActionModel(
+            showIcon: _transcriptionLanguageData?.showIcon ?? true,
+            isLanguageSelected: true,
+            langCode: transcriptionLanguage.code,
+            sourceLang: transcriptionLanguage.code,
+          );
         }
     );
   }

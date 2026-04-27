@@ -106,8 +106,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       _startTranscriptionAgent(source);
     } else {
       // Already running: update source language via the participant language API.
-      widget.viewModel.updateParticipantLanguage(
-          source, target ?? source);
+      widget.viewModel.updateParticipantLanguage(source);
     }
 
     // Update translation target on the viewmodel (drives per-message translation).
