@@ -40,7 +40,7 @@ class _LanguageSelectionBottomSheetState
       backgroundColor: const Color(0xFF1A1A2E),
       isScrollControlled: true,
       builder: (_) => _LanguagePickerSheet(
-        title: isSource ? 'From (Source Language)' : 'To (Target Language)',
+        title: isSource ? 'From (Speak Language)' : 'To (Read Language)',
         languages: widget.languages,
         selectedLanguage: currentSelection,
       ),
@@ -86,7 +86,7 @@ class _LanguageSelectionBottomSheetState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text(
-                  'Select Language',
+                  'Live Caption',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 18,
@@ -101,7 +101,7 @@ class _LanguageSelectionBottomSheetState
             ),
             const SizedBox(height: 8),
             const Text(
-              'From (Source Language)',
+              'Choose a language that you will speak.',
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
             const SizedBox(height: 8),
@@ -111,7 +111,7 @@ class _LanguageSelectionBottomSheetState
             ),
             const SizedBox(height: 16),
             const Text(
-              'To (Target Language)',
+              'Choose a language you prefer to read.',
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
             const SizedBox(height: 8),
