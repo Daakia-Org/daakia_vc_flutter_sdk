@@ -76,6 +76,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   bool _isProgrammaticPop = false; // Flag to track programmatic pop
 
+  // Tracks the last mic-enabled state so we only call updateMuteState when it changes.
+  bool? _lastMicEnabled;
+
   Timer? _configRecordingTimer;
 
   late final MeetingManager meetingManager;
@@ -173,6 +176,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.storeMeetingDetails();
       viewModel?.requestChatHistory();
       viewModel?.requestRaiseHand();
+
+      if (lkPlatformIs(PlatformType.android)) {
+        _initMeetingNotificationCallbacks(viewModel);
+      }
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -797,8 +804,48 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  void _initMeetingNotificationCallbacks(RtcViewmodel? viewModel) {
+    DaakiaMeetingService.initialize();
+    DaakiaMeetingService.onMuteToggle = () => _handleNotificationMuteToggle();
+    DaakiaMeetingService.onEndCall = () {
+      if (mounted) closeMeetingProgrammatically(context);
+    };
+  }
+
+  Future<void> _handleNotificationMuteToggle() async {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    final participant = widget.room.localParticipant;
+    if (participant == null || vm == null) return;
+
+    if (participant.isMicrophoneEnabled()) {
+      vm.disableAudio(); // void async — fire and don't await (return type is void)
+    } else {
+      await vm.enableAudio();
+    }
+
+    // LiveKit propagates the mic-state change asynchronously. A short delay lets
+    // isMicrophoneEnabled() settle before we force a UI rebuild.
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (mounted) setState(() {});
+  }
+
+  void _syncNotificationMuteState() {
+    if (!lkPlatformIs(PlatformType.android)) return;
+    final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
+    if (micEnabled == _lastMicEnabled) return;
+    _lastMicEnabled = micEnabled;
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
+        viewModel?.isMicPermissionGranted == true;
+    DaakiaMeetingService.updateMuteState(
+      isMuted: !micEnabled,
+      hasAudioPermission: hasAudioPerm,
+    );
+  }
+
   void _onRoomDidUpdate() {
     _sortParticipants();
+    _syncNotificationMuteState();
   }
 
   void _onE2EEStateEvent(TrackE2EEStateEvent e2eeState) {
@@ -1561,7 +1608,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (!lkPlatformIs(PlatformType.android)) return;
     if (enable) {
       final title = widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting";
-      await DaakiaMeetingService.start(title: title);
+      final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
+      final viewModel = _livekitProviderKey.currentState?.viewModel;
+      final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
+          viewModel?.isMicPermissionGranted == true;
+      await DaakiaMeetingService.start(
+        title: title,
+        isMuted: !micEnabled,
+        hasAudioPermission: hasAudioPerm,
+      );
     } else {
       await DaakiaMeetingService.stop();
     }
