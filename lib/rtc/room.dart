@@ -177,7 +177,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.requestChatHistory();
       viewModel?.requestRaiseHand();
 
-      if (lkPlatformIs(PlatformType.android)) {
+      if (lkPlatformIs(PlatformType.android) || lkPlatformIs(PlatformType.iOS)) {
         _initMeetingNotificationCallbacks(viewModel);
       }
     });
@@ -1605,18 +1605,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   Future<void> handleAndroidNotification({required bool enable}) async {
-    if (!lkPlatformIs(PlatformType.android)) return;
+    final isAndroid = lkPlatformIs(PlatformType.android);
+    final isIOS = lkPlatformIs(PlatformType.iOS);
+    if (!isAndroid && !isIOS) return;
+
+    final title = widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting";
+
     if (enable) {
-      final title = widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting";
-      final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
-      final viewModel = _livekitProviderKey.currentState?.viewModel;
-      final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
-          viewModel?.isMicPermissionGranted == true;
-      await DaakiaMeetingService.start(
-        title: title,
-        isMuted: !micEnabled,
-        hasAudioPermission: hasAudioPerm,
-      );
+      if (isAndroid) {
+        final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
+        final viewModel = _livekitProviderKey.currentState?.viewModel;
+        final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
+            viewModel?.isMicPermissionGranted == true;
+        await DaakiaMeetingService.start(
+          title: title,
+          isMuted: !micEnabled,
+          hasAudioPermission: hasAudioPerm,
+        );
+      } else {
+        // iOS: activate AVAudioSession so the app survives background even
+        // when the user's microphone is muted (no active capture track).
+        await DaakiaMeetingService.start(title: title);
+      }
     } else {
       await DaakiaMeetingService.stop();
     }
