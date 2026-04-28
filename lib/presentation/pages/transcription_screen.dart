@@ -3,6 +3,7 @@ import 'package:daakia_vc_flutter_sdk/presentation/widgets/language_selection_bo
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/loader.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/transcription_bubble.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../model/language_model.dart';
 import '../../utils/utils.dart';
@@ -442,7 +443,11 @@ class _LiveTranslationCard extends StatelessWidget {
               color: Colors.blue.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.translate, color: Colors.blue, size: 22),
+            child: SvgPicture.asset(
+            'packages/daakia_vc_flutter_sdk/assets/icons/ic_translate_chats_colored.svg',
+            width: 22,
+            height: 22,
+          ),
           ),
           const SizedBox(width: 12),
           Expanded(
