@@ -27,7 +27,7 @@ import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_viewmodel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background/flutter_background.dart';
+import '../service/daakia_meeting_service.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
@@ -86,6 +86,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     setState(() {
       _isInForeground = state == AppLifecycleState.resumed;
     });
+    if (state == AppLifecycleState.resumed) {
+      // Re-ensure the meeting notification is visible. Covers the case where the
+      // user granted POST_NOTIFICATIONS in system Settings while in the meeting.
+      DaakiaMeetingService.restartIfActive();
+    }
   }
 
   @override
@@ -1554,41 +1559,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   Future<void> handleAndroidNotification({required bool enable}) async {
     if (!lkPlatformIs(PlatformType.android)) return;
-
-    final androidVersion = await Utils.getAndroidVersion();
-
-    if (androidVersion >= 34) return;
-
-    final androidConfig = FlutterBackgroundAndroidConfig(
-        notificationTitle:
-            widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting",
-        notificationText: "Tap to return to the meeting",
-        notificationImportance: AndroidNotificationImportance.high,
-        shouldRequestBatteryOptimizationsOff: false);
-
-    try {
-      if (enable) {
-        // Step 1: initialize (ask for permission + setup)
-        final initialized =
-            await FlutterBackground.initialize(androidConfig: androidConfig);
-
-        if (!initialized) {
-          debugPrint("Background permission not granted.");
-          return;
-        }
-
-        // Step 2: only enable if not already running
-        if (!FlutterBackground.isBackgroundExecutionEnabled) {
-          await FlutterBackground.enableBackgroundExecution();
-        }
-      } else {
-        // disable if currently enabled
-        if (FlutterBackground.isBackgroundExecutionEnabled) {
-          await FlutterBackground.disableBackgroundExecution();
-        }
-      }
-    } catch (e) {
-      debugPrint("Error while handling Android background notification: $e");
+    if (enable) {
+      final title = widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting";
+      await DaakiaMeetingService.start(title: title);
+    } else {
+      await DaakiaMeetingService.stop();
     }
   }
 
