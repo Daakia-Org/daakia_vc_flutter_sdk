@@ -1164,9 +1164,39 @@ class RtcViewmodel extends ChangeNotifier {
       }
     };
     networkRequestHandler(
-        apiCall: () => apiClient.dispatchAgent(body),
+        apiCall: () => apiClient.dispatchAgent(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {},
         onError: (message) => sendMessageToUI(message));
+  }
+
+  void stopTranscription() {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.stopTranscription(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          resetTranscriptionLanguage();
+          sendAction(ActionModel(action: MeetingActions.stopLiveCaption));
+        },
+        onError: (message) => sendMessageToUI(message));
+  }
+
+  // True for the participant who called setTranscriptionLanguage (the session
+  // starter). Their source language is permanently locked this session.
+  bool _isTranscriptionStarter = false;
+  bool get isTranscriptionStarter => _isTranscriptionStarter;
+
+  // True once a non-starter has consumed their one-time source-language change
+  // via updateParticipantLanguage. Locked after that until transcription resets.
+  bool _hasUsedParticipantLanguage = false;
+  bool get hasUsedParticipantLanguage => _hasUsedParticipantLanguage;
+
+  bool _isTranslationActive = false;
+  bool get isTranslationActive => _isTranslationActive;
+  set isTranslationActive(bool value) {
+    _isTranslationActive = value;
+    notifyListeners();
   }
 
   void setTranscriptionLanguage(
@@ -1181,6 +1211,7 @@ class RtcViewmodel extends ChangeNotifier {
         apiCall: () => apiClient.setTranscriptionLanguage(
             meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
+          _isTranscriptionStarter = true;
           isTranscriptionLanguageSelected = true;
           var transcriptionData = TranscriptionActionModel(
               showIcon: true,
@@ -1194,6 +1225,29 @@ class RtcViewmodel extends ChangeNotifier {
           transcriptionEnabled.call();
         },
         onError: (message) => sendMessageToUI(message));
+  }
+
+  void updateParticipantLanguage(LanguageModel transcriptionLanguage) {
+    // Lock immediately (optimistic) so the UI reflects the one-time limit
+    // regardless of whether the API succeeds or fails.
+    _hasUsedParticipantLanguage = true;
+    notifyListeners();
+
+    final body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "language_code": transcriptionLanguage.code,
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.updateTranscriptionLanguage(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          transcriptionLanguageData = TranscriptionActionModel(
+            showIcon: _transcriptionLanguageData?.showIcon ?? true,
+            isLanguageSelected: true,
+            langCode: transcriptionLanguage.code,
+            sourceLang: transcriptionLanguage.code,
+          );
+        }
+    );
   }
 
   void startTranscription() {
@@ -1224,6 +1278,15 @@ class RtcViewmodel extends ChangeNotifier {
     transcriptionLanguageData = liveCaptionsData;
   }
 
+  void resetTranscriptionLanguage() {
+    isTranscriptionLanguageSelected = false;
+    transcriptionLanguageData = null;
+    translationLanguage = null;
+    _isTranscriptionStarter = false;
+    _hasUsedParticipantLanguage = false;
+    _isTranslationActive = false;
+  }
+
   @Deprecated(
     'Use handleCaptionTranscription instead. '
         'This method is scheduled for removal and should not be used.',
@@ -1244,9 +1307,10 @@ class RtcViewmodel extends ChangeNotifier {
         // Replace the existing transcription in the list with the finalized one
         _updateTranscriptionInList(particalTranscription!);
 
-        // Trigger translation if source and target languages differ
-        if (particalTranscription?.sourceLang !=
-            particalTranscription?.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            particalTranscription?.sourceLang !=
+                particalTranscription?.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -1264,8 +1328,9 @@ class RtcViewmodel extends ChangeNotifier {
         );
         addTranscription(newTranscription);
 
-        // Trigger translation if source and target languages differ
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -2513,8 +2578,9 @@ class RtcViewmodel extends ChangeNotifier {
 
         _updateTranscriptionInList(particalTranscription!);
 
-        if (particalTranscription!.sourceLang !=
-            particalTranscription!.targetLang) {
+        if (_isTranslationActive &&
+            particalTranscription!.sourceLang !=
+                particalTranscription!.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -2533,7 +2599,8 @@ class RtcViewmodel extends ChangeNotifier {
 
         addTranscription(newTranscription);
 
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -2619,7 +2686,7 @@ class RtcViewmodel extends ChangeNotifier {
 
         _updateTranscriptionInList(particalTranscription!);
 
-        if (sourceLang != targetLang) {
+        if (_isTranslationActive && sourceLang != targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -2638,7 +2705,7 @@ class RtcViewmodel extends ChangeNotifier {
 
         addTranscription(newTranscription);
 
-        if (sourceLang != targetLang) {
+        if (_isTranslationActive && sourceLang != targetLang) {
           translateText(newTranscription);
         }
       }
