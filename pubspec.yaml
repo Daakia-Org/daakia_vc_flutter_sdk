@@ -72,7 +72,7 @@ flutter:
         package: io.daakia.daakia_vc_flutter_sdk
         pluginClass: DaakiaVcFlutterSdkPlugin
       ios:
-        pluginClass: NSObject
+        pluginClass: DaakiaVcFlutterSdkPlugin
 
   assets:
     - assets/icons/
