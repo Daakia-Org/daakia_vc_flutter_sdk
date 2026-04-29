@@ -319,6 +319,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (_enableAudio && _selectedAudioDevice != null) {
       _audioTrack = await LocalAudioTrack.create(AudioCaptureOptions(
         deviceId: _selectedAudioDevice!.deviceId,
+        stopAudioCaptureOnMute: false,
       ));
       await _audioTrack!.start();
     }
@@ -711,6 +712,12 @@ class _PreJoinState extends State<PreJoinScreen> {
           dynacast: false,
           defaultAudioPublishOptions: const AudioPublishOptions(
             name: 'custom_audio_track_name',
+          ),
+          defaultAudioCaptureOptions: const AudioCaptureOptions(
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            stopAudioCaptureOnMute: false,
           ),
           defaultCameraCaptureOptions: const CameraCaptureOptions(
               maxFrameRate: 30,
