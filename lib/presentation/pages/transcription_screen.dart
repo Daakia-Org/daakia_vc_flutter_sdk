@@ -42,8 +42,9 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       shouldAnchor: () => !_isSmartScrollEnabled,
     );
     widget.viewModel.addListener(_onViewModelChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _fetchLanguagesIfNeeded();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _fetchLanguagesIfNeeded();
+      if (!mounted) return;
       // Hosts/co-hosts who haven't started transcription are dropped straight
       // into the language picker so they can kick things off.
       if (!widget.viewModel.isTranscriptionLanguageSelected &&
@@ -98,13 +99,29 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   void _openLanguagePicker() {
     final sourceLangCode =
         widget.viewModel.transcriptionLanguageData?.sourceLang;
-    final sourceLanguage = sourceLangCode != null
+    LanguageModel? sourceLanguage = sourceLangCode != null
         ? widget.viewModel.languages.firstWhere(
             (l) => l.code == sourceLangCode,
             orElse: () =>
                 LanguageModel(code: sourceLangCode, language: sourceLangCode),
           )
         : null;
+
+    // When transcription hasn't started yet, pre-select English (India) as the
+    // default so the user sees a sensible starting point. Nothing is applied
+    // until the user taps Apply.
+    if (sourceLanguage == null && widget.viewModel.languages.isNotEmpty) {
+      final matches =
+          widget.viewModel.languages.where((l) => l.code == 'en-IN');
+      if (matches.isNotEmpty) sourceLanguage = matches.first;
+    }
+
+    LanguageModel? targetLanguage = widget.viewModel.translationLanguage;
+    if (targetLanguage == null && widget.viewModel.languages.isNotEmpty) {
+      final matches =
+          widget.viewModel.languages.where((l) => l.code == 'en-IN');
+      if (matches.isNotEmpty) targetLanguage = matches.first;
+    }
 
     final isTranslationAllowed =
         widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() ==
@@ -117,7 +134,7 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       builder: (_) => LanguageSelectionBottomSheet(
         languages: widget.viewModel.languages,
         initialSourceLanguage: sourceLanguage,
-        initialTargetLanguage: widget.viewModel.translationLanguage,
+        initialTargetLanguage: targetLanguage,
         isSourceLanguageLocked: widget.viewModel.isTranscriptionStarter ||
             widget.viewModel.hasUsedParticipantLanguage,
         isTranslationAllowed: isTranslationAllowed,
