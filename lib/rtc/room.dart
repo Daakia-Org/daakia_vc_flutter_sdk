@@ -842,7 +842,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.isMicPermissionGranted == true;
     DaakiaMeetingService.updateMuteState(
       isMuted: !micEnabled,
-      hasAudioPermission: hasAudioPerm,
+      hasAudioPermission: false, //TODO:: Temporary disable
     );
   }
 
@@ -1632,7 +1632,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         await DaakiaMeetingService.start(
           title: title,
           isMuted: !micEnabled,
-          hasAudioPermission: hasAudioPerm,
+          hasAudioPermission: false, //TODO:: Temporary disable
         );
       } else {
         // iOS: activate AVAudioSession so the app survives background even
