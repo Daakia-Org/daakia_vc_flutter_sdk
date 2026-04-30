@@ -66,6 +66,14 @@ dev_dependencies:
 
 # The following section is specific to Flutter packages.
 flutter:
+  plugin:
+    platforms:
+      android:
+        package: io.daakia.daakia_vc_flutter_sdk
+        pluginClass: DaakiaVcFlutterSdkPlugin
+      ios:
+        pluginClass: DaakiaVcFlutterSdkPlugin
+
   assets:
     - assets/icons/
   #
