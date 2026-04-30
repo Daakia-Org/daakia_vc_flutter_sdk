@@ -585,7 +585,7 @@ class _SmartScrollCard extends StatelessWidget {
               color: Colors.blue.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.vertical_align_bottom,
+            child: const Icon(Icons.unfold_more,
                 color: Colors.blue, size: 22),
           ),
           const SizedBox(width: 12),
