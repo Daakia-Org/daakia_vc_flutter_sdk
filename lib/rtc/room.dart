@@ -774,7 +774,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   RemoteActivityData parseJsonData(List<int> jsonData) {
     final jsonString = utf8.decode(jsonData); // Convert Uint8List to String
-    print("[DEBUG] - $jsonString");
     final Map<String, dynamic> jsonMap =
         json.decode(jsonString); // Decode the JSON string
     return RemoteActivityData.fromJson(
