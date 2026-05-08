@@ -45,6 +45,14 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 DaakiaMeetingService.stop(context)
                 result.success(null)
             }
+            "startScreenShareService" -> {
+                DaakiaMeetingService.instance?.addMediaProjectionType()
+                result.success(null)
+            }
+            "stopScreenShareService" -> {
+                DaakiaMeetingService.instance?.removeMediaProjectionType()
+                result.success(null)
+            }
             "updateMuteState" -> {
                 val isMuted = call.argument<Boolean>("isMuted") ?: false
                 val showMuteButton = call.argument<Boolean>("showMuteButton") ?: false

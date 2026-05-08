@@ -31,6 +31,10 @@ class DaakiaMeetingService : Service() {
         const val EXTRA_IS_MUTED = "is_muted"
         const val EXTRA_SHOW_MUTE_BTN = "show_mute_btn"
 
+        // Held so the plugin can call startForeground() synchronously on the
+        // main thread without going through an intent round-trip.
+        var instance: DaakiaMeetingService? = null
+
         fun start(context: Context, title: String, text: String, isMuted: Boolean, showMuteButton: Boolean) {
             val intent = Intent(context, DaakiaMeetingService::class.java).apply {
                 action = ACTION_START
@@ -64,6 +68,51 @@ class DaakiaMeetingService : Service() {
     private var meetingText = "Tap to return to the meeting"
     private var isMuted = false
     private var showMuteButton = false
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        instance = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
+    /** Adds mediaProjection type to the running FGS. Must be called on the main thread,
+     *  immediately after the user grants screen capture permission. */
+    fun addMediaProjectionType() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "addMediaProjectionType failed: $e")
+            }
+        }
+    }
+
+    /** Removes mediaProjection type from the running FGS once screen share ends. */
+    fun removeMediaProjectionType() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "removeMediaProjectionType failed: $e")
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -192,8 +241,4 @@ class DaakiaMeetingService : Service() {
         }
     }
 
-    override fun onDestroy() {
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        super.onDestroy()
-    }
 }
