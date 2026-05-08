@@ -612,6 +612,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.stopLiveCaption:
         viewModel?.resetTranscriptionLanguage();
+        Future.microtask(() {
+          showSnackBar(message: "Live captions stopped");
+        });
         break;
 
       case MeetingActions.liveCaption:
@@ -839,7 +842,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.isMicPermissionGranted == true;
     DaakiaMeetingService.updateMuteState(
       isMuted: !micEnabled,
-      hasAudioPermission: hasAudioPerm,
+      hasAudioPermission: false, //TODO:: Temporary disable
     );
   }
 
@@ -1267,19 +1270,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  void showSnackBar(
-      {required String message, String? actionText, Function? actionCallBack}) {
-    scaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
-      content: Text(message),
-      action: actionText != null
-          ? SnackBarAction(
-              label: actionText,
-              onPressed: () {
-                actionCallBack?.call();
-              },
-            )
-          : null,
-    ));
+  void showSnackBar({
+    required String message,
+    String? actionText,
+    Function? actionCallBack,
+  }) {
+    final messenger = scaffoldMessengerKey.currentState;
+
+    messenger?.clearSnackBars(); // 👈 add this
+
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: actionText != null
+            ? SnackBarAction(
+          label: actionText,
+          onPressed: () {
+            actionCallBack?.call();
+          },
+        )
+            : null,
+      ),
+    );
   }
 
   bool isEventAdded = false;
@@ -1620,7 +1632,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         await DaakiaMeetingService.start(
           title: title,
           isMuted: !micEnabled,
-          hasAudioPermission: hasAudioPerm,
+          hasAudioPermission: false, //TODO:: Temporary disable
         );
       } else {
         // iOS: activate AVAudioSession so the app survives background even
