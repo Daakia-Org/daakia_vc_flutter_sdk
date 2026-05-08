@@ -8,6 +8,8 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ## Supported Platforms
 ✅ **Android**  | ✅ **iOS**
 
+## Latest Release
+**v4.4.1** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
 
 # How to use
 
@@ -19,7 +21,7 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
 
 ```yaml
   dependencies:
-    daakia_vc_flutter_sdk: ^4.4.0
+    daakia_vc_flutter_sdk: ^4.4.1
 ```
 
 
@@ -29,22 +31,49 @@ We require a set of permissions that need to be declared in your AppManifest.xml
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.your.package">
+  <!-- Camera & Audio -->
   <uses-feature android:name="android.hardware.camera" />
   <uses-feature android:name="android.hardware.camera.autofocus" />
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.RECORD_AUDIO" />
+  
+  <!-- Network -->
+  <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
   <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+  
+  <!-- Bluetooth -->
   <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
   <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
   <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+  
+  <!-- Foreground Service (Meeting Notifications & Screen Share) -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+  
+  <!-- Notifications (Android 13+) -->
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  
+  <!-- Storage -->
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
   ...
 </manifest>
 ```
+
+### ℹ️ Permission Details
+
+- **Foreground Service Permissions** (new in v4.4.1):
+  - `FOREGROUND_SERVICE`: Required for background meeting notifications
+  - `FOREGROUND_SERVICE_MEDIA_PLAYBACK`: For meeting audio when app is backgrounded
+  - `FOREGROUND_SERVICE_MEDIA_PROJECTION`: **Required for screen sharing on Android 10+**
+  
+- **POST_NOTIFICATIONS**: Required for meeting notifications on Android 13+
+
+These permissions are **automatically merged** from the SDK's manifest. You don't need to manually add them unless your app targets Android versions that require explicit declaration.
 
 ## 🪟 Picture-in-Picture (PiP) Support (Android Only)
 
