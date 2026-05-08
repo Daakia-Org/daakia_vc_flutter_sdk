@@ -37,18 +37,26 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 val title = call.argument<String>("title") ?: "Meeting"
                 val text = call.argument<String>("text") ?: "Tap to return to the meeting"
                 val isMuted = call.argument<Boolean>("isMuted") ?: false
-                val hasAudioPerm = call.argument<Boolean>("hasAudioPerm") ?: true
-                DaakiaMeetingService.start(context, title, text, isMuted, hasAudioPerm)
+                val showMuteButton = call.argument<Boolean>("showMuteButton") ?: false
+                DaakiaMeetingService.start(context, title, text, isMuted, showMuteButton)
                 result.success(null)
             }
             "stopMeetingService" -> {
                 DaakiaMeetingService.stop(context)
                 result.success(null)
             }
+            "startScreenShareService" -> {
+                DaakiaMeetingService.instance?.addMediaProjectionType()
+                result.success(null)
+            }
+            "stopScreenShareService" -> {
+                DaakiaMeetingService.instance?.removeMediaProjectionType()
+                result.success(null)
+            }
             "updateMuteState" -> {
                 val isMuted = call.argument<Boolean>("isMuted") ?: false
-                val hasAudioPerm = call.argument<Boolean>("hasAudioPerm") ?: true
-                DaakiaMeetingService.update(context, isMuted, hasAudioPerm)
+                val showMuteButton = call.argument<Boolean>("showMuteButton") ?: false
+                DaakiaMeetingService.update(context, isMuted, showMuteButton)
                 result.success(null)
             }
             else -> result.notImplemented()

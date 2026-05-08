@@ -774,7 +774,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   RemoteActivityData parseJsonData(List<int> jsonData) {
     final jsonString = utf8.decode(jsonData); // Convert Uint8List to String
-    print("[DEBUG] - $jsonString");
     final Map<String, dynamic> jsonMap =
         json.decode(jsonString); // Decode the JSON string
     return RemoteActivityData.fromJson(
@@ -837,12 +836,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
     if (micEnabled == _lastMicEnabled) return;
     _lastMicEnabled = micEnabled;
-    final viewModel = _livekitProviderKey.currentState?.viewModel;
-    final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
-        viewModel?.isMicPermissionGranted == true;
     DaakiaMeetingService.updateMuteState(
       isMuted: !micEnabled,
-      hasAudioPermission: false, //TODO:: Temporary disable
     );
   }
 
@@ -1626,13 +1621,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (enable) {
       if (isAndroid) {
         final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
-        final viewModel = _livekitProviderKey.currentState?.viewModel;
-        final hasAudioPerm = viewModel?.isAudioPermissionEnable == true ||
-            viewModel?.isMicPermissionGranted == true;
         await DaakiaMeetingService.start(
           title: title,
           isMuted: !micEnabled,
-          hasAudioPermission: false, //TODO:: Temporary disable
+          showMuteButton: false,
         );
       } else {
         // iOS: activate AVAudioSession so the app survives background even

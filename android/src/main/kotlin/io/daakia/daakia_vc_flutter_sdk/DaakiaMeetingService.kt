@@ -29,15 +29,19 @@ class DaakiaMeetingService : Service() {
         const val EXTRA_TITLE = "title"
         const val EXTRA_TEXT = "text"
         const val EXTRA_IS_MUTED = "is_muted"
-        const val EXTRA_HAS_AUDIO_PERM = "has_audio_perm"
+        const val EXTRA_SHOW_MUTE_BTN = "show_mute_btn"
 
-        fun start(context: Context, title: String, text: String, isMuted: Boolean, hasAudioPerm: Boolean) {
+        // Held so the plugin can call startForeground() synchronously on the
+        // main thread without going through an intent round-trip.
+        var instance: DaakiaMeetingService? = null
+
+        fun start(context: Context, title: String, text: String, isMuted: Boolean, showMuteButton: Boolean) {
             val intent = Intent(context, DaakiaMeetingService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
                 putExtra(EXTRA_TEXT, text)
                 putExtra(EXTRA_IS_MUTED, isMuted)
-                putExtra(EXTRA_HAS_AUDIO_PERM, hasAudioPerm)
+                putExtra(EXTRA_SHOW_MUTE_BTN, showMuteButton)
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -46,11 +50,11 @@ class DaakiaMeetingService : Service() {
             }
         }
 
-        fun update(context: Context, isMuted: Boolean, hasAudioPerm: Boolean) {
+        fun update(context: Context, isMuted: Boolean, showMuteButton: Boolean) {
             val intent = Intent(context, DaakiaMeetingService::class.java).apply {
                 action = ACTION_UPDATE
                 putExtra(EXTRA_IS_MUTED, isMuted)
-                putExtra(EXTRA_HAS_AUDIO_PERM, hasAudioPerm)
+                putExtra(EXTRA_SHOW_MUTE_BTN, showMuteButton)
             }
             context.startService(intent)
         }
@@ -63,7 +67,52 @@ class DaakiaMeetingService : Service() {
     private var meetingTitle = "Meeting"
     private var meetingText = "Tap to return to the meeting"
     private var isMuted = false
-    private var hasAudioPerm = true
+    private var showMuteButton = false
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
+    override fun onDestroy() {
+        instance = null
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        super.onDestroy()
+    }
+
+    /** Adds mediaProjection type to the running FGS. Must be called on the main thread,
+     *  immediately after the user grants screen capture permission. */
+    fun addMediaProjectionType() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
+                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "addMediaProjectionType failed: $e")
+            }
+        }
+    }
+
+    /** Removes mediaProjection type from the running FGS once screen share ends. */
+    fun removeMediaProjectionType() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                ServiceCompat.startForeground(
+                    this,
+                    NOTIFICATION_ID,
+                    buildNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "removeMediaProjectionType failed: $e")
+            }
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -73,12 +122,12 @@ class DaakiaMeetingService : Service() {
                 meetingTitle = intent.getStringExtra(EXTRA_TITLE) ?: meetingTitle
                 meetingText = intent.getStringExtra(EXTRA_TEXT) ?: meetingText
                 isMuted = intent.getBooleanExtra(EXTRA_IS_MUTED, isMuted)
-                hasAudioPerm = intent.getBooleanExtra(EXTRA_HAS_AUDIO_PERM, hasAudioPerm)
+                showMuteButton = intent.getBooleanExtra(EXTRA_SHOW_MUTE_BTN, showMuteButton)
                 startMeetingForeground()
             }
             ACTION_UPDATE -> {
                 isMuted = intent.getBooleanExtra(EXTRA_IS_MUTED, isMuted)
-                hasAudioPerm = intent.getBooleanExtra(EXTRA_HAS_AUDIO_PERM, hasAudioPerm)
+                showMuteButton = intent.getBooleanExtra(EXTRA_SHOW_MUTE_BTN, showMuteButton)
                 refreshNotification()
             }
             ACTION_TOGGLE_MUTE -> {
@@ -149,8 +198,7 @@ class DaakiaMeetingService : Service() {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_CALL)
 
-        // Mute / Unmute — only when mic permission is available
-        if (hasAudioPerm) {
+        if (showMuteButton) {
             val muteLabel = if (isMuted) "Unmute" else "Mute"
             val muteIcon = if (isMuted)
                 android.R.drawable.ic_lock_silent_mode_off
@@ -193,8 +241,4 @@ class DaakiaMeetingService : Service() {
         }
     }
 
-    override fun onDestroy() {
-        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
-        super.onDestroy()
-    }
 }
