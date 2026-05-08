@@ -231,31 +231,37 @@ void main() async {
 
 ### Android
 
-On Android, you will have to use a
-[media projection foreground service](https://developer.android.com/develop/background-work/services/fg-service-types#media-projection).
+Screen sharing is supported on Android 10+. The SDK uses a 
+[media projection foreground service](https://developer.android.com/develop/background-work/services/fg-service-types#media-projection) for this functionality.
 
-In the app's AndroidManifest.xml file, declare the service with the appropriate types and permissions as following:
+**Required permissions** (automatically merged from SDK's manifest):
+- `FOREGROUND_SERVICE`
+- `FOREGROUND_SERVICE_MEDIA_PROJECTION` (required for screen capture)
+- `POST_NOTIFICATIONS` (for Android 13+)
+
+**⚠️ v4.4.1 Update**: For Android versions < 14, update your app's `AndroidManifest.xml` to declare the service with `mediaProjection` type only:
 
 ```xml
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Required permissions for screen share -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/>
-  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  
   <application>
     ...
     <service
-            android:name="de.julianassmann.flutter_background.IsolateHolderService"
-            android:enabled="true"
-            android:exported="false"
-            android:foregroundServiceType="mediaProjection|microphone|camera" />
+        android:name="de.julianassmann.flutter_background.IsolateHolderService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="mediaProjection" />
   </application>
 </manifest>
 ```
+
+> **Note**: In v4.4.1, the `foregroundServiceType` was changed from `"mediaProjection|microphone|camera"` to only `"mediaProjection"` to fix Android 16 compatibility issues. Remove `FOREGROUND_SERVICE_CAMERA` and `FOREGROUND_SERVICE_MICROPHONE` permissions if they were previously declared.
+
 ### iOS
-On iOS, a broadcast extension is needed in order to capture screen content from other apps. See For iOS-specific setup, refer to the [setup guide](example/ios/README.md) for instructions.
+On iOS, screen sharing requires a broadcast extension to capture content from other apps. Refer to the [iOS setup guide](example/ios/README.md) for detailed instructions.
 ## Support
 
 For support, email contact@daakia.co.in.
