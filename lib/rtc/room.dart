@@ -6,6 +6,7 @@ import 'package:animated_emoji/emojis.g.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
@@ -26,8 +27,9 @@ import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_viewmodel.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_background/flutter_background.dart';
+import '../service/daakia_meeting_service.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -74,6 +76,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   bool _isProgrammaticPop = false; // Flag to track programmatic pop
 
+  // Tracks the last mic-enabled state so we only call updateMuteState when it changes.
+  bool? _lastMicEnabled;
+
   Timer? _configRecordingTimer;
 
   late final MeetingManager meetingManager;
@@ -84,6 +89,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     setState(() {
       _isInForeground = state == AppLifecycleState.resumed;
     });
+    if (state == AppLifecycleState.resumed) {
+      // Re-ensure the meeting notification is visible. Covers the case where the
+      // user granted POST_NOTIFICATIONS in system Settings while in the meeting.
+      DaakiaMeetingService.restartIfActive();
+    }
   }
 
   @override
@@ -166,6 +176,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.storeMeetingDetails();
       viewModel?.requestChatHistory();
       viewModel?.requestRaiseHand();
+
+      if (lkPlatformIs(PlatformType.android) || lkPlatformIs(PlatformType.iOS)) {
+        _initMeetingNotificationCallbacks(viewModel);
+      }
     });
 
     if (lkPlatformIs(PlatformType.android)) {
@@ -536,11 +550,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
           storageHelper
               .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
+          storageHelper.setAttendanceRole(AttendanceRole.cohost);
           storageHelper.setHostToken(remoteData.token ?? "");
           viewModel?.getAttendanceListForParticipant();
           showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         } else {
           viewModel?.setCoHost(false);
+          StorageHelper().setAttendanceRole(AttendanceRole.participant);
           clearConsentList(viewModel);
           showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         }
@@ -548,20 +564,25 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
+        StorageHelper().setAttendanceRole(AttendanceRole.participant);
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
 
       case MeetingActions.forceMuteAll:
-        viewModel?.isAudioPermissionEnable = !remoteData.value;
-        if (!(viewModel?.isAudioPermissionEnable ?? false)) {
+        final isAudioModeEnabled = remoteData.value == true;
+        viewModel?.isAudioModeEnable = isAudioModeEnabled;
+        viewModel?.isAudioPermissionEnable = !isAudioModeEnabled;
+        if (isAudioModeEnabled) {
           viewModel?.disableAudio();
         }
         break;
 
       case MeetingActions.forceVideoOffAll:
-        viewModel?.isVideoPermissionEnable = !remoteData.value;
-        if (!(viewModel?.isVideoPermissionEnable ?? false)) {
+        final isVideoModeEnabled = remoteData.value == true;
+        viewModel?.isVideoModeEnable = isVideoModeEnabled;
+        viewModel?.isVideoPermissionEnable = !isVideoModeEnabled;
+        if (isVideoModeEnabled) {
           viewModel?.disableVideo();
         }
         break;
@@ -587,6 +608,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                 });
           }
         }
+        break;
+
+      case MeetingActions.stopLiveCaption:
+        viewModel?.resetTranscriptionLanguage();
+        Future.microtask(() {
+          showSnackBar(message: "Live captions stopped");
+        });
         break;
 
       case MeetingActions.liveCaption:
@@ -712,6 +740,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.syncRaiseHand(remoteData.raisedHands);
         break;
 
+      case MeetingActions.allowMicPermission:
+        viewModel?.isMicPermissionGranted = true;
+        showSnackBar(message: "Your mic permission has been granted");
+        break;
+
+      case MeetingActions.revokeMicPermission:
+        viewModel?.isMicPermissionGranted = false;
+        viewModel?.disableAudio();
+        showSnackBar(message: "Your mic permission has been revoked");
+        break;
+
+      case MeetingActions.allowVideoPermission:
+        viewModel?.isVideoPermissionGranted = true;
+        showSnackBar(message: "Your video permission has been granted");
+        break;
+
+      case MeetingActions.revokeVideoPermission:
+        viewModel?.isVideoPermissionGranted = false;
+        viewModel?.disableVideo();
+        showSnackBar(message: "Your video permission has been revoked");
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
@@ -756,8 +806,44 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  void _initMeetingNotificationCallbacks(RtcViewmodel? viewModel) {
+    DaakiaMeetingService.initialize();
+    DaakiaMeetingService.onMuteToggle = () => _handleNotificationMuteToggle();
+    DaakiaMeetingService.onEndCall = () {
+      if (mounted) closeMeetingProgrammatically(context);
+    };
+  }
+
+  Future<void> _handleNotificationMuteToggle() async {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    final participant = widget.room.localParticipant;
+    if (participant == null || vm == null) return;
+
+    if (participant.isMicrophoneEnabled()) {
+      vm.disableAudio(); // void async — fire and don't await (return type is void)
+    } else {
+      await vm.enableAudio();
+    }
+
+    // LiveKit propagates the mic-state change asynchronously. A short delay lets
+    // isMicrophoneEnabled() settle before we force a UI rebuild.
+    await Future.delayed(const Duration(milliseconds: 150));
+    if (mounted) setState(() {});
+  }
+
+  void _syncNotificationMuteState() {
+    if (!lkPlatformIs(PlatformType.android)) return;
+    final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
+    if (micEnabled == _lastMicEnabled) return;
+    _lastMicEnabled = micEnabled;
+    DaakiaMeetingService.updateMuteState(
+      isMuted: !micEnabled,
+    );
+  }
+
   void _onRoomDidUpdate() {
     _sortParticipants();
+    _syncNotificationMuteState();
   }
 
   void _onE2EEStateEvent(TrackE2EEStateEvent e2eeState) {
@@ -1021,6 +1107,27 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                             ),
                                         ],
                                       ),
+                                      Consumer<RtcViewmodel>(
+                                        builder: (context, viewModel, _) {
+                                          if (!viewModel.isWebinarModeEnable) {
+                                            return const SizedBox.shrink();
+                                          }
+                                          return Positioned(
+                                            left: 0,
+                                            right: 0,
+                                            top: 10,
+                                            child: IgnorePointer(
+                                              child: Center(
+                                                child: _buildTopStatusIndicator(
+                                                  label: 'Workshop',
+                                                  indicatorColor:
+                                                      const Color(0xFF34C759),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                       if (_livekitProviderKey.currentState
                                               ?.viewModel.isRecording ==
                                           true)
@@ -1113,19 +1220,73 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         false;
   }
 
-  void showSnackBar(
-      {required String message, String? actionText, Function? actionCallBack}) {
-    scaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
-      content: Text(message),
-      action: actionText != null
-          ? SnackBarAction(
-              label: actionText,
-              onPressed: () {
-                actionCallBack?.call();
-              },
-            )
-          : null,
-    ));
+  Widget _buildTopStatusIndicator({
+    required String label,
+    required Color indicatorColor,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: indicatorColor.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              color: indicatorColor,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: indicatorColor.withValues(alpha: 0.7),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void showSnackBar({
+    required String message,
+    String? actionText,
+    Function? actionCallBack,
+  }) {
+    final messenger = scaffoldMessengerKey.currentState;
+
+    messenger?.clearSnackBars(); // 👈 add this
+
+    messenger?.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: actionText != null
+            ? SnackBarAction(
+          label: actionText,
+          onPressed: () {
+            actionCallBack?.call();
+          },
+        )
+            : null,
+      ),
+    );
   }
 
   bool isEventAdded = false;
@@ -1451,42 +1612,27 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   Future<void> handleAndroidNotification({required bool enable}) async {
-    if (!lkPlatformIs(PlatformType.android)) return;
+    final isAndroid = lkPlatformIs(PlatformType.android);
+    final isIOS = lkPlatformIs(PlatformType.iOS);
+    if (!isAndroid && !isIOS) return;
 
-    final androidVersion = await Utils.getAndroidVersion();
+    final title = widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting";
 
-    if (androidVersion >= 34) return;
-
-    final androidConfig = FlutterBackgroundAndroidConfig(
-        notificationTitle:
-            widget.meetingDetails.meetingBasicDetails?.eventName ?? "Meeting",
-        notificationText: "Tap to return to the meeting",
-        notificationImportance: AndroidNotificationImportance.high,
-        shouldRequestBatteryOptimizationsOff: false);
-
-    try {
-      if (enable) {
-        // Step 1: initialize (ask for permission + setup)
-        final initialized =
-            await FlutterBackground.initialize(androidConfig: androidConfig);
-
-        if (!initialized) {
-          debugPrint("Background permission not granted.");
-          return;
-        }
-
-        // Step 2: only enable if not already running
-        if (!FlutterBackground.isBackgroundExecutionEnabled) {
-          await FlutterBackground.enableBackgroundExecution();
-        }
+    if (enable) {
+      if (isAndroid) {
+        final micEnabled = widget.room.localParticipant?.isMicrophoneEnabled() ?? false;
+        await DaakiaMeetingService.start(
+          title: title,
+          isMuted: !micEnabled,
+          showMuteButton: false,
+        );
       } else {
-        // disable if currently enabled
-        if (FlutterBackground.isBackgroundExecutionEnabled) {
-          await FlutterBackground.disableBackgroundExecution();
-        }
+        // iOS: activate AVAudioSession so the app survives background even
+        // when the user's microphone is muted (no active capture track).
+        await DaakiaMeetingService.start(title: title);
       }
-    } catch (e) {
-      debugPrint("Error while handling Android background notification: $e");
+    } else {
+      await DaakiaMeetingService.stop();
     }
   }
 

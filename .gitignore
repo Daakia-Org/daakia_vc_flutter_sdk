@@ -85,3 +85,6 @@ _build
 
 # FVM
 .fvm/
+
+# AI
+CLAUDE.md

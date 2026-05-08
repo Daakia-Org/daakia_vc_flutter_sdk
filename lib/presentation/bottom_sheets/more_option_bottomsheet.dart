@@ -10,6 +10,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:provider/provider.dart';
 
 import '../../model/action_model.dart';
+import '../../service/daakia_meeting_service.dart';
 import '../../resources/colors/color.dart';
 import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
@@ -103,7 +104,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
               buildOption(context,
                   icon: Icons.security, // Replace with your host control icon
                   text: 'Host Control',
-                  isVisible: viewModel.isHost(), onTap: () {
+                  isVisible: viewModel.isHost() || viewModel.isCoHost(), onTap: () {
                 Navigator.pop(context);
                 showWebinarControls();
               }),
@@ -299,38 +300,44 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
         return;
       }
 
-      requestBackgroundPermission([bool isRetry = false]) async {
-        // Required for android screenshare.
-        try {
-          bool hasPermissions = await FlutterBackground.hasPermissions;
-          var appName = await Utils.getAppName();
-          if (!isRetry) {
-            var androidConfig = FlutterBackgroundAndroidConfig(
-              notificationTitle: 'Screen Sharing',
-              notificationText: '$appName is sharing the screen.',
-              notificationImportance: AndroidNotificationImportance.high,
-              // notificationIcon: const AndroidResource(
-              //     name: 'livekit_ic_launcher', defType: 'mipmap'),
-            );
-            hasPermissions = await FlutterBackground.initialize(
-                androidConfig: androidConfig);
-          }
-          if (hasPermissions &&
-              !FlutterBackground.isBackgroundExecutionEnabled) {
-            await FlutterBackground.enableBackgroundExecution();
-          }
-        } catch (e) {
-          if (!isRetry) {
-            return await Future<void>.delayed(const Duration(seconds: 1),
-                () => requestBackgroundPermission(true));
-          }
-          if (kDebugMode) {
-            print('could not publish video: $e');
+      final androidVersion = await Utils.getAndroidVersion();
+      if (androidVersion >= 34) {
+        // On Android 14+ use DaakiaMeetingService (already running for the
+        // meeting). Calling addMediaProjectionType() on the main thread is
+        // synchronous, so the FGS type is registered before getDisplayMedia
+        // is called — no race condition on rapid stop/start.
+        await DaakiaMeetingService.startScreenShare();
+      } else {
+        requestBackgroundPermission([bool isRetry = false]) async {
+          try {
+            bool hasPermissions = await FlutterBackground.hasPermissions;
+            var appName = await Utils.getAppName();
+            if (!isRetry) {
+              var androidConfig = FlutterBackgroundAndroidConfig(
+                notificationTitle: 'Screen Sharing',
+                notificationText: '$appName is sharing the screen.',
+                notificationImportance: AndroidNotificationImportance.high,
+              );
+              hasPermissions = await FlutterBackground.initialize(
+                  androidConfig: androidConfig);
+            }
+            if (hasPermissions &&
+                !FlutterBackground.isBackgroundExecutionEnabled) {
+              await FlutterBackground.enableBackgroundExecution();
+            }
+          } catch (e) {
+            if (!isRetry) {
+              return await Future<void>.delayed(const Duration(seconds: 1),
+                  () => requestBackgroundPermission(true));
+            }
+            if (kDebugMode) {
+              print('could not publish video: $e');
+            }
           }
         }
-      }
 
-      await requestBackgroundPermission();
+        await requestBackgroundPermission();
+      }
     }
 
     if (lkPlatformIs(PlatformType.iOS)) {
@@ -365,12 +372,16 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
     viewModel
         .sendAction(ActionModel(action: MeetingActions.screenShareStopped));
     if (lkPlatformIs(PlatformType.android)) {
-      // Android specific
-      try {
-        await FlutterBackground.disableBackgroundExecution();
-      } catch (error) {
-        if (kDebugMode) {
-          print('error disabling screen share: $error');
+      final androidVersion = await Utils.getAndroidVersion();
+      if (androidVersion >= 34) {
+        await DaakiaMeetingService.stopScreenShare();
+      } else {
+        try {
+          await FlutterBackground.disableBackgroundExecution();
+        } catch (error) {
+          if (kDebugMode) {
+            print('error disabling screen share: $error');
+          }
         }
       }
     }

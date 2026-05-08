@@ -44,6 +44,7 @@ class MeetingActions {
   static const String forceVideoOffAll = "force_video_off_all";
 
   static const String showLiveCaption = "show-live-caption";
+  static const String stopLiveCaption = "stop-live-caption";
   static const String liveCaption = "live-caption";
   static const String requestLiveCaptionDrawerState = "request-livecaption-drawer-state";
 
@@ -92,6 +93,14 @@ class MeetingActions {
   static const String requestRaisedHands = "request_raised_hands";
 
   static const String responseRaisedHands = "response_raised_hands";
+
+  static const String allowMicPermission = "allow-mic-permission";
+
+  static const String revokeMicPermission = "revoke-mic-permission";
+
+  static const String allowVideoPermission = "allow-video-permission";
+
+  static const String revokeVideoPermission = "revoke-video-permission";
 
   // ✅ Add new fields here
 
@@ -155,6 +164,11 @@ class MeetingActions {
     sendPrivateChat,
     requestRaisedHands,
     responseRaisedHands,
+    allowMicPermission,
+    allowVideoPermission,
+    revokeMicPermission,
+    revokeVideoPermission,
+    stopLiveCaption,
     // ✅ Add new fields here
   };
 }

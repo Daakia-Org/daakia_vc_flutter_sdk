@@ -5,6 +5,7 @@ import 'package:daakia_vc_flutter_sdk/model/features.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
@@ -114,6 +115,10 @@ class _PreJoinState extends State<PreJoinScreen> {
       widget.configuration?.enableMicrophoneByDefault == true;
   bool get _shouldEnableVideoByDefault =>
       widget.configuration?.enableCameraByDefault == true;
+  bool get _isConfiguredCoHost =>
+      widget.configuration?.vcConfig?.isCoHost == true;
+  bool get _shouldBypassParticipantChecks =>
+      _isCoHostVerified || _isConfiguredCoHost;
 
   Future<void> _initializeMediaState() async {
     try {
@@ -214,7 +219,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   String? _getSkipPreJoinValidationError() {
-    if (_isCoHostVerified) {
+    if (_shouldBypassParticipantChecks) {
       return null;
     }
     if (widget.isHost &&
@@ -314,6 +319,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (_enableAudio && _selectedAudioDevice != null) {
       _audioTrack = await LocalAudioTrack.create(AudioCaptureOptions(
         deviceId: _selectedAudioDevice!.deviceId,
+        stopAudioCaptureOnMute: false,
       ));
       await _audioTrack!.start();
     }
@@ -357,7 +363,13 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     isLoading = true;
 
-    var token = hostToken;
+    final configuredToken = widget.configuration?.vcConfig?.hostToken;
+    if (hostToken.isEmpty &&
+        configuredToken != null &&
+        configuredToken.isNotEmpty) {
+      hostToken = configuredToken;
+    }
+
     Map<String, dynamic> body = {
       "meeting_uid": widget.meetingId,
       "preferred_video_server_id": "ap1",
@@ -382,6 +394,8 @@ class _PreJoinState extends State<PreJoinScreen> {
         }
       }
     }
+
+    final token = hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
@@ -412,7 +426,8 @@ class _PreJoinState extends State<PreJoinScreen> {
             return;
           }
 
-          if (it.participantCanJoin == true) {
+          final canJoinAsCoHost = it.roleName == AttendanceRole.cohost.name;
+          if (it.participantCanJoin == true || canJoinAsCoHost) {
             _handleJoin(it, stopLoading);
           }
         } else {
@@ -698,6 +713,12 @@ class _PreJoinState extends State<PreJoinScreen> {
           defaultAudioPublishOptions: const AudioPublishOptions(
             name: 'custom_audio_track_name',
           ),
+          defaultAudioCaptureOptions: const AudioCaptureOptions(
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            stopAudioCaptureOnMute: false,
+          ),
           defaultCameraCaptureOptions: const CameraCaptureOptions(
               maxFrameRate: 30,
               params: VideoParameters(
@@ -939,7 +960,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                   ),
                   Visibility(
                     visible: !widget.isHost &&
-                        !_isCoHostVerified &&
+                        !_shouldBypassParticipantChecks &&
                         (widget.basicMeetingDetails?.isStandardPassword ==
                             true),
                     child: Container(
@@ -966,7 +987,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                   ),
                   Visibility(
                     visible: !widget.isHost &&
-                        !_isCoHostVerified &&
+                        !_shouldBypassParticipantChecks &&
                         (widget.basicMeetingDetails?.isCommonPassword == true ||
                             widget.basicMeetingDetails?.isStandardPassword ==
                                 true),
@@ -1029,7 +1050,9 @@ class _PreJoinState extends State<PreJoinScreen> {
                               message: "Please enter your name");
                           return;
                         }
-                        if (!widget.isHost && !await shouldAddAttendanceId()) {
+                        if (!widget.isHost &&
+                            !_shouldBypassParticipantChecks &&
+                            !await shouldAddAttendanceId()) {
                           var event = widget.basicMeetingDetails;
                           if (event?.isStandardPassword == true) {
                             if (!checkValidity()) {
@@ -1331,8 +1354,10 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<void> checkMeetingType(Function stopLoading) async {
     var event = widget.basicMeetingDetails;
-    if (await shouldAddAttendanceId()) {
-      // If shouldAddAttendanceId is true, bypass other checks
+    final shouldReuseAttendance =
+        _shouldBypassParticipantChecks || await shouldAddAttendanceId();
+    if (shouldReuseAttendance) {
+      // Configured or cached co-host bypasses participant checks.
       getFeaturesAndJoinMeeting(stopLoading);
       return;
     }
@@ -1354,7 +1379,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       }
       verifyCommonPasswordProtectedMeeting(stopLoading);
     } else {
-      if (event?.isLobbyMode == true && !await shouldAddAttendanceId()) {
+      if (event?.isLobbyMode == true && !shouldReuseAttendance) {
         addParticipantToLobby(stopLoading);
         // startAddingParticipantsPool(stopLoading);
       } else {
@@ -1365,10 +1390,15 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<bool> shouldAddAttendanceId() async {
     final cacheData = StorageHelper();
-    return await cacheData.getMeetingUid() == widget.meetingId &&
-        await cacheData.getSessionUid() ==
-            widget.basicMeetingDetails?.currentSessionUid &&
-        await cacheData.getAttendanceId() != "";
+    final cachedMeetingUid = await cacheData.getMeetingUid();
+    final cachedSessionUid = await cacheData.getSessionUid();
+    final cachedAttendanceId = await cacheData.getAttendanceId();
+    final cachedAttendanceRole = await cacheData.getAttendanceRole();
+    final shouldReuse = cachedMeetingUid == widget.meetingId &&
+        cachedSessionUid == widget.basicMeetingDetails?.currentSessionUid &&
+        cachedAttendanceId != "" &&
+        cachedAttendanceRole == AttendanceRole.cohost;
+    return shouldReuse;
   }
 
   Future<void> verifyCoHost() async {
@@ -1454,6 +1484,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<void> passwordVerified(Function stopLoading) async {
     if (widget.basicMeetingDetails?.isLobbyMode == true &&
+        !_shouldBypassParticipantChecks &&
         !await shouldAddAttendanceId()) {
       // startAddingParticipantsPool(stopLoading);
       addParticipantToLobby(stopLoading);

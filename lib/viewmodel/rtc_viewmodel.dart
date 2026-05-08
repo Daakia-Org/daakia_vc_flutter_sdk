@@ -23,6 +23,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:uuid/uuid.dart';
 
 import '../enum/chat_type_enum.dart';
+import '../enum/attendance_role_enum.dart';
 import '../model/action_model.dart';
 import '../model/caption_data.dart';
 import '../model/emoji_message.dart';
@@ -394,6 +395,8 @@ class RtcViewmodel extends ChangeNotifier {
 
   LocalParticipant get participant => room.localParticipant!;
 
+  String get selfIdentity => room.localParticipant?.identity ?? "";
+
   void disableAudio() async {
     await participant.setMicrophoneEnabled(false);
     notifyListeners();
@@ -416,12 +419,18 @@ class RtcViewmodel extends ChangeNotifier {
 
   double getMicAlpha() {
     if (isHost() || isCoHost()) return 1.0;
-    return isAudioPermissionEnable ? 1.0 : 0.5;
+    if (!isAudioPermissionEnable) {
+      return isMicPermissionGranted ? 1.0 : 0.5;
+    }
+    return 1.0;
   }
 
   double getCameraAlpha() {
     if (isHost() || isCoHost()) return 1.0;
-    return isVideoPermissionEnable ? 1.0 : 0.5;
+    if (!isVideoPermissionEnable) {
+      return isVideoPermissionGranted ? 1.0 : 0.5;
+    }
+    return 1.0;
   }
 
   bool isVisibleForHost(String role, String targetRole) {
@@ -439,7 +448,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.removeParticipant(meetingDetails.authorizationToken, body),
+          apiClient.removeParticipant(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) => sendMessageToUI("Participant Removed"),
       onError: (message) => sendMessageToUI(message),
     );
@@ -464,7 +473,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.makeCoHost(meetingDetails.authorizationToken, body),
+          apiClient.makeCoHost(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) => {
         sendPrivateAction(
             ActionModel(
@@ -514,7 +523,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
       apiCall: () =>
-          apiClient.startRecording(meetingDetails.authorizationToken, body),
+          apiClient.startRecording(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
         isRecordingStartByMe = true;
         dispatchId = data?.dispatchId.id;
@@ -564,7 +573,7 @@ class RtcViewmodel extends ChangeNotifier {
 
     networkRequestHandler(
       apiCall: () =>
-          apiClient.stopRecording(meetingDetails.authorizationToken, body),
+          apiClient.stopRecording(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (_) {
         _stopRecordingRetried = false;
         isRecordingStartByMe = false;
@@ -615,6 +624,7 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () => apiClient.getRecordingDispatchedId(
         meetingDetails.authorizationToken,
+        selfIdentity,
         meetingDetails.meetingUid,
       ),
       onSuccess: (data) {
@@ -815,7 +825,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   set isAudioModeEnable(bool value) {
     _isAudioModeEnable = value;
-    _isWebinarModeEnable = (_isAudioModeEnable && _isVideoModeEnable);
+    _isWebinarModeEnable = (_isAudioModeEnable || _isVideoModeEnable);
     notifyListeners();
   }
 
@@ -824,7 +834,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   set isVideoModeEnable(bool value) {
     _isVideoModeEnable = value;
-    _isWebinarModeEnable = (_isAudioModeEnable && _isVideoModeEnable);
+    _isWebinarModeEnable = (_isAudioModeEnable || _isVideoModeEnable);
     notifyListeners();
   }
 
@@ -843,7 +853,7 @@ class RtcViewmodel extends ChangeNotifier {
       body["is_admit_all"] = acceptAll;
     }
     networkRequestHandler(
-        apiCall: () => apiClient.acceptParticipantInLobby(body),
+        apiCall: () => apiClient.acceptParticipantInLobby(selfIdentity, body),
         onSuccess: (_) {},
         onError: (message) => sendMessageToUI(message));
   }
@@ -1144,6 +1154,51 @@ class RtcViewmodel extends ChangeNotifier {
     return data.map((item) => LanguageModel.fromJson(item)).toList();
   }
 
+  void startTranscriptionAgent(LanguageModel selectedLanguage) {
+    var body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "agent_id": Constant.liveCaptionAgentId,
+      "agent_name": Constant.liveCaptionAgentName,
+      "metadata": {
+        "language": selectedLanguage.code,
+      }
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.dispatchAgent(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {},
+        onError: (message) => sendMessageToUI(message));
+  }
+
+  void stopTranscription() {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.stopTranscription(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          resetTranscriptionLanguage();
+          sendAction(ActionModel(action: MeetingActions.stopLiveCaption));
+        },
+        onError: (message) => sendMessageToUI(message));
+  }
+
+  // True for the participant who called setTranscriptionLanguage (the session
+  // starter). Their source language is permanently locked this session.
+  bool _isTranscriptionStarter = false;
+  bool get isTranscriptionStarter => _isTranscriptionStarter;
+
+  // True once a non-starter has consumed their one-time source-language change
+  // via updateParticipantLanguage. Locked after that until transcription resets.
+  bool _hasUsedParticipantLanguage = false;
+  bool get hasUsedParticipantLanguage => _hasUsedParticipantLanguage;
+
+  bool _isTranslationActive = false;
+  bool get isTranslationActive => _isTranslationActive;
+  set isTranslationActive(bool value) {
+    _isTranslationActive = value;
+    notifyListeners();
+  }
+
   void setTranscriptionLanguage(
       LanguageModel selectedLanguage, Function transcriptionEnabled) {
     Map<String, dynamic> body = {
@@ -1154,8 +1209,9 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
         apiCall: () => apiClient.setTranscriptionLanguage(
-            meetingDetails.authorizationToken, body),
+            meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
+          _isTranscriptionStarter = true;
           isTranscriptionLanguageSelected = true;
           var transcriptionData = TranscriptionActionModel(
               showIcon: true,
@@ -1171,11 +1227,34 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) => sendMessageToUI(message));
   }
 
+  void updateParticipantLanguage(LanguageModel transcriptionLanguage) {
+    // Lock immediately (optimistic) so the UI reflects the one-time limit
+    // regardless of whether the API succeeds or fails.
+    _hasUsedParticipantLanguage = true;
+    notifyListeners();
+
+    final body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "language_code": transcriptionLanguage.code,
+    };
+    networkRequestHandler(
+        apiCall: () => apiClient.updateTranscriptionLanguage(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          transcriptionLanguageData = TranscriptionActionModel(
+            showIcon: _transcriptionLanguageData?.showIcon ?? true,
+            isLanguageSelected: true,
+            langCode: transcriptionLanguage.code,
+            sourceLang: transcriptionLanguage.code,
+          );
+        }
+    );
+  }
+
   void startTranscription() {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
     };
-    networkRequestHandler(apiCall: () => apiClient.startTranscription(body));
+    networkRequestHandler(apiCall: () => apiClient.startTranscription(selfIdentity, body));
   }
 
   TranscriptionActionModel? _transcriptionLanguageData;
@@ -1199,6 +1278,15 @@ class RtcViewmodel extends ChangeNotifier {
     transcriptionLanguageData = liveCaptionsData;
   }
 
+  void resetTranscriptionLanguage() {
+    isTranscriptionLanguageSelected = false;
+    transcriptionLanguageData = null;
+    translationLanguage = null;
+    _isTranscriptionStarter = false;
+    _hasUsedParticipantLanguage = false;
+    _isTranslationActive = false;
+  }
+
   @Deprecated(
     'Use handleCaptionTranscription instead. '
         'This method is scheduled for removal and should not be used.',
@@ -1219,9 +1307,10 @@ class RtcViewmodel extends ChangeNotifier {
         // Replace the existing transcription in the list with the finalized one
         _updateTranscriptionInList(particalTranscription!);
 
-        // Trigger translation if source and target languages differ
-        if (particalTranscription?.sourceLang !=
-            particalTranscription?.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            particalTranscription?.sourceLang !=
+                particalTranscription?.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -1239,8 +1328,9 @@ class RtcViewmodel extends ChangeNotifier {
         );
         addTranscription(newTranscription);
 
-        // Trigger translation if source and target languages differ
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        // Trigger translation if enabled and source/target languages differ
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -1375,7 +1465,7 @@ class RtcViewmodel extends ChangeNotifier {
       "text": transcriptionData.transcription,
     };
     networkRequestHandler(
-        apiCall: () => apiClient.translateText(body),
+        apiCall: () => apiClient.translateText(selfIdentity, body),
         onSuccess: (data) {
           _updateTranscriptionInList(transcriptionData.copyWith(
             translatedTranscription: data?.translatedText,
@@ -1394,7 +1484,7 @@ class RtcViewmodel extends ChangeNotifier {
       "meeting_uid": meetingDetails.meetingUid,
     };
     networkRequestHandler(
-      apiCall: () => apiClient.endMeeting(body),
+      apiCall: () => apiClient.endMeeting(selfIdentity, body),
       onSuccess: (_) => sendEvent(EndMeeting(reason: "roomDeleted")),
       onError: (message) => sendMessageToUI(message),
     );
@@ -1408,7 +1498,7 @@ class RtcViewmodel extends ChangeNotifier {
       "new_name": newName,
     };
     networkRequestHandler(
-        apiCall: () => apiClient.updateParticipantName(body),
+        apiCall: () => apiClient.updateParticipantName(selfIdentity, body),
         onError: (message) => sendMessageToUI(message));
   }
 
@@ -1433,7 +1523,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
     networkRequestHandler(
         apiCall: () => apiClient.meetingTimeExtend(
-            meetingDetails.authorizationToken, body),
+            meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (_) => sendAction(
             ActionModel(action: MeetingActions.extendMeetingEndTime)));
   }
@@ -1456,6 +1546,7 @@ class RtcViewmodel extends ChangeNotifier {
   void getWhiteboardData() {
     networkListRequestHandler(
         apiCall: () => apiClient.getWhiteBoardData(
+            selfIdentity,
             meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
         onSuccess: (data) {
           final whiteboard = data!.first;
@@ -1488,7 +1579,7 @@ class RtcViewmodel extends ChangeNotifier {
     _attendanceDebounceTimer = Timer(const Duration(seconds: 1), () {
       networkListRequestHandler(
           apiCall: () => apiClient
-              .getAttendanceListForParticipant(meetingDetails.meetingUid),
+              .getAttendanceListForParticipant(selfIdentity, meetingDetails.meetingUid),
           onSuccess: (data) {
             collectInactiveParticipant(data);
           });
@@ -1530,7 +1621,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-        apiCall: () => apiClient.updateRecordingConsent(body),
+        apiCall: () => apiClient.updateRecordingConsent(selfIdentity, body),
         onSuccess: (data) {
           if (data?.canStartRecording == true) {
             startRecording();
@@ -1573,7 +1664,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   Future<void> fetchAndStoreSessionUid() async {
     networkRequestHandler(
-      apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+      apiCall: () => apiClient.getSessionDetails(selfIdentity, meetingDetails.meetingUid),
       onSuccess: (data) async {
         if (data?.id != null) {
           final sessionUid = data!.id.toString();
@@ -1585,7 +1676,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void checkSessionStatus({bool asUser = false, Function? callBack}) {
     networkRequestHandler(
-        apiCall: () => apiClient.getSessionDetails(meetingDetails.meetingUid),
+        apiCall: () => apiClient.getSessionDetails(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           if (data != null) {
             sessionId = data.id.toString();
@@ -1623,7 +1714,7 @@ class RtcViewmodel extends ChangeNotifier {
       "attendance_id": Utils.getMetadataAttendanceId(metadata),
     };
     networkRequestHandler(
-        apiCall: () => apiClient.startRecordingConsent(body),
+        apiCall: () => apiClient.startRecordingConsent(selfIdentity, body),
         onSuccess: (_) {
           sendAction(ActionModel(
               action: MeetingActions.recordingConsentModal, value: true));
@@ -1637,6 +1728,7 @@ class RtcViewmodel extends ChangeNotifier {
   void getParticipantConsentList({VoidCallback? onLoaded}) {
     networkListRequestHandler(
         apiCall: () => apiClient.getParticipantConsentList(
+            selfIdentity,
             meetingDetails.meetingUid, getSessionId() ?? ""),
         onSuccess: (data) {
           if (data != null) {
@@ -2140,7 +2232,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getScreenShareConsent() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getScreenShareConsent(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getScreenShareConsent(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isScreenShareEnable = data?.screenShareConsent == true;
         },
@@ -2158,7 +2250,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-      apiCall: ()=> apiClient.updateScreenShareConsent(meetingDetails.authorizationToken, body),
+      apiCall: ()=> apiClient.updateScreenShareConsent(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
         isScreenShareEnable = data?.screenShareConsent == true;
         sendAction(ActionModel(action: MeetingActions.allowScreenShareForAll, value: _isScreenShareEnable));
@@ -2272,7 +2364,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getChatAttachmentConsent() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getChatAttachmentConsent(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getChatAttachmentConsent(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isChatAttachmentDownloadEnable = data?.chatAttachmentDownloadConsent == true;
         },
@@ -2290,7 +2382,7 @@ class RtcViewmodel extends ChangeNotifier {
     };
 
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateChatAttachmentConsent(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateChatAttachmentConsent(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isChatAttachmentDownloadEnable = data?.chatAttachmentDownloadConsent == true;
           sendAction(ActionModel(action: MeetingActions.canDownloadChatAttachment, value: _isChatAttachmentDownloadEnable));
@@ -2304,12 +2396,55 @@ class RtcViewmodel extends ChangeNotifier {
 
   //===============================[Webinar Control]===============================
 
+  /// Controls microphone permission state for the **local participant**.
+  ///
+  /// This is specifically used in **Workshop Mode**, where each participant's
+  /// media permissions (mic/video) are managed independently rather than globally.
+  ///
+  /// Even if system-level permission is granted, this flag can be used to
+  /// logically enable/disable mic access within the app UI or business logic.
+  bool _isMicPermissionGranted = false;
+
+  /// Returns whether the microphone is allowed for the **local participant**
+  /// in Workshop Mode.
+  bool get isMicPermissionGranted => _isMicPermissionGranted;
+
+  /// Updates microphone permission state for the local participant
+  /// and notifies listeners to refresh the UI accordingly.
+  ///
+  /// Note: This does not request OS-level permission. It only controls
+  /// app-level behavior.
+  set isMicPermissionGranted(bool value) {
+    _isMicPermissionGranted = value;
+    notifyListeners();
+  }
+
+  /// Controls camera permission state for the **local participant**.
+  ///
+  /// Used in **Workshop Mode** to handle participant-level video control.
+  /// This allows enabling/disabling video independent of system permissions.
+  bool _isVideoPermissionGranted = false;
+
+  /// Returns whether the camera is allowed for the **local participant**
+  /// in Workshop Mode.
+  bool get isVideoPermissionGranted => _isVideoPermissionGranted;
+
+  /// Updates camera permission state for the local participant
+  /// and notifies listeners to update UI.
+  ///
+  /// Note: This is an app-level control, not a system permission request.
+  set isVideoPermissionGranted(bool value) {
+    _isVideoPermissionGranted = value;
+    notifyListeners();
+  }
+
   void getAudioPermission() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getAudioPermission(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getAudioPermission(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
+          isMicPermissionGranted = Utils.isMicEnabled(room.localParticipant?.attributes);
         },
         onError: (message) {
           sendMessageToUI(message);
@@ -2325,7 +2460,7 @@ class RtcViewmodel extends ChangeNotifier {
       "permission_granted": value,
     };
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateAudioPermission(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateAudioPermission(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
@@ -2341,10 +2476,11 @@ class RtcViewmodel extends ChangeNotifier {
 
   void getVideoPermission() {
     networkRequestHandler(
-        apiCall: ()=> apiClient.getVideoPermission(meetingDetails.meetingUid),
+        apiCall: ()=> apiClient.getVideoPermission(selfIdentity, meetingDetails.meetingUid),
         onSuccess: (data) {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
+          isVideoPermissionGranted = Utils.isVideoEnabled(room.localParticipant?.attributes);
         },
         onError: (message) {
           sendMessageToUI(message);
@@ -2360,7 +2496,7 @@ class RtcViewmodel extends ChangeNotifier {
       "permission_granted": value,
     };
     networkRequestHandler(
-        apiCall: ()=> apiClient.updateVideoPermission(meetingDetails.authorizationToken, body),
+        apiCall: ()=> apiClient.updateVideoPermission(meetingDetails.authorizationToken, selfIdentity, body),
         onSuccess: (data) {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
@@ -2374,9 +2510,54 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  void updateAudioPermissionForParticipant(String participantIdentity, bool value) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "is_mic_enabled": value,
+    };
+
+    networkRequestHandler(
+        apiCall: ()=> apiClient.updateWorkshopMicPermission(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          if (data == null) return;
+          if (data.isUpdated == true) {
+            final isAllow = data.audioPermission == true;
+            sendPrivateAction(ActionModel(action: isAllow ? MeetingActions.allowMicPermission : MeetingActions.revokeMicPermission), participantIdentity);
+          }
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+        }
+    );
+  }
+
+  void updateVideoPermissionForParticipant(String participantIdentity, bool value) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "is_video_enabled": value,
+    };
+
+    networkRequestHandler(
+        apiCall: ()=> apiClient.updateWorkshopVideoPermission(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          if (data == null) return;
+          if (data.isUpdated == true) {
+            final isAllow = data.videoPermission == true;
+            sendPrivateAction(ActionModel(action: isAllow ? MeetingActions.allowVideoPermission : MeetingActions.revokeVideoPermission), participantIdentity);
+          }
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+        }
+    );
+  }
+
   //===============================[Live Caption]===============================
 
-  void handleCaptionTranscription(CaptionData data) {
+  @Deprecated("Use handleCaptionTranscription() instead")
+  void handleCaptionTranscriptionOld(CaptionData data) {
     final name = getParticipantNameByIdentity(data.participantIdentity);
 
     final isFinal = data.speechEventType == Constant.captionAgentFinalTranscript;
@@ -2397,8 +2578,9 @@ class RtcViewmodel extends ChangeNotifier {
 
         _updateTranscriptionInList(particalTranscription!);
 
-        if (particalTranscription!.sourceLang !=
-            particalTranscription!.targetLang) {
+        if (_isTranslationActive &&
+            particalTranscription!.sourceLang !=
+                particalTranscription!.targetLang) {
           translateText(particalTranscription!);
         }
       } else {
@@ -2417,7 +2599,8 @@ class RtcViewmodel extends ChangeNotifier {
 
         addTranscription(newTranscription);
 
-        if (newTranscription.sourceLang != newTranscription.targetLang) {
+        if (_isTranslationActive &&
+            newTranscription.sourceLang != newTranscription.targetLang) {
           translateText(newTranscription);
         }
       }
@@ -2459,21 +2642,127 @@ class RtcViewmodel extends ChangeNotifier {
       }
     }
   }
-
-  void registerCaption() {
+  @Deprecated("Use registerCaption() instead")
+  void registerCaptionOld() {
     room.registerTextStreamHandler(Constant.liveCaptionAgent, (TextStreamReader reader, String participantIdentity) async {
         final raw = await reader.readAll();
         try {
           final jsonData = jsonDecode(raw);
           final caption = CaptionData.fromJson(jsonData);
 
-          handleCaptionTranscription(caption);
+          handleCaptionTranscriptionOld(caption);
         } catch (e) {
           debugPrint("[ERROR] Failed to parse caption: $e");
         }
       },
     );
   }
+
+  void handleCaptionFromRaw(
+      String text,
+      bool isFinal,
+      String participantIdentity,
+      ) {
+    final name = getParticipantNameByIdentity(participantIdentity);
+
+    final sourceLang =
+        transcriptionLanguageData?.sourceLang ?? ""; // fallback if needed
+
+    final targetLang = translationLanguage?.code ??
+        transcriptionLanguageData?.sourceLang ??
+        sourceLang;
+
+    // -------------------- FINAL ---------------------
+    if (isFinal) {
+      if (particalTranscription != null) {
+        // Finalize existing partial
+        particalTranscription = particalTranscription!.copyWith(
+          name: name,
+          transcription: text,
+          isFinal: true,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        _updateTranscriptionInList(particalTranscription!);
+
+        if (_isTranslationActive && sourceLang != targetLang) {
+          translateText(particalTranscription!);
+        }
+      } else {
+        // No partial → create fresh final
+        final newTranscription = TranscriptionModel(
+          id: const Uuid().v4(),
+          name: name,
+          transcription: text,
+          timestamp: Utils.formatTimestampToTime(
+            DateTime.now().millisecondsSinceEpoch,
+          ),
+          isFinal: true,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        addTranscription(newTranscription);
+
+        if (_isTranslationActive && sourceLang != targetLang) {
+          translateText(newTranscription);
+        }
+      }
+
+      // Clear partial after final
+      particalTranscription = null;
+    }
+
+    // -------------------- PARTIAL ---------------------
+    else {
+      if (particalTranscription != null) {
+        // Update existing partial (live typing effect)
+        particalTranscription = particalTranscription!.copyWith(
+          name: name,
+          transcription: text,
+          isFinal: false,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        _updateTranscriptionInList(particalTranscription!);
+      } else {
+        // Create new partial
+        particalTranscription = TranscriptionModel(
+          id: const Uuid().v4(),
+          name: name,
+          transcription: text,
+          timestamp: Utils.formatTimestampToTime(
+            DateTime.now().millisecondsSinceEpoch,
+          ),
+          isFinal: false,
+          sourceLang: sourceLang,
+          targetLang: targetLang,
+        );
+
+        addTranscription(particalTranscription!);
+      }
+    }
+  }
+
+  void registerCaption() {
+    room.registerTextStreamHandler(
+      Constant.liveCaptionAgent,
+          (TextStreamReader reader, String participantIdentity) async {
+        final message = await reader.readAll();
+
+        final attributes = reader.info?.attributes;
+
+        if (attributes == null) return;
+
+        final isFinal = attributes["lk.transcription_final"] == "true";
+
+        handleCaptionFromRaw(message, isFinal, participantIdentity);
+      },
+    );
+  }
+
 
   void unregisterCaption() {
     room.unregisterTextStreamHandler(Constant.liveCaptionAgent);
@@ -2483,12 +2772,15 @@ class RtcViewmodel extends ChangeNotifier {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
     final sessionUid = Utils.getMetadataSessionUid(metadata);
+    final isCoHost = Utils.isCoHost(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
     if (sessionUid != null) {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+    storageHelper.setAttendanceRole(
+        isCoHost ? AttendanceRole.cohost : AttendanceRole.participant);
   }
 
   void requestChatHistory() {

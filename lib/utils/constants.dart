@@ -12,10 +12,13 @@ class Constant {
   static const String meetingUid = "MEETING_UID";
   static const String sessionUid = "SESSION_UID";
   static const String attendanceId = "ATTENDANCE_ID";
+  static const String attendanceRole = "ATTENDANCE_ROLE";
   static const String hostToken = "HOST_TOKEN";
   static const String guestUserName = "GUEST_USER_NAME";
 
-  static const String liveCaptionAgent = "dk.captions";
+  static const String liveCaptionAgentId = "captions-agent";
+  static const String liveCaptionAgentName = "Live Captions";
+  static const String liveCaptionAgent = "lk.transcription";
   static const String captionAgentFinalTranscript = "final_transcript";
   static const String captionAgentInterimTranscript = "interim_transcript";
 

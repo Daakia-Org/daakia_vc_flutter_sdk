@@ -343,6 +343,11 @@ class Utils {
     });
   }
 
+  @Deprecated(
+      'No longer in use. Replaced by getFormattedTranscriptToSave which handles both '
+          'caption and translated caption in a unified format. Kept for reference in case '
+          'separate original transcript formatting is needed again in the future.'
+  )
   static String getTranscriptFormattedToSave(
       List<TranscriptionModel> transcriptions) {
     StringBuffer contentBuffer = StringBuffer();
@@ -356,7 +361,11 @@ class Utils {
     }
     return contentBuffer.toString();
   }
-
+  @Deprecated(
+      'No longer in use. Replaced by getFormattedTranscriptToSave which handles both '
+          'caption and translated caption in a unified format. Kept for reference in case '
+          'separate translated transcript formatting is needed again in the future.'
+  )
   static String getTranslatedTranscriptFormattedToSave(
       List<TranscriptionModel> transcriptions) {
     StringBuffer contentBuffer = StringBuffer();
@@ -373,6 +382,32 @@ class Utils {
         contentBuffer.writeln();
       }
     }
+    return contentBuffer.toString();
+  }
+
+  static String getFormattedTranscriptToSave(
+      List<TranscriptionModel> transcriptions) {
+    final StringBuffer contentBuffer = StringBuffer();
+
+    for (var entry in transcriptions) {
+      if (!entry.isFinal) continue;
+
+      final String caption = entry.transcription.trim();
+
+      final String translatedCaption =
+      (entry.translatedTranscription != null &&
+          entry.translatedTranscription!.trim().isNotEmpty)
+          ? entry.translatedTranscription!.trim()
+          : caption;
+
+      contentBuffer.writeln('${entry.name} ${entry.timestamp}');
+      contentBuffer.writeln('Caption:');
+      contentBuffer.writeln(caption);
+      contentBuffer.writeln('Translated Caption:');
+      contentBuffer.writeln(translatedCaption);
+      contentBuffer.writeln(); // spacing between entries
+    }
+
     return contentBuffer.toString();
   }
 
@@ -490,6 +525,39 @@ class Utils {
 
   static ReplyMessage? getReplyDraft(RemoteActivityData chat, {String? name}) {
     return ReplyMessage(name: name ?? (chat.identity?.name ?? ""), message: chat.message ?? "", id: chat.id ?? "", identity: chat.userIdentity ?? "");
+  }
+
+  static bool isMicEnabled(Map<String, dynamic>? attributes) {
+    final value = attributes?['is_mic_enabled'];
+    return _toBool(value);
+  }
+
+  static bool isVideoEnabled(Map<String, dynamic>? attributes) {
+    final value = attributes?['is_video_enabled'];
+    return _toBool(value);
+  }
+
+  static bool _toBool(dynamic value) {
+    if (value == null) return false;
+
+    if (value is bool) return value;
+
+    if (value is String) {
+      switch (value.toLowerCase()) {
+        case 'true':
+        case '1':
+        case 'yes':
+          return true;
+        default:
+          return false;
+      }
+    }
+
+    if (value is num) {
+      return value != 0;
+    }
+
+    return false;
   }
 
 }

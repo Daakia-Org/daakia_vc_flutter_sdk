@@ -1,3 +1,4 @@
+import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -32,6 +33,17 @@ class StorageHelper {
 
   Future<void> setAttendanceId(String value) async => await saveData(Constant.attendanceId, value);
   Future<String?> getAttendanceId() async => await getData(Constant.attendanceId);
+
+  Future<void> setAttendanceRole(AttendanceRole value) async =>
+      await saveData(Constant.attendanceRole, value.name);
+  Future<AttendanceRole?> getAttendanceRole() async {
+    final value = await getData(Constant.attendanceRole);
+    if (value == null || value.isEmpty) return null;
+    for (final role in AttendanceRole.values) {
+      if (role.name == value) return role;
+    }
+    return null;
+  }
 
   Future<void> setHostToken(String? value) async => await saveData(Constant.hostToken, value ?? "");
   Future<String?> getHostToken() async => await getData(Constant.hostToken);
