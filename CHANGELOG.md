@@ -1,5 +1,41 @@
 # CHANGELOG
 
+## v4.4.1 – (2026-05)
+
+### 🐞 Bug Fixes
+- **Android 16 (targetSDK=36) Screen Share Crash**
+    - Fixed `SecurityException: Media projections require a foreground service of type ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION` on Android 16.
+    - Resolved race condition when rapidly stopping and restarting screen share on any Android version.
+    - Implemented synchronous foreground service type management via `DaakiaMeetingService`.
+
+- **Meeting Notifications & Background Service**
+    - Refactored Android meeting notification handling from `flutter_background` to native `DaakiaMeetingService`.
+    - Fixed notification lifecycle and foreground service type management on Android.
+    - Improved meeting service stability across Android versions (10+).
+
+- **Live Captions/Transcription**
+    - Fixed transcription screen lifecycle and language selection state management.
+    - Added snackbar notification when live captions are stopped.
+    - Improved language selection defaults and persistence.
+
+### 🎨 Improvements
+
+- **Screen Sharing (Android)**
+    - Replaced async `flutter_background` calls with synchronous `DaakiaMeetingService.startScreenShare()` / `stopScreenShare()`.
+    - No more race conditions on rapid screen share toggling.
+    - Cleaner separation of foreground service concerns (mediaPlayback vs mediaProjection).
+
+- **iOS Meeting Service**
+    - Added native `DaakiaMeetingService` with AVAudioSession management for iOS.
+    - Improved background audio handling during meetings.
+    - Better lifecycle management for audio playback on iOS.
+
+### 📱 Platform-Specific
+- **Android**: Added `FOREGROUND_SERVICE_MEDIA_PROJECTION` permission and dynamic foreground service type upgrades.
+- **iOS**: Implemented `DaakiaMeetingService` with proper AVAudioSession configuration for meeting audio continuity.
+
+---
+
 ## v4.4.0 – (2026-03)
 
 ### 🚀 New Features
