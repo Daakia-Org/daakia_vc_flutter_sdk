@@ -1503,7 +1503,7 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void configAutoRecording() {
-    if (isHost()) {
+    if (isHost() || isCoHost()) {
       if (meetingDetails.meetingBasicDetails?.meetingConfig != null) {
         var meetingConfig = meetingDetails.meetingBasicDetails?.meetingConfig!;
         if (meetingConfig?.recordingForceStopped != 1 &&
