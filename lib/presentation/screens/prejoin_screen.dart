@@ -383,6 +383,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       body["custom_metadata"] = widget.configuration?.metadata;
     }
     final cacheData = StorageHelper();
+    var isRejoiningAsCoHost = false;
     if (await cacheData.getMeetingUid() == widget.meetingId) {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
@@ -390,12 +391,18 @@ class _PreJoinState extends State<PreJoinScreen> {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
             hostToken = await cacheData.getHostToken() ?? "";
+            isRejoiningAsCoHost =
+                await cacheData.getAttendanceRole() == AttendanceRole.cohost;
           }
         }
       }
     }
 
-    final token = hostToken;
+    // Co-host rejoining: let the server determine the role from meeting_attendance_uid.
+    // The cached host token is kept in hostToken for in-session API calls but must
+    // not be sent as the join Authorization header — doing so causes the server to
+    // grant host-level access instead of co-host.
+    final token = isRejoiningAsCoHost ? "" : hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
