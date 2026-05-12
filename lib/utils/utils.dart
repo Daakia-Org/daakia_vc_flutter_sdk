@@ -216,10 +216,18 @@ class Utils {
     return text.replaceAll(_urlRegex, '').trim();
   }
 
+  // lookupMimeType works purely by extension but misses some JPEG variants.
+  static String? resolveMimeType(String url) {
+    final mime = lookupMimeType(url);
+    if (mime != null) return mime;
+    final ext = url.split('?').first.split('.').last.toLowerCase();
+    const extraMappings = {'jfif': 'image/jpeg'};
+    return extraMappings[ext];
+  }
+
   static bool isFileLink(String url) {
     if (!isUrl(url)) return false;
-    final mimeType = lookupMimeType(url);
-    return mimeType != null; // If MIME type exists → it's likely a file
+    return resolveMimeType(url) != null;
   }
 
   static bool isLink(String message) {

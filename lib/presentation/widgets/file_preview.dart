@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_chat_types/flutter_chat_types.dart' show PreviewData;
 import 'package:flutter_link_previewer/flutter_link_previewer.dart';
-import 'package:mime/mime.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -36,7 +35,7 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final mimeType = lookupMimeType(widget.fileUrl);
+    final mimeType = Utils.resolveMimeType(widget.fileUrl);
     final fileExtension = widget.fileUrl.split('.').last;
 
     TextStyle getTextStyle(Color textColor) {
