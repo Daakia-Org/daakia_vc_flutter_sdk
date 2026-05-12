@@ -1396,6 +1396,11 @@ class RtcViewmodel extends ChangeNotifier {
     return _identityToNameMap[identity] ?? "Unknown";
   }
 
+  String? getParticipantNameOrNull(String? identity) {
+    if (identity == null) return null;
+    return _identityToNameMap[identity];
+  }
+
   var _isRequestedForTranscription = false;
 
   void requestForTranscriptionState() {
