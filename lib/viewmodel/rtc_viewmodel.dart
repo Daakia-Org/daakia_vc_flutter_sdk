@@ -1396,6 +1396,11 @@ class RtcViewmodel extends ChangeNotifier {
     return _identityToNameMap[identity] ?? "Unknown";
   }
 
+  String? getParticipantNameOrNull(String? identity) {
+    if (identity == null) return null;
+    return _identityToNameMap[identity];
+  }
+
   var _isRequestedForTranscription = false;
 
   void requestForTranscriptionState() {
@@ -1503,7 +1508,7 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void configAutoRecording() {
-    if (isHost()) {
+    if (isHost() || isCoHost()) {
       if (meetingDetails.meetingBasicDetails?.meetingConfig != null) {
         var meetingConfig = meetingDetails.meetingBasicDetails?.meetingConfig!;
         if (meetingConfig?.recordingForceStopped != 1 &&
