@@ -49,11 +49,13 @@ class RoomPage extends StatefulWidget {
   final Room room;
   final EventsListener<RoomEvent> listener;
   final MeetingDetails meetingDetails;
+  final bool fastConnection;
 
   const RoomPage(
     this.room,
     this.listener,
     this.meetingDetails, {
+    this.fastConnection = false,
     super.key,
   });
 
@@ -66,10 +68,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   EventsListener<RoomEvent> get _listener => widget.listener;
 
-  bool get fastConnection => widget.room.engine.fastConnectOptions != null;
+  bool get fastConnection => widget.fastConnection;
   bool _flagStartedReplayKit = false;
-
-  bool _isInForeground = true;
 
   SimplePip? pip;
   bool _isInPipMode = false;
@@ -86,9 +86,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    setState(() {
-      _isInForeground = state == AppLifecycleState.resumed;
-    });
     if (state == AppLifecycleState.resumed) {
       // Re-ensure the meeting notification is visible. Covers the case where the
       // user granted POST_NOTIFICATIONS in system Settings while in the meeting.

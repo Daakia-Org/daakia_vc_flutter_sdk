@@ -772,7 +772,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         final navigator = Navigator.of(this.context);
         await navigator.push<void>(
           MaterialPageRoute(
-              builder: (_) => RoomPage(room, listener, meetingDetails)),
+              builder: (_) => RoomPage(room, listener, meetingDetails, fastConnection: true)),
         );
         if (mounted && navigator.canPop()) {
           navigator.pop();
