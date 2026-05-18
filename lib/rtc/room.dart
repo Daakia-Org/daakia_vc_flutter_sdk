@@ -99,7 +99,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     WakelockPlus.enable();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
@@ -1046,7 +1050,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     // Ensure the viewModel is accessed after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Check if the viewModel is ready
@@ -1090,13 +1098,23 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           navigatorKey: _innerNavigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
-          home: (_isInPipMode)
+          theme: Theme.of(context).copyWith(
+            scaffoldBackgroundColor: Colors.black,
+          ),
+          home: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+            ),
+            child: (_isInPipMode)
               ? PipScreen(
                   name: widget.room.localParticipant?.name,
                 )
               : Stack(
                   children: [
                     Scaffold(
+                      backgroundColor: Colors.black,
                       body: SafeArea(
                         child: Stack(children: [
                           Container(
@@ -1305,8 +1323,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       ),
                   ],
                 ),
-        ),
-      ),
+          ),        // closes AnnotatedRegion
+        ),          // closes MaterialApp
+      ),            // closes RtcProvider
     );
   }
 
