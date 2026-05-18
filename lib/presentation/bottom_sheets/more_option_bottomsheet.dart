@@ -151,10 +151,11 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
               // Participants
               buildOption(
                 context,
-                icon: Icons.people, // Replace with your participants icon
+                icon: Icons.people,
                 text: 'Participants',
+                isVisible: viewModel.isHost() || viewModel.isCoHost() || !viewModel.isParticipantDrawerHidden,
                 onTap: () {
-                  showParticipantBottomSheet();
+                  showParticipantBottomSheet(viewModel);
                 },
               ),
               buildOption(context,
@@ -179,15 +180,18 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
     );
   }
 
-  void showParticipantBottomSheet() {
+  void showParticipantBottomSheet(RtcViewmodel viewModel) {
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop(); // This will dismiss the BottomSheet
     }
+    viewModel.isParticipantPageOpen = true;
     Navigator.of(context).push(MaterialPageRoute<Null>(
         builder: (BuildContext context) {
           return const AllParticipantPage();
         },
-        fullscreenDialog: true));
+        fullscreenDialog: true)).then((_) {
+      viewModel.isParticipantPageOpen = false;
+    });
   }
 
   void showEmojiDialog(RtcViewmodel viewModel) {

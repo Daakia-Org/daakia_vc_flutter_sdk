@@ -163,6 +163,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       viewModel?.getAudioPermission();
       viewModel?.getVideoPermission();
+      viewModel?.getParticipantDrawerConsent();
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",
@@ -759,6 +760,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         showSnackBar(message: "Your video permission has been revoked");
         break;
 
+      case MeetingActions.hideParticipantDrawer:
+        final isHidden = remoteData.value == true;
+        viewModel?.isParticipantDrawerHidden = isHidden;
+        if (isHidden && viewModel?.isParticipantPageOpen == true) {
+          _innerNavigatorKey.currentState?.maybePop();
+        }
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
@@ -952,6 +961,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  final GlobalKey<NavigatorState> _innerNavigatorKey =
+      GlobalKey<NavigatorState>();
+
   late final WebViewController _webViewController;
   bool _webViewInitialized = false;
 
@@ -1028,6 +1040,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         room: widget.room,
         meetingDetails: widget.meetingDetails,
         child: MaterialApp(
+          navigatorKey: _innerNavigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
           home: (_isInPipMode)
