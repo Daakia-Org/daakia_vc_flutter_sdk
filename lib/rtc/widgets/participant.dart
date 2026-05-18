@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:collection/collection.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
@@ -246,7 +248,36 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                     ],
                   ),
                 ),
-              )
+              ),
+            if (widget.isSpeaker &&
+                isScreenShare &&
+                widget.participant is LocalParticipant)
+              Positioned.fill(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.45),
+                      child: const Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.screen_share_rounded,
+                              color: Colors.white, size: 48),
+                          SizedBox(height: 12),
+                          Text(
+                            'You are sharing your screen',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
           ],
         ),
       ),

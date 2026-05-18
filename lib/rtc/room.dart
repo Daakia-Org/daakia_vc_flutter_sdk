@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:ui';
 
 import 'package:animated_emoji/emoji_data.dart';
 import 'package:animated_emoji/emojis.g.dart';
@@ -260,13 +259,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void _resetZoom() {
     _zoomController.value = Matrix4.identity();
-  }
-
-  bool _isLocalScreenShareSpeaker() {
-    if (participantTracks.isEmpty) return false;
-    final track = participantTracks.first;
-    return track.type == ParticipantTrackType.kScreenShare &&
-        track.participant is LocalParticipant;
   }
 
   bool _speakerHasActiveVideo() {
@@ -1176,26 +1168,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                                       Icon(Icons.zoom_out, color: Colors.white, size: 16),
                                                                       SizedBox(width: 4),
                                                                       Text('Reset', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                          if (_isLocalScreenShareSpeaker())
-                                                            Positioned.fill(
-                                                              child: BackdropFilter(
-                                                                filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-                                                                child: Container(
-                                                                  color: Colors.black.withValues(alpha: 0.45),
-                                                                  child: const Column(
-                                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                                    children: [
-                                                                      Icon(Icons.screen_share_rounded, color: Colors.white, size: 48),
-                                                                      SizedBox(height: 12),
-                                                                      Text(
-                                                                        'You are sharing your screen',
-                                                                        style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w600),
-                                                                      ),
                                                                     ],
                                                                   ),
                                                                 ),
