@@ -109,9 +109,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         setState(() {
           _isInPipMode = false;
         });
-      })
-        ..setAutoPipMode(
-            aspectRatio: (1, 1), seamlessResize: true, autoEnter: true);
+      });
+      pip?.setAutoPipMode(
+          aspectRatio: (1, 1), seamlessResize: true, autoEnter: true)
+        .catchError((e) {
+          // setAutoPipMode requires Android S (API 31+); silently ignore on older versions
+          return false;
+        });
     }
     isCheckedWhileJoining = false;
     player = AudioPlayer();
