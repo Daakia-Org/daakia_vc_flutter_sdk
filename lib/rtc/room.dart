@@ -598,6 +598,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         } else {
           viewModel?.setCoHost(false);
           StorageHelper().setAttendanceRole(AttendanceRole.participant);
+          StorageHelper().setHostToken("");
           clearConsentList(viewModel);
           showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         }
@@ -606,6 +607,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
         StorageHelper().setAttendanceRole(AttendanceRole.participant);
+        StorageHelper().setHostToken("");
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
