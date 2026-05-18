@@ -4,6 +4,8 @@ PODS:
     - FlutterMacOS
   - connectivity_plus (0.0.1):
     - Flutter
+  - daakia_vc_flutter_sdk (4.4.0):
+    - Flutter
   - datadog_flutter_plugin (0.0.1):
     - DatadogCore (= 2.30.0)
     - DatadogCrashReporting (= 2.30.0)
@@ -61,15 +63,15 @@ PODS:
     - DKImagePickerController/PhotoGallery
     - Flutter
   - Flutter (1.0.0)
-  - flutter_webrtc (1.2.0):
+  - flutter_webrtc (1.4.0):
     - Flutter
-    - WebRTC-SDK (= 137.7151.04)
+    - WebRTC-SDK (= 144.7559.01)
   - fluttertoast (0.0.2):
     - Flutter
-  - livekit_client (2.5.4):
+  - livekit_client (2.7.0):
     - Flutter
     - flutter_webrtc
-    - WebRTC-SDK (= 137.7151.04)
+    - WebRTC-SDK (= 144.7559.01)
   - open_file_ios (0.0.1):
     - Flutter
   - package_info_plus (0.4.5):
@@ -94,7 +96,7 @@ PODS:
     - Flutter
   - wakelock_plus (0.0.1):
     - Flutter
-  - WebRTC-SDK (137.7151.04)
+  - WebRTC-SDK (144.7559.01)
   - webview_flutter_wkwebview (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -102,6 +104,7 @@ PODS:
 DEPENDENCIES:
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/darwin`)
   - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - daakia_vc_flutter_sdk (from `.symlinks/plugins/daakia_vc_flutter_sdk/ios`)
   - datadog_flutter_plugin (from `.symlinks/plugins/datadog_flutter_plugin/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - file_picker (from `.symlinks/plugins/file_picker/ios`)
@@ -140,6 +143,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/audioplayers_darwin/darwin"
   connectivity_plus:
     :path: ".symlinks/plugins/connectivity_plus/ios"
+  daakia_vc_flutter_sdk:
+    :path: ".symlinks/plugins/daakia_vc_flutter_sdk/ios"
   datadog_flutter_plugin:
     :path: ".symlinks/plugins/datadog_flutter_plugin/ios"
   device_info_plus:
@@ -176,6 +181,7 @@ EXTERNAL SOURCES:
 SPEC CHECKSUMS:
   audioplayers_darwin: 4f9ca89d92d3d21cec7ec580e78ca888e5fb68bd
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
+  daakia_vc_flutter_sdk: b8382a2729ab1d78593251a24a0954c40ab944b1
   datadog_flutter_plugin: 52c9877fbf3feae699a36868b32ea4f6ca979e37
   DatadogCore: 5c01290a3b60b27bf49aa958f2e339c738364d9e
   DatadogCrashReporting: 11286d48ab61baeb2b41b945c7c0d4ef23db317d
@@ -189,9 +195,9 @@ SPEC CHECKSUMS:
   DTTJailbreakDetection: 5e356c5badc17995f65a83ed9483f787a0057b71
   file_picker: a0560bc09d61de87f12d246fc47d2119e6ef37be
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_webrtc: c3e21fc0dcd9d8eb246ae4d5256fcbeb2f5ecd22
+  flutter_webrtc: ec91d94b484ad49cf191ef93413f64a40ffd3b4c
   fluttertoast: 2c67e14dce98bbdb200df9e1acf610d7a6264ea1
-  livekit_client: 53ca658779b78710fb458cccee28b53a13356c15
+  livekit_client: 9b9a08c5c78f694ac6a9e70c1c269704ba574b73
   open_file_ios: 5ff7526df64e4394b4fe207636b67a95e83078bb
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
@@ -203,9 +209,9 @@ SPEC CHECKSUMS:
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
   wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556
-  WebRTC-SDK: 40d4f5ba05cadff14e4db5614aec402a633f007e
+  WebRTC-SDK: ab9b5319e458c2bfebdc92b3600740da35d5630d
   webview_flutter_wkwebview: 1821ceac936eba6f7984d89a9f3bcb4dea99ebb2
 
-PODFILE CHECKSUM: a57f30d18f102dd3ce366b1d62a55ecbef2158e5
+PODFILE CHECKSUM: 1959d098c91d8a792531a723c4a9d7e9f6a01e38
 
 COCOAPODS: 1.16.2
