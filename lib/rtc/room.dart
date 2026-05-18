@@ -153,17 +153,25 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.fetchAndStoreSessionUid();
       }
 
-      if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
-        viewModel?.getScreenShareConsent();
-      }
-
-      if (viewModel?.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
-        viewModel?.getChatAttachmentConsent();
-      }
-
+      // Wave 1 – critical permissions needed before the UI is interactive
       viewModel?.getAudioPermission();
       viewModel?.getVideoPermission();
       viewModel?.getParticipantDrawerConsent();
+
+      // Wave 2 – secondary data, staggered to avoid flooding the server
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        var vm = _livekitProviderKey.currentState?.viewModel;
+        if (vm == null) return;
+
+        if (vm.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
+          vm.getScreenShareConsent();
+        }
+
+        if (vm.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
+          vm.getChatAttachmentConsent();
+        }
+      });
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",
