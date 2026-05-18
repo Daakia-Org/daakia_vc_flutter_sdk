@@ -102,6 +102,8 @@ class MeetingActions {
 
   static const String revokeVideoPermission = "revoke-video-permission";
 
+  static const String hideParticipantDrawer = "hide_participant_drawer";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -169,6 +171,7 @@ class MeetingActions {
     revokeMicPermission,
     revokeVideoPermission,
     stopLiveCaption,
+    hideParticipantDrawer,
     // ✅ Add new fields here
   };
 }
