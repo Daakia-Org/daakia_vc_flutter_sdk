@@ -58,6 +58,8 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isWebinarModeEnable = value;
                   viewModel.updateAudioPermission(value);
                   viewModel.updateVideoPermission(value);
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
                 },
                 isDividerRequired: false,
               ),
@@ -84,6 +86,20 @@ class WebinarControls extends StatelessWidget {
                 onChanged: (value) {
                   viewModel.isVideoModeEnable = value;
                   viewModel.updateVideoPermission(value);
+                },
+                isChild: true,
+                isDividerRequired: false,
+              ),
+
+              // Hide Participant List Switch
+              HostControlSwitch(
+                title: 'Hide Participant list',
+                subtitle:
+                    'If turned on, participants cannot open the participant list.',
+                value: viewModel.isParticipantDrawerHidden,
+                onChanged: (value) {
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
                 },
                 isChild: true,
                 isDividerRequired: false,

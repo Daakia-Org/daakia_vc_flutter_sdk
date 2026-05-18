@@ -2559,6 +2559,51 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  //===============================[Participant Drawer]===============================
+
+  bool _isParticipantDrawerHidden = false;
+
+  bool get isParticipantDrawerHidden => _isParticipantDrawerHidden;
+
+  set isParticipantDrawerHidden(bool value) {
+    _isParticipantDrawerHidden = value;
+    notifyListeners();
+  }
+
+  bool isParticipantPageOpen = false;
+
+  void getParticipantDrawerConsent() {
+    networkRequestHandler(
+        apiCall: () => apiClient.getParticipantDrawerConsent(selfIdentity, meetingDetails.meetingUid),
+        onSuccess: (data) {
+          isParticipantDrawerHidden = !(data?.isAllowed ?? true);
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+          isParticipantDrawerHidden = false;
+        }
+    );
+  }
+
+  void updateParticipantDrawerConsent(bool isHidden) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "is_allowed": !isHidden,
+    };
+
+    networkRequestHandler(
+        apiCall: () => apiClient.updateParticipantDrawerConsent(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          isParticipantDrawerHidden = !(data?.isAllowed ?? true);
+          sendAction(ActionModel(action: MeetingActions.hideParticipantDrawer, value: _isParticipantDrawerHidden));
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+          isParticipantDrawerHidden = !isParticipantDrawerHidden;
+        }
+    );
+  }
+
   //===============================[Live Caption]===============================
 
   @Deprecated("Use handleCaptionTranscription() instead")

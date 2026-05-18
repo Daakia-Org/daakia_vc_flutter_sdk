@@ -109,9 +109,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         setState(() {
           _isInPipMode = false;
         });
-      })
-        ..setAutoPipMode(
-            aspectRatio: (1, 1), seamlessResize: true, autoEnter: true);
+      });
+      pip?.setAutoPipMode(
+          aspectRatio: (1, 1), seamlessResize: true, autoEnter: true)
+        .catchError((e) {
+          // setAutoPipMode requires Android S (API 31+); silently ignore on older versions
+          return false;
+        });
     }
     isCheckedWhileJoining = false;
     player = AudioPlayer();
@@ -153,16 +157,25 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.fetchAndStoreSessionUid();
       }
 
-      if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
-        viewModel?.getScreenShareConsent();
-      }
-
-      if (viewModel?.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
-        viewModel?.getChatAttachmentConsent();
-      }
-
+      // Wave 1 – critical permissions needed before the UI is interactive
       viewModel?.getAudioPermission();
       viewModel?.getVideoPermission();
+      viewModel?.getParticipantDrawerConsent();
+
+      // Wave 2 – secondary data, staggered to avoid flooding the server
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (!mounted) return;
+        var vm = _livekitProviderKey.currentState?.viewModel;
+        if (vm == null) return;
+
+        if (vm.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
+          vm.getScreenShareConsent();
+        }
+
+        if (vm.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
+          vm.getChatAttachmentConsent();
+        }
+      });
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",
@@ -759,6 +772,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         showSnackBar(message: "Your video permission has been revoked");
         break;
 
+      case MeetingActions.hideParticipantDrawer:
+        final isHidden = remoteData.value == true;
+        viewModel?.isParticipantDrawerHidden = isHidden;
+        if (isHidden && viewModel?.isParticipantPageOpen == true) {
+          _innerNavigatorKey.currentState?.maybePop();
+        }
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
@@ -952,6 +973,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
+  final GlobalKey<NavigatorState> _innerNavigatorKey =
+      GlobalKey<NavigatorState>();
+
   late final WebViewController _webViewController;
   bool _webViewInitialized = false;
 
@@ -1028,6 +1052,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         room: widget.room,
         meetingDetails: widget.meetingDetails,
         child: MaterialApp(
+          navigatorKey: _innerNavigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
           home: (_isInPipMode)

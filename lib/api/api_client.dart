@@ -10,6 +10,7 @@ import 'package:daakia_vc_flutter_sdk/model/screen_share_consent_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/session_details_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/translation_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/webinar_permission_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/participant_drawer_consent_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/workshop_permission_model.dart';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
@@ -286,6 +287,19 @@ abstract class RestClient {
 
   @PUT("rtc/meeting/update/participantVideoPermission")
   Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopVideoPermission(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @GET("rtc/meeting/get/participantDrawer")
+  Future<BaseResponse<ParticipantDrawerConsentModel>> getParticipantDrawerConsent(
+    @Header("x-self-identity") String selfIdentity,
+    @Query("meeting_uid") String meetingUid,
+  );
+
+  @PUT("rtc/meeting/allow/participantDrawer")
+  Future<BaseResponse<ParticipantDrawerConsentModel>> updateParticipantDrawerConsent(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
