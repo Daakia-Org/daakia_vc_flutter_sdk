@@ -575,33 +575,25 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.makeCoHost:
-        if (Utils.isCoHost(viewModel?.room.localParticipant?.metadata)) {
-          viewModel?.setCoHost(true);
-          viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
-          var metadata = viewModel?.room.localParticipant?.metadata;
-          final storageHelper = StorageHelper();
-          storageHelper
-              .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
+        viewModel?.setCoHost(true);
+        viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
+        var metadata = viewModel?.room.localParticipant?.metadata;
+        final storageHelper = StorageHelper();
+        storageHelper
+            .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
 
-          final sessionUid = Utils.getMetadataSessionUid(metadata);
+        final sessionUid = Utils.getMetadataSessionUid(metadata);
 
-          if (sessionUid != null) {
-            storageHelper.setSessionUid(sessionUid);
-          }
-
-          storageHelper
-              .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
-          storageHelper.setAttendanceRole(AttendanceRole.cohost);
-          storageHelper.setHostToken(remoteData.token ?? "");
-          viewModel?.getAttendanceListForParticipant();
-          showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
-        } else {
-          viewModel?.setCoHost(false);
-          StorageHelper().setAttendanceRole(AttendanceRole.participant);
-          StorageHelper().setHostToken("");
-          clearConsentList(viewModel);
-          showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
+        if (sessionUid != null) {
+          storageHelper.setSessionUid(sessionUid);
         }
+
+        storageHelper
+            .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
+        storageHelper.setAttendanceRole(AttendanceRole.cohost);
+        storageHelper.setHostToken(remoteData.token ?? "");
+        viewModel?.getAttendanceListForParticipant();
+        showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         break;
 
       case MeetingActions.removeCoHost:
