@@ -58,6 +58,8 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isWebinarModeEnable = value;
                   viewModel.updateAudioPermission(value);
                   viewModel.updateVideoPermission(value);
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
                 },
                 isDividerRequired: false,
               ),
