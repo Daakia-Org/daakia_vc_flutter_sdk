@@ -117,6 +117,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           return false;
         });
     }
+    _zoomController = TransformationController();
+    _zoomController.addListener(_onZoomChanged);
     isCheckedWhileJoining = false;
     player = AudioPlayer();
     // add callback for a `RoomEvent` as opposed to a `ParticipantEvent`
@@ -210,6 +212,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   bool _isReconnecting = false;
   bool _isConnected = false;
 
+  late final TransformationController _zoomController;
+  double _zoomScale = 1.0;
+
   void onReconnectStart() {
     setState(() {
       _isReconnecting = true;
@@ -241,8 +246,30 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
   }
 
+  void _onZoomChanged() {
+    final scale = _zoomController.value.getMaxScaleOnAxis();
+    if ((scale - _zoomScale).abs() > 0.01) {
+      setState(() => _zoomScale = scale);
+    }
+  }
+
+  void _resetZoom() {
+    _zoomController.value = Matrix4.identity();
+  }
+
+  bool _speakerHasActiveVideo() {
+    if (participantTracks.isEmpty) return false;
+    final track = participantTracks.first;
+    if (track.type == ParticipantTrackType.kScreenShare) return true;
+    return track.participant.videoTrackPublications
+        .where((p) => !p.isScreenShare)
+        .any((p) => p.track != null && !p.muted);
+  }
+
   @override
   void dispose() {
+    _zoomController.removeListener(_onZoomChanged);
+    _zoomController.dispose();
     super.dispose();
     WidgetsBinding.instance.removeObserver(this);
     var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -1083,13 +1110,53 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                         _webViewController,
                                                   )
                                                 : participantTracks.isNotEmpty
-                                                    ? ParticipantWidget
-                                                        .widgetFor(
-                                                            participantTracks
-                                                                .first,
-                                                            showStatsLayer:
-                                                                true,
-                                                            isSpeaker: true)
+                                                    ? Stack(
+                                                        children: [
+                                                          _speakerHasActiveVideo()
+                                                              ? GestureDetector(
+                                                                  onDoubleTap: _resetZoom,
+                                                                  child: InteractiveViewer(
+                                                                    transformationController: _zoomController,
+                                                                    minScale: 1.0,
+                                                                    maxScale: 4.0,
+                                                                    clipBehavior: Clip.hardEdge,
+                                                                    child: ParticipantWidget.widgetFor(
+                                                                      participantTracks.first,
+                                                                      showStatsLayer: true,
+                                                                      isSpeaker: true,
+                                                                    ),
+                                                                  ),
+                                                                )
+                                                              : ParticipantWidget.widgetFor(
+                                                                  participantTracks.first,
+                                                                  showStatsLayer: true,
+                                                                  isSpeaker: true,
+                                                                ),
+                                                          if (_speakerHasActiveVideo() && _zoomScale > 1.05)
+                                                            Positioned(
+                                                              top: 8,
+                                                              right: 8,
+                                                              child: GestureDetector(
+                                                                onTap: _resetZoom,
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.black.withValues(alpha: 0.55),
+                                                                    borderRadius: BorderRadius.circular(20),
+                                                                  ),
+                                                                  child: const Row(
+                                                                    mainAxisSize: MainAxisSize.min,
+                                                                    children: [
+                                                                      Icon(Icons.zoom_out, color: Colors.white, size: 16),
+                                                                      SizedBox(width: 4),
+                                                                      Text('Reset', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                        ],
+                                                      )
                                                     : Container(),
                                           ),
 
