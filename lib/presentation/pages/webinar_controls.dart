@@ -89,6 +89,20 @@ class WebinarControls extends StatelessWidget {
                 isDividerRequired: false,
               ),
 
+              // Hide Participant List Switch
+              HostControlSwitch(
+                title: 'Hide Participant list',
+                subtitle:
+                    'If turned on, participants cannot open the participant list.',
+                value: viewModel.isParticipantDrawerHidden,
+                onChanged: (value) {
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
+                },
+                isChild: true,
+                isDividerRequired: false,
+              ),
+
               const Divider(color: Colors.white),
 
               // Chat Attachment Download
