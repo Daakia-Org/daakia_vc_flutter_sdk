@@ -383,26 +383,28 @@ class _PreJoinState extends State<PreJoinScreen> {
       body["custom_metadata"] = widget.configuration?.metadata;
     }
     final cacheData = StorageHelper();
-    var isRejoiningAsCoHost = false;
+    var tokenFromCache = false;
     if (await cacheData.getMeetingUid() == widget.meetingId) {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
         if (await cacheData.getAttendanceId() != "") {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
-            hostToken = await cacheData.getHostToken() ?? "";
-            isRejoiningAsCoHost =
-                await cacheData.getAttendanceRole() == AttendanceRole.cohost;
+            final cachedToken = await cacheData.getHostToken() ?? "";
+            if (cachedToken.isNotEmpty) {
+              hostToken = cachedToken;
+              tokenFromCache = true;
+            }
           }
         }
       }
     }
 
-    // Co-host rejoining: let the server determine the role from meeting_attendance_uid.
-    // The cached host token is kept in hostToken for in-session API calls but must
-    // not be sent as the join Authorization header — doing so causes the server to
-    // grant host-level access instead of co-host.
-    final token = isRejoiningAsCoHost ? "" : hostToken;
+    // Never forward a cached token to the join API — its role claim may be stale
+    // (e.g. saved when cohost but user was later demoted). Send meeting_attendance_uid
+    // instead and let the server determine the current role. The token is kept in
+    // hostToken for in-session API calls that do require it.
+    final token = tokenFromCache ? "" : hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),

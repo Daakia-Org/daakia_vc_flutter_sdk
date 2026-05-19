@@ -7,7 +7,9 @@ import '../utils/datadog_logger_helper.dart';
 import '../utils/utils.dart';
 import 'api_client.dart';
 
-final apiClient = RestClient(setDio());
+RestClient? _apiClientInstance;
+
+RestClient get apiClient => _apiClientInstance ??= RestClient(setDio());
 
 Dio setDio() {
   final dio = Dio();

@@ -8,6 +8,34 @@ import 'package:flutter/widgets.dart';
 
 import 'model/daakia_meeting_configuration.dart';
 import 'model/meeting_details_model.dart';
+import 'utils/constants.dart';
+
+/// Optional SDK-level configuration. Call [DaakiaSdk.initialize] once in your
+/// app's startup (e.g. before [runApp]) to override default URLs.
+///
+/// ```dart
+/// DaakiaSdk.initialize(
+///   baseUrl: '<BASE_URL>',
+///   whiteboardDomain: '<WHITEBOARD_URL>',
+/// );
+/// ```
+///
+/// Omitting a parameter keeps the production default.
+class DaakiaSdk {
+  DaakiaSdk._();
+
+  static void initialize({
+    String? baseUrl,
+    String? whiteboardDomain,
+  }) {
+    if (baseUrl != null) {
+      Constant.baseUrl = baseUrl;
+    }
+    if (whiteboardDomain != null) {
+      Constant.whiteboardDomain = whiteboardDomain;
+    }
+  }
+}
 
 class DaakiaVideoConferenceWidget extends StatefulWidget {
   /// Creates a new instance of the [DaakiaVideoConferenceWidget].

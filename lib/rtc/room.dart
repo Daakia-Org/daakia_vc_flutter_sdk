@@ -98,7 +98,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     WakelockPlus.enable();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
@@ -117,6 +121,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           return false;
         });
     }
+    _zoomController = TransformationController();
+    _zoomController.addListener(_onZoomChanged);
     isCheckedWhileJoining = false;
     player = AudioPlayer();
     // add callback for a `RoomEvent` as opposed to a `ParticipantEvent`
@@ -210,6 +216,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   bool _isReconnecting = false;
   bool _isConnected = false;
 
+  late final TransformationController _zoomController;
+  double _zoomScale = 1.0;
+
   void onReconnectStart() {
     setState(() {
       _isReconnecting = true;
@@ -241,8 +250,30 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
   }
 
+  void _onZoomChanged() {
+    final scale = _zoomController.value.getMaxScaleOnAxis();
+    if ((scale - _zoomScale).abs() > 0.01) {
+      setState(() => _zoomScale = scale);
+    }
+  }
+
+  void _resetZoom() {
+    _zoomController.value = Matrix4.identity();
+  }
+
+  bool _speakerHasActiveVideo() {
+    if (participantTracks.isEmpty) return false;
+    final track = participantTracks.first;
+    if (track.type == ParticipantTrackType.kScreenShare) return true;
+    return track.participant.videoTrackPublications
+        .where((p) => !p.isScreenShare)
+        .any((p) => p.track != null && !p.muted);
+  }
+
   @override
   void dispose() {
+    _zoomController.removeListener(_onZoomChanged);
+    _zoomController.dispose();
     super.dispose();
     WidgetsBinding.instance.removeObserver(this);
     var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -544,37 +575,31 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.makeCoHost:
-        if (Utils.isCoHost(viewModel?.room.localParticipant?.metadata)) {
-          viewModel?.setCoHost(true);
-          viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
-          var metadata = viewModel?.room.localParticipant?.metadata;
-          final storageHelper = StorageHelper();
-          storageHelper
-              .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
+        viewModel?.setCoHost(true);
+        viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
+        var metadata = viewModel?.room.localParticipant?.metadata;
+        final storageHelper = StorageHelper();
+        storageHelper
+            .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
 
-          final sessionUid = Utils.getMetadataSessionUid(metadata);
+        final sessionUid = Utils.getMetadataSessionUid(metadata);
 
-          if (sessionUid != null) {
-            storageHelper.setSessionUid(sessionUid);
-          }
-
-          storageHelper
-              .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
-          storageHelper.setAttendanceRole(AttendanceRole.cohost);
-          storageHelper.setHostToken(remoteData.token ?? "");
-          viewModel?.getAttendanceListForParticipant();
-          showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
-        } else {
-          viewModel?.setCoHost(false);
-          StorageHelper().setAttendanceRole(AttendanceRole.participant);
-          clearConsentList(viewModel);
-          showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
+        if (sessionUid != null) {
+          storageHelper.setSessionUid(sessionUid);
         }
+
+        storageHelper
+            .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
+        storageHelper.setAttendanceRole(AttendanceRole.cohost);
+        storageHelper.setHostToken(remoteData.token ?? "");
+        viewModel?.getAttendanceListForParticipant();
+        showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         break;
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
         StorageHelper().setAttendanceRole(AttendanceRole.participant);
+        StorageHelper().setHostToken("");
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
@@ -1011,7 +1036,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     // Ensure the viewModel is accessed after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Check if the viewModel is ready
@@ -1055,13 +1084,23 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           navigatorKey: _innerNavigatorKey,
           scaffoldMessengerKey: scaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
-          home: (_isInPipMode)
+          theme: Theme.of(context).copyWith(
+            scaffoldBackgroundColor: Colors.black,
+          ),
+          home: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+            ),
+            child: (_isInPipMode)
               ? PipScreen(
                   name: widget.room.localParticipant?.name,
                 )
               : Stack(
                   children: [
                     Scaffold(
+                      backgroundColor: Colors.black,
                       body: SafeArea(
                         child: Stack(children: [
                           Container(
@@ -1083,13 +1122,53 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                         _webViewController,
                                                   )
                                                 : participantTracks.isNotEmpty
-                                                    ? ParticipantWidget
-                                                        .widgetFor(
-                                                            participantTracks
-                                                                .first,
-                                                            showStatsLayer:
-                                                                true,
-                                                            isSpeaker: true)
+                                                    ? Stack(
+                                                        children: [
+                                                          _speakerHasActiveVideo()
+                                                              ? GestureDetector(
+                                                                  onDoubleTap: _resetZoom,
+                                                                  child: InteractiveViewer(
+                                                                    transformationController: _zoomController,
+                                                                    minScale: 1.0,
+                                                                    maxScale: 4.0,
+                                                                    clipBehavior: Clip.hardEdge,
+                                                                    child: ParticipantWidget.widgetFor(
+                                                                      participantTracks.first,
+                                                                      showStatsLayer: true,
+                                                                      isSpeaker: true,
+                                                                    ),
+                                                                  ),
+                                                                )
+                                                              : ParticipantWidget.widgetFor(
+                                                                  participantTracks.first,
+                                                                  showStatsLayer: true,
+                                                                  isSpeaker: true,
+                                                                ),
+                                                          if (_speakerHasActiveVideo() && _zoomScale > 1.05)
+                                                            Positioned(
+                                                              top: 8,
+                                                              right: 8,
+                                                              child: GestureDetector(
+                                                                onTap: _resetZoom,
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.black.withValues(alpha: 0.55),
+                                                                    borderRadius: BorderRadius.circular(20),
+                                                                  ),
+                                                                  child: const Row(
+                                                                    mainAxisSize: MainAxisSize.min,
+                                                                    children: [
+                                                                      Icon(Icons.zoom_out, color: Colors.white, size: 16),
+                                                                      SizedBox(width: 4),
+                                                                      Text('Reset', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                        ],
+                                                      )
                                                     : Container(),
                                           ),
 
@@ -1210,8 +1289,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       ),
                   ],
                 ),
-        ),
-      ),
+          ),        // closes AnnotatedRegion
+        ),          // closes MaterialApp
+      ),            // closes RtcProvider
     );
   }
 
