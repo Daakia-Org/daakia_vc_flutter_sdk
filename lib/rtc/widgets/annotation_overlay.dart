@@ -73,6 +73,7 @@ class _AnnotationOverlayState extends State<AnnotationOverlay> {
   /// Its onResize fires at the exact same instant as VideoTrackRenderer's
   /// internal renderer — when the native layer delivers the first video frame.
   void _initDimRenderer() {
+    if (_dimRenderer != null) return;
     final mediaStream = widget.publication.track?.mediaStream;
     if (mediaStream == null) return;
     final renderer = rtc.RTCVideoRenderer();
@@ -116,6 +117,10 @@ class _AnnotationOverlayState extends State<AnnotationOverlay> {
     final prev = _videoSize;
     _readDimensions();
     if (_videoSize != prev && mounted) setState(() {});
+    // Track may have been null at initState (not yet subscribed). Retry both
+    // setups whenever the participant notifies — they guard against double-init.
+    if (_trackListener == null) _setupStatsListener();
+    if (_dimRenderer == null) _initDimRenderer();
   }
 
   /// Reads video dimensions from the publication meta-data.
@@ -140,6 +145,7 @@ class _AnnotationOverlayState extends State<AnnotationOverlay> {
   /// Secondary listener: stats events fire once video frames are flowing and
   /// give us the actual decoded frame size (most accurate for remote tracks).
   void _setupStatsListener() {
+    if (_trackListener != null) return;
     final track = widget.publication.track;
     if (track == null) return;
     _trackListener = track.createListener();
