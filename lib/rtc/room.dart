@@ -41,6 +41,7 @@ import '../model/remote_activity_data.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
 import '../utils/consent_status_enum.dart';
+import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 import '../utils/utils.dart';
 import 'meeting_manager.dart';
@@ -503,19 +504,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     });
 
-  static const _annotationActions = {
-    'annotation_stroke',
-    'annotation_remove',
-    'annotation_clear',
-    'annotation_snapshot',
-    'annotation_snapshot_request',
-  };
-
   void _handleDataChannel(DataReceivedEvent event) {
     // Intercept annotation messages before MeetingActions validation
     try {
       final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
-      if (_annotationActions.contains(json['action'])) {
+      if (AnnotationActions.all.contains(json['action'])) {
         _handleAnnotationData(json, event.participant);
         return;
       }
@@ -538,12 +531,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
     final localIdentity = widget.room.localParticipant?.identity ?? '';
 
-    // Ignore echo from self, except snapshot_request (sharer must respond to own unicast)
+    // Ignore echo from self, except snapshotRequest (sharer must respond to own unicast)
     if (participant?.identity == localIdentity &&
-        action != 'annotation_snapshot_request') return;
+        action != AnnotationActions.snapshotRequest) return;
 
     switch (action) {
-      case 'annotation_stroke':
+      case AnnotationActions.stroke:
         final raw = data['stroke'] as Map<String, dynamic>?;
         if (raw == null) return;
         final stroke = AnnotationStroke.fromJson({
@@ -552,20 +545,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         });
         viewModel.addAnnotationStroke(sharerIdentity, stroke);
 
-      case 'annotation_remove':
+      case AnnotationActions.remove:
         final ids = List<String>.from(data['ids'] ?? []);
         viewModel.removeAnnotationStrokes(sharerIdentity, ids);
 
-      case 'annotation_clear':
+      case AnnotationActions.clear:
         viewModel.clearAnnotationStrokes(sharerIdentity);
 
-      case 'annotation_snapshot':
+      case AnnotationActions.snapshot:
         final strokes = (data['strokes'] as List? ?? [])
             .map((s) => AnnotationStroke.fromJson(s as Map<String, dynamic>))
             .toList();
         viewModel.replaceAnnotationStrokes(sharerIdentity, strokes);
 
-      case 'annotation_snapshot_request':
+      case AnnotationActions.snapshotRequest:
         final requesterIdentity =
             (data['requesterIdentity'] as String?) ?? participant?.identity ?? '';
         if (localIdentity == sharerIdentity &&
