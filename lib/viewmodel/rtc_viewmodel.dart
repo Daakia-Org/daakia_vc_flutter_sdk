@@ -22,6 +22,7 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:uuid/uuid.dart';
 
+import '../model/annotation_stroke.dart';
 import '../enum/chat_type_enum.dart';
 import '../enum/attendance_role_enum.dart';
 import '../model/action_model.dart';
@@ -2889,6 +2890,133 @@ class RtcViewmodel extends ChangeNotifier {
     } else {
       sendPrivateAction(ActionModel(action: MeetingActions.lowerHand), identity);
     }
+  }
+
+  // ─── Annotation state ────────────────────────────────────────────────────
+
+  final Map<String, List<AnnotationStroke>> _strokesBySharer = {};
+  String? _activeAnnotationSharerIdentity;
+  bool _isAnnotationActive = false;
+  String _annotationTool = 'pen';
+  String _annotationColor = '#FF0000';
+  double _annotationWidth = 4.0;
+  final Set<String> _requestedAnnotationSnapshotKeys = {};
+
+  bool get isAnnotationActive => _isAnnotationActive;
+  String? get activeAnnotationSharerIdentity => _activeAnnotationSharerIdentity;
+  String get annotationTool => _annotationTool;
+  String get annotationColor => _annotationColor;
+  double get annotationWidth => _annotationWidth;
+
+  List<AnnotationStroke> getAnnotationStrokes(String sharerIdentity) =>
+      List.unmodifiable(_strokesBySharer[sharerIdentity] ?? const []);
+
+  bool hasRequestedAnnotationSnapshot(String key) =>
+      _requestedAnnotationSnapshotKeys.contains(key);
+
+  void markAnnotationSnapshotRequested(String key) =>
+      _requestedAnnotationSnapshotKeys.add(key);
+
+  void setAnnotationActive(bool active, {String? sharerIdentity}) {
+    _isAnnotationActive = active;
+    if (active && sharerIdentity != null) {
+      _activeAnnotationSharerIdentity = sharerIdentity;
+    } else if (!active) {
+      _activeAnnotationSharerIdentity = null;
+    }
+    notifyListeners();
+  }
+
+  void setAnnotationTool(String tool) {
+    _annotationTool = tool;
+    notifyListeners();
+  }
+
+  void setAnnotationColor(String color) {
+    _annotationColor = color;
+    notifyListeners();
+  }
+
+  void setAnnotationWidth(double width) {
+    _annotationWidth = width;
+    notifyListeners();
+  }
+
+  void addAnnotationStroke(String sharerIdentity, AnnotationStroke stroke) {
+    final list = _strokesBySharer.putIfAbsent(sharerIdentity, () => []);
+    if (list.any((s) => s.id == stroke.id)) return; // deduplicate
+    list.add(stroke);
+    notifyListeners();
+  }
+
+  void removeAnnotationStrokes(String sharerIdentity, List<String> ids) {
+    _strokesBySharer[sharerIdentity]?.removeWhere((s) => ids.contains(s.id));
+    notifyListeners();
+  }
+
+  void clearAnnotationStrokes(String sharerIdentity) {
+    _strokesBySharer[sharerIdentity]?.clear();
+    notifyListeners();
+  }
+
+  void replaceAnnotationStrokes(
+      String sharerIdentity, List<AnnotationStroke> strokes) {
+    _strokesBySharer[sharerIdentity] = List.from(strokes);
+    notifyListeners();
+  }
+
+  void resetAnnotationSharer(String sharerIdentity) {
+    _strokesBySharer.remove(sharerIdentity);
+    _requestedAnnotationSnapshotKeys
+        .removeWhere((k) => k.startsWith('$sharerIdentity:'));
+    if (_activeAnnotationSharerIdentity == sharerIdentity) {
+      _activeAnnotationSharerIdentity = null;
+      _isAnnotationActive = false;
+    }
+    notifyListeners();
+  }
+
+  /// Removes and returns the last stroke drawn by [localIdentity] for undo.
+  AnnotationStroke? undoLastAnnotationStroke(
+      String sharerIdentity, String localIdentity) {
+    final list = _strokesBySharer[sharerIdentity];
+    if (list == null) return null;
+    final idx = list.lastIndexWhere((s) => s.fromIdentity == localIdentity);
+    if (idx == -1) return null;
+    final stroke = list[idx];
+    list.removeAt(idx);
+    notifyListeners();
+    return stroke;
+  }
+
+  Future<void> publishAnnotationData(
+    Room room,
+    Map<String, dynamic> payload, {
+    List<String>? destinationIdentities,
+  }) async {
+    final encoded = utf8.encode(jsonEncode(payload));
+    await room.localParticipant?.publishData(
+      Uint8List.fromList(encoded),
+      reliable: true,
+      destinationIdentities: destinationIdentities,
+    );
+  }
+
+  Future<void> publishAnnotationSnapshot(
+    Room room,
+    String sharerIdentity,
+    List<String> destinationIdentities,
+  ) async {
+    final strokes = _strokesBySharer[sharerIdentity] ?? [];
+    await publishAnnotationData(
+      room,
+      {
+        'action': 'annotation_snapshot',
+        'sharerIdentity': sharerIdentity,
+        'strokes': strokes.map((s) => s.toJson()).toList(),
+      },
+      destinationIdentities: destinationIdentities,
+    );
   }
 
 }

@@ -35,6 +35,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
@@ -463,6 +464,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       final localParticipant = widget.room.localParticipant;
       if (localParticipant?.isScreenShareEnabled() == true) {
+        // Reset any prior annotation state for the local sharer
+        viewModel?.resetAnnotationSharer(localParticipant!.identity);
         viewModel?.sendAction(ActionModel(
             action: MeetingActions.screenShareStarted,
             timeStamp: DateTime.now().microsecondsSinceEpoch));
@@ -470,6 +473,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _sortParticipants();
     })
     ..on<LocalTrackUnpublishedEvent>((track){
+      if (track.publication.source == TrackSource.screenShareVideo) {
+        final viewModel = _livekitProviderKey.currentState?.viewModel;
+        final localId = widget.room.localParticipant?.identity;
+        if (localId != null) viewModel?.resetAnnotationSharer(localId);
+      }
       _sortParticipants();
     })
     ..on<TrackSubscribedEvent>((_) => _sortParticipants())
@@ -495,10 +503,78 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     });
 
+  static const _annotationActions = {
+    'annotation_stroke',
+    'annotation_remove',
+    'annotation_clear',
+    'annotation_snapshot',
+    'annotation_snapshot_request',
+  };
+
   void _handleDataChannel(DataReceivedEvent event) {
+    // Intercept annotation messages before MeetingActions validation
+    try {
+      final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
+      if (_annotationActions.contains(json['action'])) {
+        _handleAnnotationData(json, event.participant);
+        return;
+      }
+    } catch (_) {}
+
     var eventData0 = parseJsonData(event.data);
     var eventData = eventData0.copyWith(identity: event.participant);
     _checkReceivedDataType(eventData);
+  }
+
+  void _handleAnnotationData(
+      Map<String, dynamic> data, RemoteParticipant? participant) {
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    if (viewModel == null) return;
+
+    final action = data['action'] as String;
+    final sharerIdentity =
+        (data['sharerIdentity'] as String?) ?? participant?.identity ?? '';
+    if (sharerIdentity.isEmpty) return;
+
+    final localIdentity = widget.room.localParticipant?.identity ?? '';
+
+    // Ignore echo from self, except snapshot_request (sharer must respond to own unicast)
+    if (participant?.identity == localIdentity &&
+        action != 'annotation_snapshot_request') return;
+
+    switch (action) {
+      case 'annotation_stroke':
+        final raw = data['stroke'] as Map<String, dynamic>?;
+        if (raw == null) return;
+        final stroke = AnnotationStroke.fromJson({
+          ...raw,
+          'fromIdentity': raw['fromIdentity'] ?? participant?.identity ?? '',
+        });
+        viewModel.addAnnotationStroke(sharerIdentity, stroke);
+
+      case 'annotation_remove':
+        final ids = List<String>.from(data['ids'] ?? []);
+        viewModel.removeAnnotationStrokes(sharerIdentity, ids);
+
+      case 'annotation_clear':
+        viewModel.clearAnnotationStrokes(sharerIdentity);
+
+      case 'annotation_snapshot':
+        final strokes = (data['strokes'] as List? ?? [])
+            .map((s) => AnnotationStroke.fromJson(s as Map<String, dynamic>))
+            .toList();
+        viewModel.replaceAnnotationStrokes(sharerIdentity, strokes);
+
+      case 'annotation_snapshot_request':
+        final requesterIdentity =
+            (data['requesterIdentity'] as String?) ?? participant?.identity ?? '';
+        if (localIdentity == sharerIdentity &&
+            requesterIdentity.isNotEmpty &&
+            requesterIdentity != localIdentity) {
+          viewModel.publishAnnotationSnapshot(
+              widget.room, sharerIdentity, [requesterIdentity]);
+        }
+    }
   }
 
   late LobbyRequestManager? lobbyManager;
@@ -702,10 +778,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.screenShareStarted:
         showSnackBar(message: "${remoteData.identity?.name} has started sharing their screen.");
+        // Clear any stale annotation strokes from a previous share session
+        final startedSharerId = remoteData.identity?.identity;
+        if (startedSharerId != null) viewModel?.clearAnnotationStrokes(startedSharerId);
         break;
 
       case MeetingActions.screenShareStopped:
         showSnackBar(message: "${remoteData.identity?.name} has stopped sharing their screen.");
+        final stoppedSharerId = remoteData.identity?.identity;
+        if (stoppedSharerId != null) viewModel?.resetAnnotationSharer(stoppedSharerId);
         break;
 
       case MeetingActions.startRecording:
