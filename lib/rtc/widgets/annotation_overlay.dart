@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../model/annotation_stroke.dart';
+import '../../utils/annotation_actions.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import 'annotation_painter.dart';
 
@@ -177,7 +178,7 @@ class _AnnotationOverlayState extends State<AnnotationOverlay> {
     viewModel.publishAnnotationData(
       widget.room,
       {
-        'action': 'annotation_snapshot_request',
+        'action': AnnotationActions.snapshotRequest,
         'requesterIdentity': localIdentity,
         'sharerIdentity': widget.sharerIdentity,
       },
@@ -320,7 +321,7 @@ class _AnnotationInputLayerState extends State<_AnnotationInputLayer> {
     await viewModel.publishAnnotationData(
       widget.room,
       {
-        'action': 'annotation_stroke',
+        'action': AnnotationActions.stroke,
         'sharerIdentity': widget.sharerIdentity,
         'stroke': stroke.toJson(),
       },

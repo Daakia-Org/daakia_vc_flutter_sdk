@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:provider/provider.dart';
 
+import '../../utils/annotation_actions.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 
 const _annotationColors = [
@@ -64,7 +65,7 @@ class AnnotationToolbar extends StatelessWidget {
                   final stroke = viewModel.undoLastAnnotationStroke(sharerIdentity, localId);
                   if (stroke != null) {
                     await viewModel.publishAnnotationData(room, {
-                      'action': 'annotation_remove',
+                      'action': AnnotationActions.remove,
                       'sharerIdentity': sharerIdentity,
                       'ids': [stroke.id],
                     });
@@ -78,7 +79,7 @@ class AnnotationToolbar extends StatelessWidget {
                 onTap: () async {
                   viewModel.clearAnnotationStrokes(sharerIdentity);
                   await viewModel.publishAnnotationData(room, {
-                    'action': 'annotation_clear',
+                    'action': AnnotationActions.clear,
                     'sharerIdentity': sharerIdentity,
                   });
                 },

@@ -37,6 +37,7 @@ import '../rtc/widgets/participant_info.dart';
 import '../utils/chat_message_mapper.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
+import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 
 class RtcViewmodel extends ChangeNotifier {
@@ -3011,7 +3012,7 @@ class RtcViewmodel extends ChangeNotifier {
     await publishAnnotationData(
       room,
       {
-        'action': 'annotation_snapshot',
+        'action': AnnotationActions.snapshot,
         'sharerIdentity': sharerIdentity,
         'strokes': strokes.map((s) => s.toJson()).toList(),
       },
