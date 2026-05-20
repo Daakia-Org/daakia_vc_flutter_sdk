@@ -272,27 +272,29 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                   ),
                 ),
               ),
+            //TODO: Will think about this later [Mobile collaboration]
             // Annotation launch button — pencil icon in top-right corner of screen-share tile
             // Hidden when annotation is already active for this share
-            if (isScreenShare && !isAnnotationForThisShare)
-              Positioned(
-                top: 8,
-                right: 8,
-                child: GestureDetector(
-                  onTap: () => viewModel.setAnnotationActive(
-                    true,
-                    sharerIdentity: widget.participant.identity,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(7),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(Icons.edit, color: Colors.white, size: 18),
-                  ),
-                ),
-              ),
+            // if (isScreenShare && !isAnnotationForThisShare)
+            //   Positioned(
+            //     top: 8,
+            //     right: 8,
+            //     child: GestureDetector(
+            //       onTap: () => viewModel.setAnnotationActive(
+            //         true,
+            //         sharerIdentity: widget.participant.identity,
+            //       ),
+            //       child: Container(
+            //         padding: const EdgeInsets.all(7),
+            //         decoration: BoxDecoration(
+            //           color: Colors.black.withValues(alpha: 0.6),
+            //           shape: BoxShape.circle,
+            //         ),
+            //         child: const Icon(Icons.edit, color: Colors.white, size: 18),
+            //       ),
+            //     ),
+            //   ),
+
             // Local screen-share blur — suppressed when annotation is active so the
             // sharer can see what they're annotating on
             if (widget.isSpeaker &&
