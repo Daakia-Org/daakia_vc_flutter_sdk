@@ -64,6 +64,15 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool _isMeetingEnded = false;
 
+  // True while an iOS audio session interruption (e.g. phone call) is active.
+  // The mic button is disabled during this window.
+  bool isAudioInterrupted = false;
+
+  void setAudioInterrupted(bool value) {
+    isAudioInterrupted = value;
+    notifyListeners();
+  }
+
   // Getter
   bool get isMeetingEnded => _isMeetingEnded;
 
@@ -418,6 +427,7 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   double getMicAlpha() {
+    if (isAudioInterrupted) return 0.5;
     if (isHost() || isCoHost()) return 1.0;
     if (!isAudioPermissionEnable) {
       return isMicPermissionGranted ? 1.0 : 0.5;

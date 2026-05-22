@@ -3,24 +3,29 @@ import UIKit
 import AVFoundation
 
 public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
+    private var channel: FlutterMethodChannel?
+    private var isInterrupted = false
 
     public static func register(with registrar: FlutterPluginRegistrar) {
-        let channel = FlutterMethodChannel(
+        let ch = FlutterMethodChannel(
             name: "io.daakia/meeting_service",
             binaryMessenger: registrar.messenger()
         )
         let instance = DaakiaVcFlutterSdkPlugin()
-        registrar.addMethodCallDelegate(instance, channel: channel)
+        instance.channel = ch
+        registrar.addMethodCallDelegate(instance, channel: ch)
     }
 
     public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
         switch call.method {
         case "startMeetingService":
             activateAudioSession()
+            registerInterruptionObserver()
             result(nil)
         case "stopMeetingService":
             // Let LiveKit / WebRTC manage teardown — we don't force-deactivate here
             // because WebRTC's internal ref-counting will handle it on disconnect.
+            unregisterInterruptionObserver()
             result(nil)
         case "updateMuteState":
             // iOS keeps the audio session alive regardless of mute state — no-op.
@@ -30,12 +35,9 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         }
     }
 
-    // Activates AVAudioSession with the same category/mode that WebRTC/LiveKit uses
-    // (.playAndRecord / .videoChat). Calling this when the meeting starts ensures
-    // iOS keeps the app alive in the background under the `audio` UIBackgroundMode
-    // even when the user's microphone is muted, because the session is active for
-    // audio playback of remote participants.
-    private func activateAudioSession() {
+    // Activates the audio session. Returns true on success, false if still interrupted.
+    @discardableResult
+    private func activateAudioSession() -> Bool {
         let session = AVAudioSession.sharedInstance()
         do {
             try session.setCategory(
@@ -44,8 +46,105 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
                 options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
             )
             try session.setActive(true)
+            return true
         } catch {
-            print("DaakiaMeetingService: audio session activation failed — \(error)")
+            return false
+        }
+    }
+
+    private func registerInterruptionObserver() {
+        let session = AVAudioSession.sharedInstance()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAudioInterruption(_:)),
+            name: AVAudioSession.interruptionNotification,
+            object: session
+        )
+        // iOS 16+ often skips AVAudioSessionInterruptionTypeEnded after phone calls.
+        // didBecomeActive covers the case where the app was backgrounded during the call.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+        // Dynamic Island calls: app stays in foreground the whole time, so
+        // didBecomeActive never fires. Route change is the only reliable signal
+        // that the call released the audio session.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange(_:)),
+            name: AVAudioSession.routeChangeNotification,
+            object: session
+        )
+    }
+
+    private func unregisterInterruptionObserver() {
+        let session = AVAudioSession.sharedInstance()
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.interruptionNotification, object: session)
+        NotificationCenter.default.removeObserver(self, name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.removeObserver(self, name: AVAudioSession.routeChangeNotification, object: session)
+        isInterrupted = false
+    }
+
+    // Called by iOS when a phone call (or other audio interruption) begins or ends.
+    // On `.ended` we reactivate AVAudioSession and tell Flutter so it can restart
+    // the LiveKit microphone track — without this, WebRTC never resumes capturing
+    // even though the track is still "enabled" from LiveKit's perspective.
+    @objc private func handleAudioInterruption(_ notification: Notification) {
+        guard let info = notification.userInfo,
+              let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+            return
+        }
+
+        if type == .began {
+            isInterrupted = true
+            channel?.invokeMethod("audioInterruptionBegan", arguments: nil)
+            return
+        }
+
+        // .ended path — not reliable on iOS 16+ for phone calls; handleAppDidBecomeActive
+        // and handleRouteChange are the primary recovery paths.
+        guard type == .ended else { return }
+
+        var shouldResume = true
+        if let optionsValue = info[AVAudioSessionInterruptionOptionKey] as? UInt {
+            shouldResume = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                .contains(.shouldResume)
+        }
+        guard shouldResume else { return }
+
+        recoverAudioSession()
+    }
+
+    // Fires when the user returns from a backgrounded phone call.
+    @objc private func handleAppDidBecomeActive() {
+        guard isInterrupted else { return }
+        recoverAudioSession()
+    }
+
+    // Fires when the audio route changes — the only reliable signal when a Dynamic
+    // Island call ends while the app stays in the foreground.
+    @objc private func handleRouteChange(_ notification: Notification) {
+        guard isInterrupted else { return }
+        guard notification.userInfo?[AVAudioSessionRouteChangeReasonKey] is UInt else { return }
+        recoverAudioSession()
+    }
+
+    private func recoverAudioSession() {
+        guard isInterrupted else { return }
+        // Do NOT clear isInterrupted yet — only clear it if activation succeeds.
+        // This prevents the mic button from unlocking while the call is still active.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self, self.isInterrupted else { return }
+            if self.activateAudioSession() {
+                // Session is ours again — call has truly ended.
+                self.isInterrupted = false
+                self.channel?.invokeMethod("audioInterruptionEnded", arguments: nil)
+            }
+            // If activation failed the call is still active; isInterrupted stays true
+            // and the next route change / didBecomeActive will retry.
         }
     }
 }

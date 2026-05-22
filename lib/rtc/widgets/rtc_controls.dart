@@ -118,6 +118,7 @@ class _RtcControlState extends State<RtcControls> {
           ),
           IconButton(
             onPressed: () {
+              if (viewModel.isAudioInterrupted) return;
               final isHostOrCoHost = viewModel.isHost() ||
                   viewModel.isCoHost();
 

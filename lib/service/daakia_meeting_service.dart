@@ -17,6 +17,11 @@ class DaakiaMeetingService {
   static VoidCallback? onMuteToggle;
   static VoidCallback? onEndCall;
 
+  // Fired on iOS when a phone call (or other audio interruption) begins or ends.
+  // RoomPage uses these to disable/re-enable the mic button and restart the track.
+  static VoidCallback? onAudioInterruptionBegan;
+  static VoidCallback? onAudioInterruptionEnded;
+
   /// Must be called once (e.g. in RoomPage.initState) before any [start] call
   /// so that notification button presses from Android are dispatched back here.
   static void initialize() {
@@ -30,6 +35,12 @@ class DaakiaMeetingService {
         break;
       case 'onEndCall':
         onEndCall?.call();
+        break;
+      case 'audioInterruptionBegan':
+        onAudioInterruptionBegan?.call();
+        break;
+      case 'audioInterruptionEnded':
+        onAudioInterruptionEnded?.call();
         break;
     }
   }
@@ -137,6 +148,8 @@ class DaakiaMeetingService {
     _showMuteButton = false;
     onMuteToggle = null;
     onEndCall = null;
+    onAudioInterruptionBegan = null;
+    onAudioInterruptionEnded = null;
     try {
       await _channel.invokeMethod('stopMeetingService');
     } catch (e) {
