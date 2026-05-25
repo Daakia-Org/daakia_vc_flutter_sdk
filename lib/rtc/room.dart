@@ -215,6 +215,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   bool _isReconnecting = false;
   bool _isConnected = false;
+  bool _isPhoneCallActive = false;
 
   late final TransformationController _zoomController;
   double _zoomScale = 1.0;
@@ -855,6 +856,34 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     DaakiaMeetingService.onEndCall = () {
       if (mounted) closeMeetingProgrammatically(context);
     };
+    if (lkPlatformIs(PlatformType.iOS)) {
+      DaakiaMeetingService.onAudioInterruptionBegan = () => _handleAudioInterruptionBegan();
+      DaakiaMeetingService.onAudioInterruptionEnded = _handleAudioInterruptionEnded;
+    }
+  }
+
+  Future<void> _handleAudioInterruptionBegan() async {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    if (vm == null || !mounted) return;
+    vm.setAudioInterrupted(true);
+    setState(() => _isPhoneCallActive = true);
+    // Mute the LiveKit track so other participants see the user as muted,
+    // not "mic on but silent" for the duration of the phone call.
+    final participant = widget.room.localParticipant;
+    if (participant != null && participant.isMicrophoneEnabled()) {
+      await participant.setMicrophoneEnabled(false);
+    }
+  }
+
+  // After a phone-call interruption ends on iOS, AVAudioSession has been reactivated
+  // by the native side. The mic is left OFF — the user decides when to re-enable it.
+  void _handleAudioInterruptionEnded() {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    if (vm != null && mounted) {
+      vm.setAudioInterrupted(false);
+      setState(() => _isPhoneCallActive = false);
+      showSnackBar(message: "Phone call ended");
+    }
   }
 
   Future<void> _handleNotificationMuteToggle() async {
@@ -1285,6 +1314,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                         child: ConnectivityBanner(
                           message: "You’re back online",
                           backgroundColor: Colors.green,
+                        ),
+                      ),
+                    if (_isPhoneCallActive)
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: ConnectivityBanner(
+                          message: "Phone call in progress — audio unavailable",
+                          backgroundColor: Colors.orange,
                         ),
                       ),
                   ],
