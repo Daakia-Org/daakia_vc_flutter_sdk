@@ -36,14 +36,22 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
     }
 
     // Activates the audio session. Returns true on success, false if still interrupted.
+    // When force=false (the default), skips reconfiguration if LiveKit has already
+    // set the session to .playAndRecord — reconfiguring mid-capture disrupts the
+    // WebRTC audio pipeline and causes the mic to go silent despite appearing unmuted.
+    // Set force=true only when recovering from a phone-call interruption, where the
+    // session must be explicitly reclaimed.
     @discardableResult
-    private func activateAudioSession() -> Bool {
+    private func activateAudioSession(force: Bool = false) -> Bool {
         let session = AVAudioSession.sharedInstance()
+        if !force && session.category == .playAndRecord {
+            return true
+        }
         do {
             try session.setCategory(
                 .playAndRecord,
                 mode: .videoChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .defaultToSpeaker]
+                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay]
             )
             try session.setActive(true)
             return true
@@ -138,7 +146,7 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         // This prevents the mic button from unlocking while the call is still active.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self = self, self.isInterrupted else { return }
-            if self.activateAudioSession() {
+            if self.activateAudioSession(force: true) {
                 // Session is ours again — call has truly ended.
                 self.isInterrupted = false
                 self.channel?.invokeMethod("audioInterruptionEnded", arguments: nil)
