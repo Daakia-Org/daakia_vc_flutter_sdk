@@ -15,19 +15,21 @@ import 'participant_info.dart';
 abstract class ParticipantWidget extends StatefulWidget {
   // Convenience method to return relevant widget for participant
   static ParticipantWidget widgetFor(ParticipantTrack participantTrack,
-      {bool showStatsLayer = false, bool isSpeaker = false}) {
+      {bool showStatsLayer = false, bool isSpeaker = false, Key? key}) {
     if (participantTrack.participant is LocalParticipant) {
       return LocalParticipantWidget(
           participantTrack.participant as LocalParticipant,
           participantTrack.type,
           showStatsLayer,
-          isSpeaker);
+          isSpeaker,
+          key: key);
     } else if (participantTrack.participant is RemoteParticipant) {
       return RemoteParticipantWidget(
           participantTrack.participant as RemoteParticipant,
           participantTrack.type,
           showStatsLayer,
-          isSpeaker);
+          isSpeaker,
+          key: key);
     }
     throw UnimplementedError('Unknown participant type');
   }

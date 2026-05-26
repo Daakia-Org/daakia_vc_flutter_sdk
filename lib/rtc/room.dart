@@ -459,6 +459,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           }
         }
       }
+      _sortParticipants();
     })
     ..on<LocalTrackPublishedEvent>((track){
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -1165,6 +1166,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                                       participantTracks.first,
                                                                       showStatsLayer: true,
                                                                       isSpeaker: true,
+                                                                      key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
                                                                     ),
                                                                   ),
                                                                 )
@@ -1172,6 +1174,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                                   participantTracks.first,
                                                                   showStatsLayer: true,
                                                                   isSpeaker: true,
+                                                                  key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
                                                                 ),
                                                           if (_speakerHasActiveVideo() && _zoomScale > 1.05)
                                                             Positioned(
@@ -1229,8 +1232,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                   return SizedBox(
                                                     width: 180,
                                                     height: 120,
-                                                    child: ParticipantWidget
-                                                        .widgetFor(track),
+                                                    child: ParticipantWidget.widgetFor(
+                                                      track,
+                                                      key: ValueKey(track.participant.identity),
+                                                    ),
                                                   );
                                                 },
                                               ),

@@ -717,8 +717,8 @@ class _PreJoinState extends State<PreJoinScreen> {
 
       final room = Room(
         roomOptions: RoomOptions(
-          adaptiveStream: false,
-          dynacast: false,
+          adaptiveStream: true,
+          dynacast: true,
           defaultAudioPublishOptions: const AudioPublishOptions(
             name: 'custom_audio_track_name',
           ),
