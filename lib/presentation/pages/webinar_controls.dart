@@ -70,8 +70,7 @@ class WebinarControls extends StatelessWidget {
                 title: 'Participants Audio',
                 subtitle: 'If turned off, participants can unmute themselves.',
                 value: viewModel.isAudioModeEnable,
-                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true &&
-                    viewModel.isWebinarModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isAudioModeEnable = value;
                   viewModel.updateAudioPermission(value);
@@ -86,8 +85,7 @@ class WebinarControls extends StatelessWidget {
                 subtitle:
                     'If turned off, participants can turn their camera on.',
                 value: viewModel.isVideoModeEnable,
-                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true &&
-                    viewModel.isWebinarModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isVideoModeEnable = value;
                   viewModel.updateVideoPermission(value);
@@ -102,8 +100,7 @@ class WebinarControls extends StatelessWidget {
                 subtitle:
                     'If turned on, participants cannot open the participant list.',
                 value: viewModel.isParticipantDrawerHidden,
-                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true &&
-                    viewModel.isWebinarModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isParticipantDrawerHidden = value;
                   viewModel.updateParticipantDrawerConsent(value);
