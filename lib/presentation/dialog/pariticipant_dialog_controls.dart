@@ -30,6 +30,13 @@ class ParticipantDialogControls extends StatefulWidget {
 class ParticipantDialogState extends State<ParticipantDialogControls> {
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: widget.viewModel,
+      builder: (context, _) => _buildDialog(context),
+    );
+  }
+
+  Widget _buildDialog(BuildContext context) {
     String? myRoleMataData = widget.viewModel.room.localParticipant?.metadata;
     String? targetRoleMataData = widget.participant.metadata;
     final bool micOn = widget.participant.isMicrophoneEnabled();
