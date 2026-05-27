@@ -68,7 +68,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                       widget.participant.identity);
                 },
                 isVisible: (widget.isForIndividual &&
-                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isAudioModeEnable) || micOn) &&
+                    (!widget.viewModel.isAudioModeEnable || micOn) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
@@ -85,7 +85,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                       widget.participant.identity);
                 },
                 isVisible: (widget.isForIndividual &&
-                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isVideoModeEnable) || cameraOn) &&
+                    (!widget.viewModel.isVideoModeEnable || cameraOn) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
