@@ -32,6 +32,13 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
   Widget build(BuildContext context) {
     String? myRoleMataData = widget.viewModel.room.localParticipant?.metadata;
     String? targetRoleMataData = widget.participant.metadata;
+    final bool micOn = widget.participant.isMicrophoneEnabled();
+    final bool cameraOn = widget.participant.isCameraEnabled();
+    final bool micPermissionGranted = Utils.isMicEnabled(widget.participant.attributes);
+    final bool videoPermissionGranted = Utils.isVideoEnabled(widget.participant.attributes);
+    final bool isCoHost = Utils.isCoHost(widget.participant.metadata);
+    final bool isPinned = widget.viewModel.pinnedParticipantId == widget.participant.identity;
+
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
@@ -49,48 +56,48 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CustomTextItem(
-                text: widget.participant.isMicrophoneEnabled()
-                    ? "Mute Mic"
-                    : "Ask To Unmute Mic",
+                icon: micOn ? Icons.mic_off : Icons.mic,
+                text: micOn ? "Mute Mic" : "Ask To Unmute Mic",
                 onTap: () {
                   Navigator.pop(context);
                   widget.viewModel.sendPrivateAction(
                       ActionModel(
-                          action: widget.participant.isMicrophoneEnabled()
+                          action: micOn
                               ? MeetingActions.muteMic
                               : MeetingActions.askToUnmuteMic),
                       widget.participant.identity);
                 },
                 isVisible: (widget.isForIndividual &&
-                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isAudioModeEnable) || widget.participant.isMicrophoneEnabled()) &&
+                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isAudioModeEnable) || micOn) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
               CustomTextItem(
-                text: widget.participant.isCameraEnabled()
-                    ? "Turn Off Camera"
-                    : "Ask To Turn ON Camera",
+                icon: cameraOn ? Icons.videocam_off : Icons.videocam,
+                text: cameraOn ? "Turn Off Camera" : "Ask To Turn ON Camera",
                 onTap: () {
                   Navigator.pop(context);
                   widget.viewModel.sendPrivateAction(
                       ActionModel(
-                          action: widget.participant.isCameraEnabled()
+                          action: cameraOn
                               ? MeetingActions.muteCamera
                               : MeetingActions.askToUnmuteCamera),
                       widget.participant.identity);
                 },
                 isVisible: (widget.isForIndividual &&
-                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isVideoModeEnable) || widget.participant.isCameraEnabled()) &&
+                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isVideoModeEnable) || cameraOn) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
               CustomTextItem(
-                text: !Utils.isMicEnabled(widget.participant.attributes)
-                    ? "Allow Mic Permission"
-                    : "Revoke Mic Permission",
+                icon: micPermissionGranted ? Icons.mic_off : Icons.mic,
+                text: micPermissionGranted
+                    ? "Revoke Mic Permission"
+                    : "Allow Mic Permission",
                 onTap: () {
                   Navigator.pop(context);
-                  widget.viewModel.updateAudioPermissionForParticipant(widget.participant.identity, !Utils.isMicEnabled(widget.participant.attributes));
+                  widget.viewModel.updateAudioPermissionForParticipant(
+                      widget.participant.identity, !micPermissionGranted);
                 },
                 isVisible: (widget.isForIndividual && widget.viewModel.isAudioModeEnable &&
                     (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
@@ -98,12 +105,14 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                         Utils.isCoHost(myRoleMataData))),
               ),
               CustomTextItem(
-                text: !Utils.isVideoEnabled(widget.participant.attributes)
-                    ? "Allow Video Permission"
-                    : "Revoke Video Permission",
+                icon: videoPermissionGranted ? Icons.videocam_off : Icons.videocam,
+                text: videoPermissionGranted
+                    ? "Revoke Video Permission"
+                    : "Allow Video Permission",
                 onTap: () {
                   Navigator.pop(context);
-                  widget.viewModel.updateVideoPermissionForParticipant(widget.participant.identity, !Utils.isVideoEnabled(widget.participant.attributes));
+                  widget.viewModel.updateVideoPermissionForParticipant(
+                      widget.participant.identity, !videoPermissionGranted);
                 },
                 isVisible: (widget.isForIndividual && widget.viewModel.isVideoModeEnable &&
                     (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
@@ -111,16 +120,16 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                         Utils.isCoHost(myRoleMataData))),
               ),
               CustomTextItem(
-                  text: Utils.isCoHost(widget.participant.metadata)
-                      ? "Remove Co-Host"
-                      : "Make Co-Host",
-                  onTap: () {
-                    Navigator.pop(context);
-                    widget.viewModel.makeCoHost(widget.participant.identity,
-                        !Utils.isCoHost(widget.participant.metadata));
-                  },
-                  isVisible: (widget.isForIndividual && isCoHostButtonEnable())),
+                icon: isCoHost ? Icons.remove_moderator : Icons.admin_panel_settings,
+                text: isCoHost ? "Remove Co-Host" : "Make Co-Host",
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.viewModel.makeCoHost(widget.participant.identity, !isCoHost);
+                },
+                isVisible: (widget.isForIndividual && isCoHostButtonEnable()),
+              ),
               CustomTextItem(
+                icon: Icons.person_remove,
                 text: "Remove From Call",
                 onTap: () {
                   Navigator.pop(context);
@@ -132,6 +141,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                             !Utils.isHost(targetRoleMataData)))),
               ),
               CustomTextItem(
+                icon: Icons.chat_bubble_outline,
                 text: "Send private message",
                 onTap: () {
                   // Dismiss the ParticipantDialogControls
@@ -147,11 +157,12 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 isVisible: widget.isForIndividual && (widget.viewModel.meetingDetails.features?.isPrivateChatAllowed() == true),
               ),
               CustomTextItem(
-                text: (widget.viewModel.pinnedParticipantId == widget.participant.identity) ? "Unpin" : "Pin to screen",
+                icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin,
+                text: isPinned ? "Unpin" : "Pin to screen",
                 onTap: () {
                   // Dismiss the ParticipantDialogControls
                   Navigator.of(context, rootNavigator: false).pop();
-                  if (widget.viewModel.pinnedParticipantId == widget.participant.identity) {
+                  if (isPinned) {
                     widget.viewModel.pinnedParticipantId = null;
                   } else {
                     widget.viewModel.pinnedParticipantId = widget.participant.identity;
@@ -161,6 +172,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 isVisible: widget.isForIndividual,
               ),
               CustomTextItem(
+                icon: Icons.mic_off,
                 text: "Mute All",
                 onTap: () {
                   Navigator.pop(context);
@@ -169,6 +181,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 isVisible: !widget.isForIndividual,
               ),
               CustomTextItem(
+                icon: Icons.videocam_off,
                 text: "Video Off All",
                 onTap: () {
                   Navigator.pop(context);
@@ -178,6 +191,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 isVisible: !widget.isForIndividual,
               ),
               // CustomTextItem(
+              //   icon: Icons.front_hand_outlined,
               //   text: "Lower Hands All",
               //   onTap: () {
               //     Navigator.pop(context);
@@ -242,12 +256,14 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
 }
 
 class CustomTextItem extends StatelessWidget {
+  final IconData icon;
   final String text;
   final bool isVisible;
   final VoidCallback onTap;
 
   const CustomTextItem({
     super.key,
+    required this.icon,
     required this.text,
     required this.onTap,
     this.isVisible = true,
@@ -260,10 +276,16 @@ class CustomTextItem extends StatelessWidget {
       child: TextButton(
         onPressed: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 18, color: Colors.white),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Icon(icon, color: Colors.white, size: 22),
+              const SizedBox(width: 12),
+              Text(
+                text,
+                style: const TextStyle(fontSize: 16, color: Colors.white),
+              ),
+            ],
           ),
         ),
       ),
