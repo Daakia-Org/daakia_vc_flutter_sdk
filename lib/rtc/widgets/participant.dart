@@ -11,6 +11,7 @@ import '../../resources/colors/color.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import 'no_video.dart';
 import 'participant_info.dart';
+import 'participant_quick_actions.dart';
 
 abstract class ParticipantWidget extends StatefulWidget {
   // Convenience method to return relevant widget for participant
@@ -168,6 +169,11 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             // Video
             InkWell(
               onTap: () => setState(() => _visible = !_visible),
+              onLongPress: () => showParticipantQuickActions(
+                context,
+                widget.participant,
+                viewModel,
+              ),
               child: activeVideoTrack != null && !activeVideoTrack!.muted
                   ? VideoTrackRenderer(
                       renderMode: VideoRenderMode.auto,
