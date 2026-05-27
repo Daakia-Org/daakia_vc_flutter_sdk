@@ -61,7 +61,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                               : MeetingActions.askToUnmuteMic),
                       widget.participant.identity);
                 },
-                isVisible: (widget.isForIndividual && (!widget.viewModel.isWebinarModeEnable || (widget.viewModel.isWebinarModeEnable && widget.participant.isMicrophoneEnabled())) &&
+                isVisible: (widget.isForIndividual &&
+                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isAudioModeEnable) || widget.participant.isMicrophoneEnabled()) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
@@ -78,7 +79,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                               : MeetingActions.askToUnmuteCamera),
                       widget.participant.identity);
                 },
-                isVisible: (widget.isForIndividual && (!widget.viewModel.isWebinarModeEnable || (widget.viewModel.isWebinarModeEnable && widget.participant.isCameraEnabled())) &&
+                isVisible: (widget.isForIndividual &&
+                    (!(widget.viewModel.isWebinarModeEnable || widget.viewModel.isVideoModeEnable) || widget.participant.isCameraEnabled()) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
               ),
