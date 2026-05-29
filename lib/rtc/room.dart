@@ -1179,7 +1179,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                           if (_speakerHasActiveVideo() && _zoomScale > 1.05)
                                                             Positioned(
                                                               top: 8,
-                                                              right: 8,
+                                                              left: 8,
                                                               child: GestureDetector(
                                                                 onTap: _resetZoom,
                                                                 child: Container(
