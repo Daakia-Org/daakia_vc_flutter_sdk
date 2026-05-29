@@ -215,6 +215,30 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             //     child: ParticipantStatsWidget(
             //       participant: widget.participant,
             //     )),
+            if (!isScreenShare)
+              Positioned(
+                top: 5,
+                right: 5,
+                child: GestureDetector(
+                  onTap: () => showParticipantQuickActions(
+                    context,
+                    widget.participant,
+                    viewModel,
+                  ),
+                  child: Container(
+                    padding: EdgeInsets.all(widget.isSpeaker ? 6 : 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                      size: widget.isSpeaker ? 22 : 16,
+                    ),
+                  ),
+                ),
+              ),
             if (viewModel.isHandRaised(widget.participant.identity))
               Positioned(
                 top: 5,
