@@ -378,10 +378,11 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (isParticipant) {
       body["lobby_request_id"] = lobbyRequestId;
     }
-    // Add custom_metadata only if metadata is provided
-    if (widget.configuration?.metadata != null) {
-      body["custom_metadata"] = widget.configuration?.metadata;
-    }
+    // Always include client_platform; merge with any caller-supplied metadata.
+    final Map<String, dynamic> customMetadata =
+        Map<String, dynamic>.from(widget.configuration?.metadata ?? {});
+    customMetadata["client_platform"] = Utils.getClientPlatform();
+    body["custom_metadata"] = customMetadata;
     final cacheData = StorageHelper();
     var tokenFromCache = false;
     if (await cacheData.getMeetingUid() == widget.meetingId) {
