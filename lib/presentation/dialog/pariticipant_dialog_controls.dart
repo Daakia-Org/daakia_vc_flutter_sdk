@@ -135,12 +135,15 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                     : "Allow Annotation Permission",
                 onTap: () {
                   Navigator.pop(context);
+                  if (targetIsOnMobile) {
+                    Utils.showSnackBar(context, message: "Annotation is not supported on mobile devices.");
+                    return;
+                  }
                   widget.viewModel.updateAnnotationPermissionForParticipant(
                       widget.participant.identity, !annotationPermissionGranted);
                 },
                 isVisible: widget.isForIndividual &&
                     widget.viewModel.isAnnotationEnabled &&
-                    !targetIsOnMobile &&
                     (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
                     (Utils.isHost(myRoleMataData) || Utils.isCoHost(myRoleMataData)),
               ),
