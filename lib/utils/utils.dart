@@ -575,6 +575,17 @@ class Utils {
     return _toBool(value);
   }
 
+  static bool isAnnotationAllowed(Map<String, dynamic>? attributes) {
+    final value = attributes?['annotation_allowed'];
+    return _toBool(value);
+  }
+
+  static bool isMobilePlatform(String? metadata) {
+    final platform = extractClientPlatform(metadata);
+    if (platform == null) return false;
+    return platform == 'android' || platform == 'ios' || platform == 'mobile_web';
+  }
+
   static bool _toBool(dynamic value) {
     if (value == null) return false;
 
