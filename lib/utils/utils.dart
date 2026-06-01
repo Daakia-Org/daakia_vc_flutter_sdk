@@ -512,6 +512,36 @@ class Utils {
     return null;
   }
 
+  /// Returns the current platform identifier.
+  ///
+  /// Possible values: `"android"`, `"ios"`, `"macos"`, `"windows"`, `"linux"`, `"web"`.
+  /// Web clients (browser) should pass `"web"` or `"mobile_web"` manually via custom metadata.
+  static String getClientPlatform() {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    return 'unknown';
+  }
+
+  static String? extractClientPlatform(String? metadata) {
+    if (metadata == null || metadata.trim().isEmpty) return null;
+
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(metadata);
+      if (decoded['custom_metadata'] is Map) {
+        final platform = decoded['custom_metadata']['client_platform'];
+        if (platform is String && platform.isNotEmpty) return platform;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
   static String extractMessage(String prefix, dynamic data, String fallback) {
     if (data is Map<String, dynamic> && data['message'] != null) {
       return "$prefix ${data['message']}";
