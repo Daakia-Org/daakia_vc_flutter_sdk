@@ -139,6 +139,20 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isScreenShareEnable = value;
                   viewModel.updateScreenShareConsent(value);
                 },
+                isDividerRequired: false,
+              ),
+
+              // Screen Share Annotation
+              HostControlSwitch(
+                title: 'Allow Annotation',
+                subtitle:
+                    'If turned ON, host can grant individual participants permission to annotate the shared screen.',
+                value: viewModel.isAnnotationEnabled,
+                isEnable: viewModel.meetingDetails.features?.isBasicPlan() == false,
+                isChild: true,
+                onChanged: (value) {
+                  viewModel.updateAnnotationConsent(value);
+                },
               ),
             ],
           ),

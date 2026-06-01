@@ -184,6 +184,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         if (vm.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
           vm.getChatAttachmentConsent();
         }
+
+        // TODO(annotation-consent): Once the backend exposes a GET endpoint for
+        // annotation consent (e.g. GET /rtc/meeting/annotationConsent), call it here
+        // so late-joiners and rejoining hosts see the correct initial state.
+        //
+        // Pattern to follow (same as getScreenShareConsent above):
+        //   1. Add @GET("rtc/meeting/annotationConsent") to api_client.dart
+        //   2. Add a response model (or reuse BaseResponse<dynamic> and read success/data)
+        //   3. Add getAnnotationConsent() to RtcViewmodel — set isAnnotationEnabled from response
+        //   4. Uncomment and call it here, gated on the annotation feature flag when added:
+        //
+        // if (vm.meetingDetails.features?.isBasicPlan() == false) {
+        //   vm.getAnnotationConsent();
+        // }
       });
 
       DaakiaPiP.createPipVideoCall(
@@ -872,6 +886,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.isVideoPermissionGranted = false;
         viewModel?.disableVideo();
         showSnackBar(message: "Your video permission has been revoked");
+        break;
+
+      case MeetingActions.allowScreenShareAnnotation:
+        viewModel?.isAnnotationEnabled = remoteData.value == true;
+        break;
+
+      case MeetingActions.allowAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = true;
+        showSnackBar(message: "You can now annotate the shared screen");
+        break;
+
+      case MeetingActions.revokeAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = false;
+        showSnackBar(message: "Your annotation permission has been revoked");
         break;
 
       case MeetingActions.hideParticipantDrawer:

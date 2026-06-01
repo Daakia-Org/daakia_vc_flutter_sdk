@@ -45,6 +45,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
     final bool videoPermissionGranted = Utils.isVideoEnabled(widget.participant.attributes);
     final bool isCoHost = Utils.isCoHost(widget.participant.metadata);
     final bool isPinned = widget.viewModel.pinnedParticipantId == widget.participant.identity;
+    final bool annotationPermissionGranted = Utils.isAnnotationAllowed(widget.participant.attributes);
+    final bool targetIsOnMobile = Utils.isMobilePlatform(widget.participant.metadata);
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -125,6 +127,22 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                     (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
+              ),
+              CustomTextItem(
+                icon: annotationPermissionGranted ? Icons.draw : Icons.draw_outlined,
+                text: annotationPermissionGranted
+                    ? "Revoke Annotation Permission"
+                    : "Allow Annotation Permission",
+                onTap: () {
+                  Navigator.pop(context);
+                  widget.viewModel.updateAnnotationPermissionForParticipant(
+                      widget.participant.identity, !annotationPermissionGranted);
+                },
+                isVisible: widget.isForIndividual &&
+                    widget.viewModel.isAnnotationEnabled &&
+                    !targetIsOnMobile &&
+                    (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
+                    (Utils.isHost(myRoleMataData) || Utils.isCoHost(myRoleMataData)),
               ),
               CustomTextItem(
                 icon: isCoHost ? Icons.remove_moderator : Icons.admin_panel_settings,

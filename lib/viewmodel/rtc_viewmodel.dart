@@ -2616,6 +2616,68 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  //===============================[Annotation Permission]===============================
+
+  bool _isAnnotationEnabled = false;
+
+  bool get isAnnotationEnabled => _isAnnotationEnabled;
+
+  set isAnnotationEnabled(bool value) {
+    _isAnnotationEnabled = value;
+    notifyListeners();
+  }
+
+  bool _isAnnotationPermissionGranted = false;
+
+  bool get isAnnotationPermissionGranted => _isAnnotationPermissionGranted;
+
+  set isAnnotationPermissionGranted(bool value) {
+    _isAnnotationPermissionGranted = value;
+    notifyListeners();
+  }
+
+  void updateAnnotationConsent(bool value) {
+    final Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "annotation_allowed": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.allowAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (data) {
+        if (data?.success != 1) return;
+        isAnnotationEnabled = value;
+        sendAction(ActionModel(action: MeetingActions.allowScreenShareAnnotation, value: value));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isAnnotationEnabled = !value;
+      },
+    );
+  }
+
+  void updateAnnotationPermissionForParticipant(String participantIdentity, bool value) {
+    final Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "annotation_allowed": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.allowParticipantAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (data) {
+        if (data?.success != 1) return;
+        sendPrivateAction(
+          ActionModel(action: value ? MeetingActions.allowAnnotationPermission : MeetingActions.revokeAnnotationPermission),
+          participantIdentity,
+        );
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+      },
+    );
+  }
+
   //===============================[Live Caption]===============================
 
   @Deprecated("Use handleCaptionTranscription() instead")
