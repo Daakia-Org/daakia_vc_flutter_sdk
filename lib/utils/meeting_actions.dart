@@ -104,6 +104,12 @@ class MeetingActions {
 
   static const String hideParticipantDrawer = "hide_participant_drawer";
 
+  static const String allowScreenShareAnnotation = "allow-screen-share-annotation";
+
+  static const String allowAnnotationPermission = "allow-annotation-permission";
+
+  static const String revokeAnnotationPermission = "revoke-annotation-permission";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -172,6 +178,9 @@ class MeetingActions {
     revokeVideoPermission,
     stopLiveCaption,
     hideParticipantDrawer,
+    allowScreenShareAnnotation,
+    allowAnnotationPermission,
+    revokeAnnotationPermission,
     // ✅ Add new fields here
   };
 }
