@@ -7,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:provider/provider.dart';
 
+import '../../presentation/widgets/annotation_toolbar.dart';
 import '../../resources/colors/color.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
+import 'annotation_overlay.dart';
 import 'no_video.dart';
 import 'participant_info.dart';
 import 'participant_quick_actions.dart';
@@ -148,6 +150,10 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
   @override
   Widget build(BuildContext ctx) {
     final viewModel = Provider.of<RtcViewmodel>(context);
+    final isAnnotationForThisShare = isScreenShare &&
+        viewModel.isAnnotationActive &&
+        viewModel.activeAnnotationSharerIdentity == widget.participant.identity;
+
     return Card(
       elevation: 10,
       color: emptyVideoColor,
@@ -187,6 +193,17 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                       isSpeaker: widget.isSpeaker,
                     ),
             ),
+            // Annotation overlay — renders remote strokes + drawing input on screen-share tiles
+            if (isScreenShare && videoPublication != null)
+              Positioned.fill(
+                child: AnnotationOverlay(
+                  publication: videoPublication!,
+                  participant: widget.participant,
+                  sharerIdentity: widget.participant.identity,
+                  trackSid: videoPublication?.sid ?? '',
+                  room: viewModel.room,
+                ),
+              ),
             // Bottom bar
             Align(
               alignment: Alignment.bottomCenter,
@@ -194,6 +211,12 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Annotation toolbar — shown at bottom of tile when annotation is active
+                  if (isAnnotationForThisShare)
+                    AnnotationToolbar(
+                      sharerIdentity: widget.participant.identity,
+                      room: viewModel.room,
+                    ),
                   // ...extraWidgets(isScreenShare),
                   ParticipantInfoWidget(
                     title: widget.participant.name.isNotEmpty
@@ -251,7 +274,7 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(alpha: 0.6),
                     borderRadius: BorderRadius.circular(
-                      widget.isSpeaker ? 50 : 12, // ← true capsule for speaker
+                      widget.isSpeaker ? 50 : 12,
                     ),
                     border: Border.all(
                       color: handRaiseColor,
@@ -281,9 +304,35 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                   ),
                 ),
               ),
+            //TODO: Will think about this later [Mobile collaboration]
+            // Annotation launch button — pencil icon in top-right corner of screen-share tile
+            // Hidden when annotation is already active for this share
+            // if (isScreenShare && !isAnnotationForThisShare)
+            //   Positioned(
+            //     top: 8,
+            //     right: 8,
+            //     child: GestureDetector(
+            //       onTap: () => viewModel.setAnnotationActive(
+            //         true,
+            //         sharerIdentity: widget.participant.identity,
+            //       ),
+            //       child: Container(
+            //         padding: const EdgeInsets.all(7),
+            //         decoration: BoxDecoration(
+            //           color: Colors.black.withValues(alpha: 0.6),
+            //           shape: BoxShape.circle,
+            //         ),
+            //         child: const Icon(Icons.edit, color: Colors.white, size: 18),
+            //       ),
+            //     ),
+            //   ),
+
+            // Local screen-share blur — suppressed when annotation is active so the
+            // sharer can see what they're annotating on
             if (widget.isSpeaker &&
                 isScreenShare &&
-                widget.participant is LocalParticipant)
+                widget.participant is LocalParticipant &&
+                !isAnnotationForThisShare)
               Positioned.fill(
                 child: ClipRect(
                   child: BackdropFilter(
