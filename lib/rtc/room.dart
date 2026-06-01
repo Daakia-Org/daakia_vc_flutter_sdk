@@ -13,6 +13,7 @@ import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget
 import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
@@ -459,6 +460,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           }
         }
       }
+      _sortParticipants();
     })
     ..on<LocalTrackPublishedEvent>((track){
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -1024,8 +1026,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   final GlobalKey<RtcProviderState> _livekitProviderKey =
       GlobalKey<RtcProviderState>();
 
-  final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
-      GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<RoomNotificationState> _notificationKey =
+      GlobalKey<RoomNotificationState>();
 
   final GlobalKey<NavigatorState> _innerNavigatorKey =
       GlobalKey<NavigatorState>();
@@ -1111,7 +1113,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         meetingDetails: widget.meetingDetails,
         child: MaterialApp(
           navigatorKey: _innerNavigatorKey,
-          scaffoldMessengerKey: scaffoldMessengerKey,
           debugShowCheckedModeBanner: false,
           theme: Theme.of(context).copyWith(
             scaffoldBackgroundColor: Colors.black,
@@ -1165,6 +1166,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                                       participantTracks.first,
                                                                       showStatsLayer: true,
                                                                       isSpeaker: true,
+                                                                      key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
                                                                     ),
                                                                   ),
                                                                 )
@@ -1172,11 +1174,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                                   participantTracks.first,
                                                                   showStatsLayer: true,
                                                                   isSpeaker: true,
+                                                                  key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
                                                                 ),
                                                           if (_speakerHasActiveVideo() && _zoomScale > 1.05)
                                                             Positioned(
                                                               top: 8,
-                                                              right: 8,
+                                                              left: 8,
                                                               child: GestureDetector(
                                                                 onTap: _resetZoom,
                                                                 child: Container(
@@ -1229,8 +1232,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                   return SizedBox(
                                                     width: 180,
                                                     height: 120,
-                                                    child: ParticipantWidget
-                                                        .widgetFor(track),
+                                                    child: ParticipantWidget.widgetFor(
+                                                      track,
+                                                      key: ValueKey(track.participant.identity),
+                                                    ),
                                                   );
                                                 },
                                               ),
@@ -1292,6 +1297,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                           ),
                         ]),
                       ),
+                    ),
+
+                    /// Toast notification overlay (top-anchored, deduped)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: RoomNotification(key: _notificationKey),
                     ),
 
                     /// Overlay banner
@@ -1411,22 +1424,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     String? actionText,
     Function? actionCallBack,
   }) {
-    final messenger = scaffoldMessengerKey.currentState;
-
-    messenger?.clearSnackBars(); // 👈 add this
-
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: actionText != null
-            ? SnackBarAction(
-          label: actionText,
-          onPressed: () {
-            actionCallBack?.call();
-          },
-        )
-            : null,
-      ),
+    _notificationKey.currentState?.show(
+      message: message,
+      actionText: actionText,
+      actionCallback: actionCallBack != null ? () => actionCallBack() : null,
     );
   }
 

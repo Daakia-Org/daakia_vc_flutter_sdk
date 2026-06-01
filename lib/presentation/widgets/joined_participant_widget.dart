@@ -30,9 +30,9 @@ class _JoinedParticipantWidgetState extends State<JoinedParticipantWidget> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Participants',
-              style: TextStyle(
+            Text(
+              'Participants (${allParticipants.length})',
+              style: const TextStyle(
                 color: Colors.white,
                 fontWeight: FontWeight.bold,
               ),

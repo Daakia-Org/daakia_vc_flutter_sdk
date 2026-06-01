@@ -36,6 +36,7 @@ class Features {
   int? isBasic;
   int? screenSharePermission;
   int? conferenceChatAttachment;
+  int? workshopEnabled;
   FeatureConfiguration? configurations;
 
   Features(
@@ -75,6 +76,7 @@ class Features {
       this.configurations,
       this.screenSharePermission,
       this.conferenceChatAttachment,
+      this.workshopEnabled,
       });
 
   Features.fromJson(Map<String, dynamic> json) {
@@ -113,6 +115,7 @@ class Features {
     isBasic = json['is_basic'];
     screenSharePermission = json['screen_share_permission'];
     conferenceChatAttachment = json['conference_chat_attachment'];
+    workshopEnabled = json['workshop_enabled'];
 
     configurations = json['configurations'] != null
         ? FeatureConfiguration.fromJson(json['configurations'])
@@ -156,6 +159,7 @@ class Features {
     data['is_basic'] = isBasic;
     data['screen_share_permission'] = screenSharePermission;
     data['conference_chat_attachment'] = conferenceChatAttachment;
+    data['workshop_enabled'] = workshopEnabled;
 
     if (configurations != null) {
       data['configurations'] = configurations!.toJson();
@@ -202,5 +206,7 @@ class Features {
   bool isProfileEditBySelfAllowed() => configurations?.allowProfileEditBySelf == 1;
 
   bool isRecordingConsentAllowed() => configurations?.askRecordingRequest == "all";
+
+  bool isWorkshopEnabled() => workshopEnabled == 1;
 
 }

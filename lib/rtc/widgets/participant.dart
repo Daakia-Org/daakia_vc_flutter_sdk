@@ -11,23 +11,26 @@ import '../../resources/colors/color.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import 'no_video.dart';
 import 'participant_info.dart';
+import 'participant_quick_actions.dart';
 
 abstract class ParticipantWidget extends StatefulWidget {
   // Convenience method to return relevant widget for participant
   static ParticipantWidget widgetFor(ParticipantTrack participantTrack,
-      {bool showStatsLayer = false, bool isSpeaker = false}) {
+      {bool showStatsLayer = false, bool isSpeaker = false, Key? key}) {
     if (participantTrack.participant is LocalParticipant) {
       return LocalParticipantWidget(
           participantTrack.participant as LocalParticipant,
           participantTrack.type,
           showStatsLayer,
-          isSpeaker);
+          isSpeaker,
+          key: key);
     } else if (participantTrack.participant is RemoteParticipant) {
       return RemoteParticipantWidget(
           participantTrack.participant as RemoteParticipant,
           participantTrack.type,
           showStatsLayer,
-          isSpeaker);
+          isSpeaker,
+          key: key);
     }
     throw UnimplementedError('Unknown participant type');
   }
@@ -166,6 +169,11 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             // Video
             InkWell(
               onTap: () => setState(() => _visible = !_visible),
+              onLongPress: () => showParticipantQuickActions(
+                context,
+                widget.participant,
+                viewModel,
+              ),
               child: activeVideoTrack != null && !activeVideoTrack!.muted
                   ? VideoTrackRenderer(
                       renderMode: VideoRenderMode.auto,
@@ -207,6 +215,30 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             //     child: ParticipantStatsWidget(
             //       participant: widget.participant,
             //     )),
+            if (!isScreenShare)
+              Positioned(
+                top: 5,
+                right: 5,
+                child: GestureDetector(
+                  onTap: () => showParticipantQuickActions(
+                    context,
+                    widget.participant,
+                    viewModel,
+                  ),
+                  child: Container(
+                    padding: EdgeInsets.all(widget.isSpeaker ? 6 : 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                      size: widget.isSpeaker ? 22 : 16,
+                    ),
+                  ),
+                ),
+              ),
             if (viewModel.isHandRaised(widget.participant.identity))
               Positioned(
                 top: 5,

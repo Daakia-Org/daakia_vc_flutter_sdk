@@ -145,6 +145,31 @@ platform :ios, '12.1'
 ```
 
 You may need to delete Podfile.lock and re-run pod install after updating deployment target.
+
+### Podfile Permission Macros
+
+The SDK uses [`permission_handler`](https://pub.dev/packages/permission_handler) to check and request camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
+
+```ruby
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_MICROPHONE=1',
+      ]
+    end
+  end
+end
+```
+
+After updating your Podfile, run:
+
+```bash
+cd ios && pod install
+```
 ## Usage/Examples
 
 ```dart
