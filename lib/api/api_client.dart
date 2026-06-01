@@ -304,4 +304,18 @@ abstract class RestClient {
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,
   );
+
+  @PUT("rtc/meeting/allowAnnotation")
+  Future<BaseResponse<dynamic>> allowAnnotation(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @PUT("rtc/meeting/participant/allowAnnotation")
+  Future<BaseResponse<dynamic>> allowParticipantAnnotation(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
 }
