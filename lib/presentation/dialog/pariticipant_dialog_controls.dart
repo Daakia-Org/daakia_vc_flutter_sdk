@@ -136,7 +136,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 onTap: () {
                   Navigator.pop(context);
                   if (targetIsOnMobile) {
-                    Utils.showSnackBar(context, message: "Annotation is not supported on mobile devices.");
+                    _showAnnotationUnavailableDialog(context);
                     return;
                   }
                   widget.viewModel.updateAnnotationPermissionForParticipant(
@@ -231,6 +231,60 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
               //       widget.viewModel.meetingDetails.features!
               //           .isRaiseHandAllowed(),
               // ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showAnnotationUnavailableDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFECECF8),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.draw_outlined, color: Color(0xFF7B7BED), size: 24),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "Annotation Unavailable",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "This Participant is using a mobile device. Annotation is available only on desktop/laptop device.",
+                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7B7BED),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                  ),
+                  child: const Text("Got it", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
             ],
           ),
         ),
