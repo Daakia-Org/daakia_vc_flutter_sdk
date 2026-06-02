@@ -1142,6 +1142,40 @@ class _RestClient implements RestClient {
   }
 
   @override
+  Future<BaseResponse<HostControlsData>> getHostControls(
+    String selfIdentity,
+    String meetingUid,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{r'meeting_uid': meetingUid};
+    final _headers = <String, dynamic>{r'x-self-identity': selfIdentity};
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<BaseResponse<HostControlsData>>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            'rtc/meeting/hostControls',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BaseResponse<HostControlsData> _value;
+    try {
+      _value = BaseResponse<HostControlsData>.fromJson(
+        _result.data!,
+        (json) => HostControlsData.fromJson(json as Map<String, dynamic>),
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<BaseResponse<ScreenShareConsentModel>> getScreenShareConsent(
     String selfIdentity,
     String meetingId,

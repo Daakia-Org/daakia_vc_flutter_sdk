@@ -16,6 +16,7 @@ import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
 import '../model/agent_dispatch_data.dart';
+import '../model/host_controls_data.dart';
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
 import '../model/event_password_protected_data.dart';
@@ -226,6 +227,15 @@ abstract class RestClient {
     @Query("session_id") String sessionId,
   );
 
+  // Returns all host control states in a single call.
+  // Use this instead of the individual GET endpoints below.
+  @GET("rtc/meeting/hostControls")
+  Future<BaseResponse<HostControlsData>> getHostControls(
+    @Header("x-self-identity") String selfIdentity,
+    @Query("meeting_uid") String meetingUid,
+  );
+
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/screenShareConsent")
   Future<BaseResponse<ScreenShareConsentModel>> getScreenShareConsent(
     @Header("x-self-identity") String selfIdentity,
@@ -239,6 +249,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/chatAttachmentDownloadConsent")
   Future<BaseResponse<ChatAttachmentConsentModel>> getChatAttachmentConsent(
     @Header("x-self-identity") String selfIdentity,
@@ -252,6 +263,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/audioPermission")
   Future<BaseResponse<WebinarPermissionModel>> getAudioPermission(
     @Header("x-self-identity") String selfIdentity,
@@ -265,6 +277,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/videoPermission")
   Future<BaseResponse<WebinarPermissionModel>> getVideoPermission(
     @Header("x-self-identity") String selfIdentity,
@@ -292,6 +305,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/meeting/get/participantDrawer")
   Future<BaseResponse<ParticipantDrawerConsentModel>> getParticipantDrawerConsent(
     @Header("x-self-identity") String selfIdentity,
