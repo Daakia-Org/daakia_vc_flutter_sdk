@@ -2644,8 +2644,7 @@ class RtcViewmodel extends ChangeNotifier {
 
     networkRequestHandler(
       apiCall: () => apiClient.allowAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
-      onSuccess: (data) {
-        if (data?.success != 1) return;
+      onSuccess: (_) {
         isAnnotationEnabled = value;
         sendAction(ActionModel(action: MeetingActions.allowScreenShareAnnotation, value: value));
       },
