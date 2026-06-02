@@ -166,39 +166,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.fetchAndStoreSessionUid();
       }
 
-      // Wave 1 – critical permissions needed before the UI is interactive
-      viewModel?.getAudioPermission();
-      viewModel?.getVideoPermission();
-      viewModel?.getParticipantDrawerConsent();
-
-      // Wave 2 – secondary data, staggered to avoid flooding the server
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (!mounted) return;
-        var vm = _livekitProviderKey.currentState?.viewModel;
-        if (vm == null) return;
-
-        if (vm.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
-          vm.getScreenShareConsent();
-        }
-
-        if (vm.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
-          vm.getChatAttachmentConsent();
-        }
-
-        // TODO(annotation-consent): Once the backend exposes a GET endpoint for
-        // annotation consent (e.g. GET /rtc/meeting/annotationConsent), call it here
-        // so late-joiners and rejoining hosts see the correct initial state.
-        //
-        // Pattern to follow (same as getScreenShareConsent above):
-        //   1. Add @GET("rtc/meeting/annotationConsent") to api_client.dart
-        //   2. Add a response model (or reuse BaseResponse<dynamic> and read success/data)
-        //   3. Add getAnnotationConsent() to RtcViewmodel — set isAnnotationEnabled from response
-        //   4. Uncomment and call it here, gated on the annotation feature flag when added:
-        //
-        // if (vm.meetingDetails.features?.isBasicPlan() == false) {
-        //   vm.getAnnotationConsent();
-        // }
-      });
+      // Single call fetches all host control states; falls back to individual APIs if endpoint unavailable.
+      // ignore: deprecated_member_use
+      viewModel?.getHostControls();
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",

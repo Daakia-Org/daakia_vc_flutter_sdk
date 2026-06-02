@@ -2247,6 +2247,45 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Fetches all host control states in a single request.
+  // Falls back to the individual deprecated methods if the unified endpoint is unavailable (pre-prod).
+  void getHostControls() {
+    networkRequestHandler(
+      apiCall: () => apiClient.getHostControls(selfIdentity, meetingDetails.meetingUid),
+      onSuccess: (data) {
+        if (data == null) {
+          _fallbackToIndividualHostControlAPIs();
+          return;
+        }
+        isAnnotationEnabled = data.annotationAllowed;
+        isAudioModeEnable = data.audioPermission;
+        isAudioPermissionEnable = !data.audioPermission;
+        isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isParticipantDrawerHidden = data.participantDrawer;
+        isScreenShareEnable = data.screenSharePermissionGranted;
+        isVideoModeEnable = data.videoPermission;
+        isVideoPermissionEnable = !data.videoPermission;
+        //if (data.isRecordingActive) setRecording(true); NOTE: Not Needed
+      },
+      onError: (_) => _fallbackToIndividualHostControlAPIs(),
+    );
+  }
+
+  // ignore: deprecated_member_use_from_same_package
+  void _fallbackToIndividualHostControlAPIs() {
+    // ignore: deprecated_member_use_from_same_package
+    getAudioPermission();
+    // ignore: deprecated_member_use_from_same_package
+    getVideoPermission();
+    // ignore: deprecated_member_use_from_same_package
+    getParticipantDrawerConsent();
+    // ignore: deprecated_member_use_from_same_package
+    getScreenShareConsent();
+    // ignore: deprecated_member_use_from_same_package
+    getChatAttachmentConsent();
+  }
+
+  @Deprecated('Use getHostControls() instead.')
   void getScreenShareConsent() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getScreenShareConsent(selfIdentity, meetingDetails.meetingUid),
@@ -2379,6 +2418,7 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getChatAttachmentConsent() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getChatAttachmentConsent(selfIdentity, meetingDetails.meetingUid),
@@ -2455,6 +2495,7 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getAudioPermission() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getAudioPermission(selfIdentity, meetingDetails.meetingUid),
@@ -2491,6 +2532,7 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getVideoPermission() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getVideoPermission(selfIdentity, meetingDetails.meetingUid),
@@ -2584,6 +2626,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool isParticipantPageOpen = false;
 
+  @Deprecated('Use getHostControls() instead.')
   void getParticipantDrawerConsent() {
     networkRequestHandler(
         apiCall: () => apiClient.getParticipantDrawerConsent(selfIdentity, meetingDetails.meetingUid),
