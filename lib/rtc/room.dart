@@ -166,25 +166,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.fetchAndStoreSessionUid();
       }
 
-      // Wave 1 – critical permissions needed before the UI is interactive
-      viewModel?.getAudioPermission();
-      viewModel?.getVideoPermission();
-      viewModel?.getParticipantDrawerConsent();
-
-      // Wave 2 – secondary data, staggered to avoid flooding the server
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (!mounted) return;
-        var vm = _livekitProviderKey.currentState?.viewModel;
-        if (vm == null) return;
-
-        if (vm.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
-          vm.getScreenShareConsent();
-        }
-
-        if (vm.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
-          vm.getChatAttachmentConsent();
-        }
-      });
+      // Single call fetches all host control states; falls back to individual APIs if endpoint unavailable.
+      // ignore: deprecated_member_use
+      viewModel?.getHostControls();
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",
@@ -872,6 +856,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.isVideoPermissionGranted = false;
         viewModel?.disableVideo();
         showSnackBar(message: "Your video permission has been revoked");
+        break;
+
+      case MeetingActions.allowScreenShareAnnotation:
+        viewModel?.isAnnotationEnabled = remoteData.value == true;
+        break;
+
+      case MeetingActions.allowAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = true;
+        showSnackBar(message: "You can now annotate the shared screen");
+        break;
+
+      case MeetingActions.revokeAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = false;
+        showSnackBar(message: "Your annotation permission has been revoked");
         break;
 
       case MeetingActions.hideParticipantDrawer:

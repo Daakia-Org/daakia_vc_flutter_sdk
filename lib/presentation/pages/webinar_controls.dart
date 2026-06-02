@@ -126,6 +126,20 @@ class WebinarControls extends StatelessWidget {
                 },
               ),
 
+              const Divider(color: Colors.white),
+
+              // Screen Share Annotation
+              HostControlSwitch(
+                title: 'Allow Annotation',
+                subtitle:
+                'If turned ON, host can grant individual participants permission to annotate the shared screen.',
+                value: viewModel.isAnnotationEnabled,
+                isEnable: viewModel.meetingDetails.features?.isBasicPlan() == false,
+                onChanged: (value) {
+                  viewModel.updateAnnotationConsent(value);
+                },
+              ),
+
               // Screen Share
               HostControlSwitch(
                 title: 'Allow Screen Share',
@@ -139,6 +153,7 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isScreenShareEnable = value;
                   viewModel.updateScreenShareConsent(value);
                 },
+                isDividerRequired: false,
               ),
             ],
           ),

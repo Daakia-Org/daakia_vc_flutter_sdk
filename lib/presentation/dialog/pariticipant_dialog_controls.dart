@@ -45,6 +45,8 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
     final bool videoPermissionGranted = Utils.isVideoEnabled(widget.participant.attributes);
     final bool isCoHost = Utils.isCoHost(widget.participant.metadata);
     final bool isPinned = widget.viewModel.pinnedParticipantId == widget.participant.identity;
+    final bool annotationPermissionGranted = Utils.isAnnotationAllowed(widget.participant.attributes);
+    final bool targetIsOnMobile = Utils.isMobilePlatform(widget.participant.metadata);
 
     return Dialog(
       shape: RoundedRectangleBorder(
@@ -125,6 +127,25 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                     (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
                     (Utils.isHost(myRoleMataData) ||
                         Utils.isCoHost(myRoleMataData))),
+              ),
+              CustomTextItem(
+                icon: annotationPermissionGranted ? Icons.draw : Icons.draw_outlined,
+                text: annotationPermissionGranted
+                    ? "Revoke Annotation Permission"
+                    : "Allow Annotation Permission",
+                onTap: () {
+                  Navigator.pop(context);
+                  if (targetIsOnMobile) {
+                    _showAnnotationUnavailableDialog(context);
+                    return;
+                  }
+                  widget.viewModel.updateAnnotationPermissionForParticipant(
+                      widget.participant.identity, !annotationPermissionGranted);
+                },
+                isVisible: widget.isForIndividual &&
+                    widget.viewModel.isAnnotationEnabled &&
+                    (!Utils.isHost(targetRoleMataData) && !Utils.isCoHost(targetRoleMataData)) &&
+                    (Utils.isHost(myRoleMataData) || Utils.isCoHost(myRoleMataData)),
               ),
               CustomTextItem(
                 icon: isCoHost ? Icons.remove_moderator : Icons.admin_panel_settings,
@@ -217,6 +238,60 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
     );
   }
 
+  void _showAnnotationUnavailableDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        backgroundColor: Colors.white,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFECECF8),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.draw_outlined, color: Color(0xFF7B7BED), size: 24),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                "Annotation Unavailable",
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.black87),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "This Participant is using a mobile device. Annotation is available only on desktop/laptop device.",
+                style: TextStyle(fontSize: 14, color: Colors.black54, height: 1.4),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 22),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF7B7BED),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    elevation: 0,
+                  ),
+                  child: const Text("Got it", style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   bool isCoHostButtonEnable() {
     final String? myMetadata = widget.viewModel.room.localParticipant?.metadata;
     final String? targetMetadata = widget.participant.metadata;
@@ -288,9 +363,12 @@ class CustomTextItem extends StatelessWidget {
             children: [
               Icon(icon, color: Colors.white, size: 22),
               const SizedBox(width: 12),
-              Text(
-                text,
-                style: const TextStyle(fontSize: 16, color: Colors.white),
+              Flexible(
+                child: Text(
+                  text,
+                  style: const TextStyle(fontSize: 16, color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
