@@ -186,7 +186,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
 
     if (lkPlatformIs(PlatformType.android)) {
-      Hardware.instance.setSpeakerphoneOn(false);
+      Hardware.instance.setSpeakerphoneOn(true);
     }
 
     if (lkPlatformIsDesktop()) {

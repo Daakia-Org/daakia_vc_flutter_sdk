@@ -33,7 +33,8 @@ class RtcControls extends StatefulWidget {
 class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   CameraPosition position = CameraPosition.front;
 
-  bool _speakerphoneOn = Hardware.instance.preferSpeakerOutput;
+  bool _speakerphoneOn = true;
+  bool _userExplicitlySelectedEarpiece = false;
 
   PermissionStatus _micOsStatus = PermissionStatus.granted;
   PermissionStatus _cameraOsStatus = PermissionStatus.granted;
@@ -48,6 +49,8 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     participant.addListener(_onChange);
+    // Set speaker immediately so audio is loud even before device list loads.
+    Hardware.instance.setSpeakerphoneOn(true);
     Hardware.instance.enumerateDevices().then(_loadDevices);
     _deviceSubscription =
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
@@ -76,13 +79,35 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     }
   }
 
-  void _loadDevices(List<MediaDevice> devices) async {
-    final outputs =
-        devices.where((d) => d.kind == 'audiooutput').toList();
-    if (mounted) {
+  void _loadDevices(List<MediaDevice> devices) {
+    final outputs = devices.where((d) => d.kind == 'audiooutput').toList();
+    final hadExternal =
+        _audioOutputDevices.any((d) => isExternalAudioDevice(d.label));
+    final hasExternal = outputs.any((d) => isExternalAudioDevice(d.label));
+
+    if (!mounted) return;
+    setState(() => _audioOutputDevices = outputs);
+
+    if (!hadExternal && hasExternal) {
+      // External device just connected (or was already there at first load).
+      // Always route to it regardless of any prior earpiece preference.
+      Hardware.instance.setSpeakerphoneOn(false);
       setState(() {
-        _audioOutputDevices = outputs;
+        _speakerphoneOn = false;
+        _selectedOutputDevice = null;
+        _userExplicitlySelectedEarpiece = false;
       });
+    } else if (hadExternal && !hasExternal) {
+      // External device disconnected.
+      if (!_userExplicitlySelectedEarpiece) {
+        // User was not on earpiece by choice → restore speaker.
+        Hardware.instance.setSpeakerphoneOn(true);
+        setState(() {
+          _speakerphoneOn = true;
+          _selectedOutputDevice = null;
+        });
+      }
+      // If user explicitly chose earpiece, leave them there.
     }
   }
 
@@ -179,12 +204,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
             setState(() {
               _speakerphoneOn = true;
               _selectedOutputDevice = null;
+              _userExplicitlySelectedEarpiece = false;
             });
           } else if (label.contains('earpiece')) {
             Hardware.instance.setSpeakerphoneOn(false);
             setState(() {
               _speakerphoneOn = false;
               _selectedOutputDevice = null;
+              _userExplicitlySelectedEarpiece = true;
             });
           } else {
             // Bluetooth / wired headset — desktop-only API; mobile routes automatically.
@@ -192,6 +219,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
               await Hardware.instance.selectAudioOutput(device);
               setState(() {
                 _selectedOutputDevice = device;
+                _userExplicitlySelectedEarpiece = false;
               });
             } catch (e) {
               if (kDebugMode) print('Could not select audio output: $e');
