@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
@@ -8,6 +10,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../resources/colors/color.dart';
+import '../../presentation/bottom_sheets/audio_output_bottomsheet.dart';
 import '../../presentation/bottom_sheets/more_option_bottomsheet.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 
@@ -35,6 +38,10 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   PermissionStatus _micOsStatus = PermissionStatus.granted;
   PermissionStatus _cameraOsStatus = PermissionStatus.granted;
 
+  List<MediaDevice> _audioOutputDevices = [];
+  MediaDevice? _selectedOutputDevice;
+  StreamSubscription<List<MediaDevice>>? _deviceSubscription;
+
   LocalParticipant get participant => widget.participant;
 
   @override
@@ -42,15 +49,19 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     super.initState();
     participant.addListener(_onChange);
     Hardware.instance.enumerateDevices().then(_loadDevices);
+    _deviceSubscription =
+        Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
     WidgetsBinding.instance.addObserver(this);
     _checkOsPermissions();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Re-check after user returns from Settings.
     if (state == AppLifecycleState.resumed) {
       _checkOsPermissions();
+      // Re-enumerate on resume to catch BT/headset changes while backgrounded
+      // (onDeviceChange stream doesn't fire when the app isn't in foreground).
+      Hardware.instance.enumerateDevices().then(_loadDevices);
     }
   }
 
@@ -66,8 +77,12 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   }
 
   void _loadDevices(List<MediaDevice> devices) async {
+    final outputs =
+        devices.where((d) => d.kind == 'audiooutput').toList();
     if (mounted) {
-      setState(() {});
+      setState(() {
+        _audioOutputDevices = outputs;
+      });
     }
   }
 
@@ -103,10 +118,88 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     }
   }
 
-  void _setSpeakerphoneOn() {
-    _speakerphoneOn = !_speakerphoneOn;
-    Hardware.instance.setSpeakerphoneOn(_speakerphoneOn);
-    setState(() {});
+  IconData get _audioOutputIcon {
+    if (_selectedOutputDevice != null) {
+      return _iconForDeviceLabel(_selectedOutputDevice!.label);
+    }
+    if (_speakerphoneOn) return Icons.volume_up;
+    // When speakerphoneOn=false the OS routes to the best external device first
+    // (wired headset or BT), falling back to earpiece when none is connected.
+    final external = _audioOutputDevices
+        .where((d) => isExternalAudioDevice(d.label))
+        .firstOrNull;
+    return external != null
+        ? _iconForDeviceLabel(external.label)
+        : Icons.hearing;
+  }
+
+  IconData _iconForDeviceLabel(String label) {
+    final l = label.toLowerCase();
+    if (l.contains('bluetooth') ||
+        l.contains('airpods') ||
+        l.contains('wireless')) {
+      return Icons.bluetooth_audio;
+    }
+    if (l.contains('headphone') || l.contains('headset')) {
+      return Icons.headset;
+    }
+    return Icons.volume_up;
+  }
+
+  Widget _buildAudioOutputButton() {
+    return IconButton(
+      onPressed: Hardware.instance.canSwitchSpeakerphone
+          ? _showAudioOutputSheet
+          : null,
+      icon: Icon(
+        _audioOutputIcon,
+        color: Colors.white.withValues(
+            alpha: Hardware.instance.canSwitchSpeakerphone ? 1.0 : 0.5),
+      ),
+      iconSize: 30,
+    );
+  }
+
+  void _showAudioOutputSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => AudioOutputSheet(
+        speakerphoneOn: _speakerphoneOn,
+        initialDevices: _audioOutputDevices,
+        selectedDevice: _selectedOutputDevice,
+        onDeviceSelected: (device) async {
+          Navigator.pop(ctx);
+          final label = device.label.toLowerCase();
+          if (label.contains('speakerphone') || label.contains('speaker')) {
+            Hardware.instance.setSpeakerphoneOn(true);
+            setState(() {
+              _speakerphoneOn = true;
+              _selectedOutputDevice = null;
+            });
+          } else if (label.contains('earpiece')) {
+            Hardware.instance.setSpeakerphoneOn(false);
+            setState(() {
+              _speakerphoneOn = false;
+              _selectedOutputDevice = null;
+            });
+          } else {
+            // Bluetooth / wired headset — desktop-only API; mobile routes automatically.
+            try {
+              await Hardware.instance.selectAudioOutput(device);
+              setState(() {
+                _selectedOutputDevice = device;
+              });
+            } catch (e) {
+              if (kDebugMode) print('Could not select audio output: $e');
+            }
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _onMicPressed(RtcViewmodel viewModel) async {
@@ -243,17 +336,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          IconButton(
-            onPressed: Hardware.instance.canSwitchSpeakerphone
-                ? _setSpeakerphoneOn
-                : null,
-            icon: Icon(
-              _speakerphoneOn ? Icons.speaker_phone : Icons.phone_android,
-              color: Colors.white.withValues(
-                  alpha: Hardware.instance.canSwitchSpeakerphone ? 1.0 : 0.5),
-            ),
-            iconSize: 30,
-          ),
+          _buildAudioOutputButton(),
           _buildCameraButton(viewModel),
           _buildMicButton(viewModel),
           IconButton(
@@ -355,6 +438,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   @override
   void dispose() {
     participant.removeListener(_onChange);
+    _deviceSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
