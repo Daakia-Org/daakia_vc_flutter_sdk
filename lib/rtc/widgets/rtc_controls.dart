@@ -80,10 +80,21 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   }
 
   void _loadDevices(List<MediaDevice> devices) {
-    final outputs = devices.where((d) => d.kind == 'audiooutput').toList();
+    final rawOutputs = devices.where((d) => d.kind == 'audiooutput').toList();
     final hadExternal =
         _audioOutputDevices.any((d) => isExternalAudioDevice(d.label));
-    final hasExternal = outputs.any((d) => isExternalAudioDevice(d.label));
+
+    // On iOS, also check audioinput for BT devices: when overrideOutputAudioPort(.speaker)
+    // is active the current route shows only Speaker, but BT HFP still appears in
+    // availableInputs (audioinput kind) with portType containing "bluetooth".
+    final hasBtInput = defaultTargetPlatform == TargetPlatform.iOS &&
+        devices.any((d) =>
+            d.kind == 'audioinput' &&
+            (d.groupId ?? '').toLowerCase().contains('bluetooth'));
+    final hasExternal =
+        rawOutputs.any((d) => isExternalAudioDevice(d.label)) || hasBtInput;
+
+    final outputs = augmentOutputsForIos(devices);
 
     if (!mounted) return;
     setState(() => _audioOutputDevices = outputs);
@@ -154,13 +165,16 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         .where((d) => isExternalAudioDevice(d.label))
         .firstOrNull;
     return external != null
-        ? _iconForDeviceLabel(external.label)
+        ? _iconForDeviceLabel(external.label, external.groupId)
         : Icons.hearing;
   }
 
-  IconData _iconForDeviceLabel(String label) {
+  // groupId on iOS is AVAudioSession portType (e.g. "BluetoothHFP", "BluetoothA2DP").
+  IconData _iconForDeviceLabel(String label, [String? groupId]) {
     final l = label.toLowerCase();
-    if (l.contains('bluetooth') ||
+    final g = (groupId ?? '').toLowerCase();
+    if (g.contains('bluetooth') ||
+        l.contains('bluetooth') ||
         l.contains('airpods') ||
         l.contains('wireless')) {
       return Icons.bluetooth_audio;
@@ -200,13 +214,13 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
           Navigator.pop(ctx);
           final label = device.label.toLowerCase();
           if (label.contains('speakerphone') || label.contains('speaker')) {
-            Hardware.instance.setSpeakerphoneOn(true);
+            Hardware.instance.setSpeakerphoneOn(true, forceSpeakerOutput: true);
             setState(() {
               _speakerphoneOn = true;
               _selectedOutputDevice = null;
               _userExplicitlySelectedEarpiece = false;
             });
-          } else if (label.contains('earpiece')) {
+          } else if (label.contains('earpiece') || label.contains('receiver')) {
             Hardware.instance.setSpeakerphoneOn(false);
             setState(() {
               _speakerphoneOn = false;
@@ -214,16 +228,16 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
               _userExplicitlySelectedEarpiece = true;
             });
           } else {
-            // Bluetooth / wired headset — desktop-only API; mobile routes automatically.
-            try {
-              await Hardware.instance.selectAudioOutput(device);
-              setState(() {
-                _selectedOutputDevice = device;
-                _userExplicitlySelectedEarpiece = false;
-              });
-            } catch (e) {
-              if (kDebugMode) print('Could not select audio output: $e');
-            }
+            // BT / wired headset.
+            // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
+            // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
+            // auto-route to the connected BT/wired device by OS priority.
+            Hardware.instance.setSpeakerphoneOn(false);
+            setState(() {
+              _speakerphoneOn = false;
+              _selectedOutputDevice = null;
+              _userExplicitlySelectedEarpiece = false;
+            });
           }
         },
       ),
