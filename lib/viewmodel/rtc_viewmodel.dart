@@ -2708,7 +2708,6 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () => apiClient.allowParticipantAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
-        if (data?.success != 1) return;
         sendPrivateAction(
           ActionModel(action: value ? MeetingActions.allowAnnotationPermission : MeetingActions.revokeAnnotationPermission),
           participantIdentity,
