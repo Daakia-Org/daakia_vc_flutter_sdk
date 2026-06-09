@@ -1,13 +1,57 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 bool isExternalAudioDevice(String label) {
   final l = label.toLowerCase();
   return !l.contains('earpiece') &&
+      !l.contains('receiver') && // iOS earpiece label
       !l.contains('speakerphone') &&
       !l.contains('speaker');
+}
+
+// On iOS, enumerateDevices only returns currentRoute.outputs for audiooutput.
+// When overrideOutputAudioPort(.speaker) is active the route shows only Speaker,
+// hiding any connected BT device. BT HFP still appears in availableInputs (audioinput),
+// so we detect it there and inject the corresponding output entry.
+// We also always inject virtual Speaker + Earpiece entries.
+List<MediaDevice> augmentOutputsForIos(List<MediaDevice> allDevices) {
+  final audioOutputs = allDevices.where((d) => d.kind == 'audiooutput').toList();
+  if (defaultTargetPlatform != TargetPlatform.iOS) return audioOutputs;
+
+  final result = List<MediaDevice>.from(audioOutputs);
+
+  // Promote BT devices found in audioinput (availableInputs) to the output list.
+  // portType "BluetoothHFP/A2DP/LE" appears in availableInputs even when speaker is forced.
+  for (final input in allDevices.where((d) => d.kind == 'audioinput')) {
+    final g = (input.groupId ?? '').toLowerCase();
+    if (g.contains('bluetooth') &&
+        !result.any((o) => o.deviceId == input.deviceId)) {
+      result.add(MediaDevice(input.deviceId, input.label, 'audiooutput', input.groupId));
+    }
+  }
+
+  final hasExternal = result.any((d) => isExternalAudioDevice(d.label));
+
+  // Ensure Speaker is always present and at the top.
+  if (!result.any((d) => d.label.toLowerCase().contains('speaker'))) {
+    result.insert(0, const MediaDevice('Speaker', 'Speaker', 'audiooutput', 'Speaker'));
+  } else {
+    final idx = result.indexWhere((d) => d.label.toLowerCase().contains('speaker'));
+    if (idx > 0) result.insert(0, result.removeAt(idx));
+  }
+
+  // Show Earpiece only when no BT/wired is connected (iOS can't force earpiece over BT).
+  if (!hasExternal &&
+      !result.any((d) =>
+          d.label.toLowerCase().contains('receiver') ||
+          d.label.toLowerCase().contains('earpiece'))) {
+    result.add(const MediaDevice('Earpiece', 'Earpiece', 'audiooutput', 'Receiver'));
+  }
+
+  return result;
 }
 
 class AudioOutputSheet extends StatefulWidget {
@@ -41,8 +85,8 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
   }
 
   void _onDeviceChange(List<MediaDevice> devices) {
-    final outputs = devices.where((d) => d.kind == 'audiooutput').toList();
-    if (mounted) setState(() => _devices = outputs);
+    final augmented = augmentOutputsForIos(devices);
+    if (mounted) setState(() => _devices = augmented);
   }
 
   @override
@@ -64,12 +108,15 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
     final hasExternal = _devices.any((d) => isExternalAudioDevice(d.label));
     return hasExternal
         ? isExternalAudioDevice(device.label)
-        : l.contains('earpiece');
+        : l.contains('earpiece') || l.contains('receiver');
   }
 
-  IconData _iconForDevice(String label) {
-    final l = label.toLowerCase();
-    if (l.contains('bluetooth') ||
+  // groupId on iOS is AVAudioSession portType (e.g. "BluetoothHFP", "BluetoothA2DP").
+  IconData _iconForDevice(MediaDevice device) {
+    final l = device.label.toLowerCase();
+    final g = (device.groupId ?? '').toLowerCase();
+    if (g.contains('bluetooth') ||
+        l.contains('bluetooth') ||
         l.contains('airpods') ||
         l.contains('wireless')) {
       return Icons.bluetooth_audio;
@@ -78,7 +125,7 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
     if (l.contains('speakerphone') || l.contains('speaker')) {
       return Icons.volume_up;
     }
-    if (l.contains('earpiece')) return Icons.hearing;
+    if (l.contains('earpiece') || l.contains('receiver')) return Icons.hearing;
     return Icons.volume_up;
   }
 
@@ -128,7 +175,7 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
             else
               ..._devices.map(
                 (device) => _AudioDeviceOption(
-                  icon: _iconForDevice(device.label),
+                  icon: _iconForDevice(device),
                   label: device.label,
                   isSelected: _isSelected(device),
                   onTap: () => widget.onDeviceSelected(device),
