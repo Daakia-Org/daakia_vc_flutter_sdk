@@ -1,4 +1,3 @@
-import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/language_selection_bottom_sheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/loader.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/transcription_bubble.dart';
@@ -181,15 +180,30 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       "caption_${widget.viewModel.meetingDetails.meetingUid}_${DateTime.now().millisecondsSinceEpoch}",
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
+    // Show feedback locally: this screen is a fullscreen route pushed on top of
+    // RoomPage, so the room's notification overlay would render behind it and be
+    // invisible. Use this screen's own ScaffoldMessenger instead.
+    final messenger = ScaffoldMessenger.of(context);
     if (result.isSuccess) {
-      widget.viewModel.sendEvent(ShowTranscriptionDownload(
-        message: "File saved successfully!",
-        path: result.filePath,
-      ));
+      final path = result.filePath;
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('File saved successfully!'),
+          action: path == null
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => Utils.openMediaFile(path, context),
+                ),
+        ),
+      );
     } else {
-      widget.viewModel.sendMessageToUI("Failed to save file!");
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Failed to save file!')),
+      );
     }
   }
 
