@@ -28,6 +28,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   // Latches to true the moment transcription becomes active; used to detect
   // the active→stopped transition and auto-close the screen for everyone.
   bool _wasTranscriptionActive = false;
+  // Guards the auto-close pop so it runs exactly once. Without this, a second
+  // viewmodel notification arriving during the pop animation re-triggers the
+  // close after this route is already off the top, bubbling the pop to
+  // RoomPage and firing its "close meeting?" back-press confirmation.
+  bool _isClosing = false;
 
 
   @override
@@ -65,9 +70,14 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
 
     final isActive = widget.viewModel.isTranscriptionLanguageSelected;
 
-    // Close the screen for everyone when transcription is stopped.
+    // Close the screen for everyone when transcription is stopped. Pop only
+    // once, and only while this screen is still the top route — otherwise the
+    // pop would bubble to RoomPage and trigger its close-meeting confirmation.
     if (_wasTranscriptionActive && !isActive) {
-      Navigator.of(context).maybePop();
+      if (!_isClosing && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        _isClosing = true;
+        Navigator.of(context).pop();
+      }
       return;
     }
     if (isActive) _wasTranscriptionActive = true;
