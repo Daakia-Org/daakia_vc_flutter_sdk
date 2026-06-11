@@ -86,6 +86,9 @@ _build
 # FVM
 .fvm/
 
+#LOGS
+sentry.properties
+
 # AI
 CLAUDE.md
 graphify-out
