@@ -1521,6 +1521,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   void configAutoRecording() {
     if (isHost() || isCoHost()) {
+      if (meetingDetails.features?.isRecordingAllowed() != true) return;
       if (meetingDetails.meetingBasicDetails?.meetingConfig != null) {
         var meetingConfig = meetingDetails.meetingBasicDetails?.meetingConfig!;
         if (meetingConfig?.recordingForceStopped != 1 &&
@@ -2261,7 +2262,7 @@ class RtcViewmodel extends ChangeNotifier {
         isAudioModeEnable = data.audioPermission;
         isAudioPermissionEnable = !data.audioPermission;
         isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
-        isParticipantDrawerHidden = data.participantDrawer;
+        isParticipantDrawerHidden = !data.participantDrawer;
         isScreenShareEnable = data.screenSharePermissionGranted;
         isVideoModeEnable = data.videoPermission;
         isVideoPermissionEnable = !data.videoPermission;
@@ -2708,7 +2709,6 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () => apiClient.allowParticipantAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
       onSuccess: (data) {
-        if (data?.success != 1) return;
         sendPrivateAction(
           ActionModel(action: value ? MeetingActions.allowAnnotationPermission : MeetingActions.revokeAnnotationPermission),
           participantIdentity,

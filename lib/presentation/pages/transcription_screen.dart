@@ -1,4 +1,3 @@
-import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/language_selection_bottom_sheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/loader.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/transcription_bubble.dart';
@@ -29,6 +28,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
   // Latches to true the moment transcription becomes active; used to detect
   // the active→stopped transition and auto-close the screen for everyone.
   bool _wasTranscriptionActive = false;
+  // Guards the auto-close pop so it runs exactly once. Without this, a second
+  // viewmodel notification arriving during the pop animation re-triggers the
+  // close after this route is already off the top, bubbling the pop to
+  // RoomPage and firing its "close meeting?" back-press confirmation.
+  bool _isClosing = false;
 
 
   @override
@@ -66,9 +70,14 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
 
     final isActive = widget.viewModel.isTranscriptionLanguageSelected;
 
-    // Close the screen for everyone when transcription is stopped.
+    // Close the screen for everyone when transcription is stopped. Pop only
+    // once, and only while this screen is still the top route — otherwise the
+    // pop would bubble to RoomPage and trigger its close-meeting confirmation.
     if (_wasTranscriptionActive && !isActive) {
-      Navigator.of(context).maybePop();
+      if (!_isClosing && (ModalRoute.of(context)?.isCurrent ?? false)) {
+        _isClosing = true;
+        Navigator.of(context).pop();
+      }
       return;
     }
     if (isActive) _wasTranscriptionActive = true;
@@ -181,15 +190,30 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
       "caption_${widget.viewModel.meetingDetails.meetingUid}_${DateTime.now().millisecondsSinceEpoch}",
     );
 
+    if (!mounted) return;
     setState(() => _isLoading = false);
 
+    // Show feedback locally: this screen is a fullscreen route pushed on top of
+    // RoomPage, so the room's notification overlay would render behind it and be
+    // invisible. Use this screen's own ScaffoldMessenger instead.
+    final messenger = ScaffoldMessenger.of(context);
     if (result.isSuccess) {
-      widget.viewModel.sendEvent(ShowTranscriptionDownload(
-        message: "File saved successfully!",
-        path: result.filePath,
-      ));
+      final path = result.filePath;
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('File saved successfully!'),
+          action: path == null
+              ? null
+              : SnackBarAction(
+                  label: 'Open',
+                  onPressed: () => Utils.openMediaFile(path, context),
+                ),
+        ),
+      );
     } else {
-      widget.viewModel.sendMessageToUI("Failed to save file!");
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Failed to save file!')),
+      );
     }
   }
 

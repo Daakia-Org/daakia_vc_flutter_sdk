@@ -153,6 +153,11 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
     final isAnnotationForThisShare = isScreenShare &&
         viewModel.isAnnotationActive &&
         viewModel.activeAnnotationSharerIdentity == widget.participant.identity;
+    // Someone (possibly a remote participant) has drawn on this share. The local
+    // sharer never sets isAnnotationActive — they can't draw — so we detect
+    // incoming strokes separately to un-blur and let them see the annotations.
+    final hasAnnotationsForThisShare = isScreenShare &&
+        viewModel.getAnnotationStrokes(widget.participant.identity).isNotEmpty;
 
     return Card(
       elevation: 10,
@@ -332,7 +337,8 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
             if (widget.isSpeaker &&
                 isScreenShare &&
                 widget.participant is LocalParticipant &&
-                !isAnnotationForThisShare)
+                !isAnnotationForThisShare &&
+                !hasAnnotationsForThisShare)
               Positioned.fill(
                 child: ClipRect(
                   child: BackdropFilter(
