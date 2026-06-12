@@ -9,7 +9,7 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ✅ **Android**  | ✅ **iOS**
 
 ## Latest Release
-**v4.4.1** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
+**v4.5.0** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
 
 # How to use
 
@@ -21,7 +21,7 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
 
 ```yaml
   dependencies:
-    daakia_vc_flutter_sdk: ^4.4.1
+    daakia_vc_flutter_sdk: ^4.5.0
 ```
 
 
