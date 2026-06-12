@@ -1,5 +1,53 @@
 # CHANGELOG
 
+## v4.5.0 – (2026-06)
+
+> **Major release.** Requires **Flutter 3.22+ (Dart SDK ^3.8.0)**. After upgrading, run `flutter clean && flutter pub get` to avoid conflicts from major dependency updates.
+
+### 🚀 New Features
+- **Screen-Share Annotation** — Draw and annotate over shared screens in real time. Includes host controls to allow/deny annotation, annotation toolbar, and permission dialog.
+- **Audio Output Device Selection** — Users can switch audio output devices (earpiece, speaker, Bluetooth) via a bottom sheet. Improved iOS audio routing and default speakerphone handling.
+- **Save Chat Attachments to Downloads** — Participants can save received files to the device Downloads folder on both Android and iOS.
+- **Camera in Chat Attachment Picker** — Added camera option alongside file picker in the chat attachment sheet.
+- **Hide Participant List in Webinars** — New `hideParticipantDrawer` host control to show/hide the participant panel in webinar mode.
+- **Pinch-to-Zoom for Active Speaker** — Pinch-to-zoom and reset button on the active speaker video tile.
+- **Workshop Mode in Webinar Controls** — Workshop mode is now supported alongside webinar mode in participant controls.
+- **Quick Actions Menu for Participants** — Tap a participant tile to get a quick-actions bottom sheet for faster host controls.
+- **iOS Audio Interruption Handling** — Meetings gracefully handle incoming phone calls and audio session interruptions on iOS.
+- **Custom Base URL + SDK Initialization** — Support for custom API URL configuration and explicit SDK initialization.
+- **Participant Platform Metadata** — Client platform (iOS/Android/etc.) is now sent as part of join metadata.
+
+### 🧩 Improvements
+- Unified `getHostControls` API endpoint; deprecated individual per-control endpoints.
+- Replaced `ScaffoldMessenger` with a custom `RoomNotification` overlay for in-room toasts.
+- Participant list header now shows total participant count.
+- Staggered non-critical permission requests on room init for faster join.
+- Moved local screen-share overlay from room level into the participant widget.
+- Co-hosts can now configure auto-recording.
+
+### 🐞 Bug Fixes
+- Fixed URI decoding in `getFileName` for file names with special characters.
+- Fixed stale raised-hand state for disconnected participants.
+- Fixed participant drawer visibility state assignment.
+- Fixed co-host rejoin authorization with stale host token.
+- Fixed `DaakiaPiP` method channel error handling on unsupported Android versions.
+- Fixed recording permission validation before auto-recording starts.
+- Fixed accidental meeting exit when navigating back from the transcription screen.
+- Fixed local sharer not seeing incoming annotations on their own shared screen.
+- Fixed MIME type resolution for varied file link formats.
+- Fixed status bar visibility and background color in the RTC room.
+
+### 📦 Dependency Updates
+- Dart SDK: `^3.5.3` → `^3.8.0`
+- `livekit_client`: `^2.5.3` → `^2.7.0`
+- `flutter_webrtc`: `^1.1.0` → `^1.4.0`
+- `connectivity_plus`: `^6.1.5` → `^7.0.0`
+- `device_info_plus`: `^11.5.0` → `^12.2.0`
+- `datadog_flutter_plugin`: `^2.13.1` → `^2.16.1`
+- Added: `image_picker: ^1.1.2`
+
+---
+
 ## v4.4.1 – (2026-05)
 
 ### 🐞 Bug Fixes
