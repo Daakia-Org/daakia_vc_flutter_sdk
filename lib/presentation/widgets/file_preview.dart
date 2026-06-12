@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:daakia_vc_flutter_sdk/presentation/screens/web_preview.dart';
+import 'package:daakia_vc_flutter_sdk/utils/download_utils.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
@@ -138,7 +139,8 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
             MaterialPageRoute(builder: (_) => WebPreview(url: widget.fileUrl)),
           );
         } else {
-          final filePath = await _resolveFilePath(widget.fileUrl.split('/').last);
+          final fileName = Uri.decodeFull(widget.fileUrl.split('/').last);
+          final filePath = await _resolveFilePath(fileName);
 
           if (File(filePath).existsSync()) {
             try {
@@ -159,6 +161,14 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
             await _downloadFile(widget.fileUrl, filePath);
 
             setState(() => _progress = null);
+
+            if (widget.saveAttachmentToDownloads && !widget.isSender && Platform.isAndroid) {
+              await DownloadUtils.saveToPublicDownloads(
+                sourcePath: filePath,
+                fileName: fileName,
+                mimeType: mimeType ?? '*/*',
+              );
+            }
 
             try {
               final result = await OpenFile.open(filePath);
@@ -227,10 +237,11 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
   }
 
   Future<String> _resolveFilePath(String fileName) async {
-    if (widget.saveAttachmentToDownloads && !widget.isSender) {
-      final downloadsDir = await getDownloadsDirectory();
-      final baseDir = downloadsDir ?? await getApplicationDocumentsDirectory();
-      return '${baseDir.path}/$fileName';
+    if (widget.saveAttachmentToDownloads && !widget.isSender && Platform.isIOS) {
+      // iOS: save directly to app Documents directory (accessible via Files app).
+      // Android copies to public Downloads after download via DownloadUtils.
+      final dir = await getApplicationDocumentsDirectory();
+      return '${dir.path}/$fileName';
     }
     final tempDir = await getTemporaryDirectory();
     return '${tempDir.path}/$fileName';
