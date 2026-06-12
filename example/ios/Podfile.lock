@@ -68,6 +68,8 @@ PODS:
     - WebRTC-SDK (= 144.7559.01)
   - fluttertoast (0.0.2):
     - Flutter
+  - image_picker_ios (0.0.1):
+    - Flutter
   - livekit_client (2.7.0):
     - Flutter
     - flutter_webrtc
@@ -111,6 +113,7 @@ DEPENDENCIES:
   - Flutter (from `Flutter`)
   - flutter_webrtc (from `.symlinks/plugins/flutter_webrtc/ios`)
   - fluttertoast (from `.symlinks/plugins/fluttertoast/ios`)
+  - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
   - livekit_client (from `.symlinks/plugins/livekit_client/ios`)
   - open_file_ios (from `.symlinks/plugins/open_file_ios/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
@@ -157,6 +160,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_webrtc/ios"
   fluttertoast:
     :path: ".symlinks/plugins/fluttertoast/ios"
+  image_picker_ios:
+    :path: ".symlinks/plugins/image_picker_ios/ios"
   livekit_client:
     :path: ".symlinks/plugins/livekit_client/ios"
   open_file_ios:
@@ -197,6 +202,7 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_webrtc: ec91d94b484ad49cf191ef93413f64a40ffd3b4c
   fluttertoast: 2c67e14dce98bbdb200df9e1acf610d7a6264ea1
+  image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
   livekit_client: 9b9a08c5c78f694ac6a9e70c1c269704ba574b73
   open_file_ios: 5ff7526df64e4394b4fe207636b67a95e83078bb
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499

@@ -340,7 +340,8 @@ class Utils {
     final match = RegExp(r'-file-(.+)$').firstMatch(fileName);
 
     // If a match is found, return the matched group; otherwise, return the original file name
-    return match != null ? match.group(1)! : fileName;
+    final name = match != null ? match.group(1)! : fileName;
+    return Uri.decodeFull(name);
   }
 
   static String decodeUnicode(String? input) {

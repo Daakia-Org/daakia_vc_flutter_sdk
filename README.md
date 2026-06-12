@@ -114,37 +114,47 @@ Daakia SDK supports **Picture-in-Picture (PiP)** mode on Android to allow users 
 
 ## iOS
 
-Camera and microphone usage need to be declared in your `Info.plist` file.
+### Required Info.plist Permissions
 
-```
+All of the following entries **must** be present in your `Info.plist`. Apple will reject your App Store submission if any purpose string is missing — even if your app doesn't call the API directly, a dependency may reference it.
+
+```xml
 <dict>
   ...
+  <!-- Required: video conferencing -->
   <key>NSCameraUsageDescription</key>
-  <string>$(PRODUCT_NAME) uses your camera</string>
+  <string>$(PRODUCT_NAME) uses your camera for video conferencing</string>
+
+  <!-- Required: audio conferencing -->
   <key>NSMicrophoneUsageDescription</key>
-  <string>$(PRODUCT_NAME) uses your microphone</string>
-```
+  <string>$(PRODUCT_NAME) uses your microphone for audio conferencing</string>
 
-Your application can still run the voice call when it is switched to the background if the background mode is enabled. Select the app target in Xcode, click the Capabilities tab, enable __Background Modes__, and check __Audio, AirPlay, and Picture in Picture__.
+  <!-- Required: sharing images in chat -->
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>$(PRODUCT_NAME) accesses your photo library to share images in the conference chat</string>
 
-Your `Info.plist` should have the following entries.
-
-```
-<dict>
-  ...
+  <!-- Required: keep audio running when app is backgrounded -->
   <key>UIBackgroundModes</key>
   <array>
     <string>audio</string>
   </array>
+  ...
+</dict>
 ```
 
-For iOS, the minimum supported deployment target is 12.1. You will need to add the following to your Podfile.
+> **Note:** `NSPhotoLibraryUsageDescription` is required by the SDK's chat attachment feature. Omitting it will cause App Store submission to fail even if the user never picks a photo.
 
-```
-platform :ios, '12.1'
+To keep audio running when the app is backgrounded, also enable **Background Modes → Audio, AirPlay, and Picture in Picture** in Xcode under your target's Capabilities tab.
+
+### Minimum Deployment Target
+
+For iOS, the minimum supported deployment target is 14.0. Add the following to your Podfile:
+
+```ruby
+platform :ios, '14.0'
 ```
 
-You may need to delete Podfile.lock and re-run pod install after updating deployment target.
+You may need to delete `Podfile.lock` and re-run `pod install` after updating the deployment target.
 
 ### Podfile Permission Macros
 
