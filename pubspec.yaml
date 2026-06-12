@@ -48,7 +48,7 @@ dependencies:
   webview_flutter_android: ^4.10.1
   webview_flutter_wkwebview: ^3.23.0
   audioplayers: ^6.5.1
-  datadog_flutter_plugin: ^2.13.1
+  datadog_flutter_plugin: ^2.16.1
   connectivity_plus: ^7.0.0
   device_info_plus: ^12.2.0
 

@@ -30,6 +30,9 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         case "updateMuteState":
             // iOS keeps the audio session alive regardless of mute state — no-op.
             result(nil)
+        case "saveFileToDownloads":
+            // iOS saves directly to the app Documents directory in Dart — no native step needed.
+            result(nil)
         default:
             result(FlutterMethodNotImplemented)
         }
