@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class DaakiaPiP {
@@ -17,13 +18,17 @@ class DaakiaPiP {
     _methodChannel.invokeMethod("createPiP", {
       "name": name,
       "avatar": avatar ?? "",
-    });
+    }).catchError((e) => debugPrint('[DaakiaPiP] createPiP error: $e'));
   }
 
   /// Dispose PiP view
   static void disposePiP() async {
     if (!Platform.isIOS) return;
 
-    await _methodChannel.invokeMethod("disposePiP");
+    try {
+      await _methodChannel.invokeMethod("disposePiP");
+    } catch (e) {
+      debugPrint('[DaakiaPiP] disposePiP error: $e');
+    }
   }
 }

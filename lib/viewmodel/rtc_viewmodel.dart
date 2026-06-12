@@ -126,7 +126,9 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  RtcViewmodel(this.room, this.meetingDetails);
+  final bool saveAttachmentToDownloads;
+
+  RtcViewmodel(this.room, this.meetingDetails, {this.saveAttachmentToDownloads = false});
 
   List<RemoteActivityData> getMessageList() {
     return _messageList;

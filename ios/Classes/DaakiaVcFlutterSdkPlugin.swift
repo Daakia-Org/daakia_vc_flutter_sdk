@@ -30,9 +30,41 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         case "updateMuteState":
             // iOS keeps the audio session alive regardless of mute state — no-op.
             result(nil)
+        case "saveFileToDownloads":
+            guard let args = call.arguments as? [String: Any],
+                  let sourcePath = args["sourcePath"] as? String,
+                  let fileName = args["fileName"] as? String else {
+                result(FlutterError(code: "INVALID_ARG", message: "sourcePath and fileName are required", details: nil))
+                return
+            }
+            do {
+                let savedPath = try saveFileToDownloads(sourcePath: sourcePath, fileName: fileName)
+                result(savedPath)
+            } catch {
+                result(FlutterError(code: "SAVE_ERROR", message: error.localizedDescription, details: nil))
+            }
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    // Copies a file into the app's Documents/Downloads directory (the only
+    // writable persistent location available within the iOS sandbox).
+    // Files here are visible in Files > On My iPhone > [App Name] > Downloads
+    // when the host app sets UIFileSharingEnabled = YES in its Info.plist.
+    private func saveFileToDownloads(sourcePath: String, fileName: String) throws -> String {
+        let fileManager = FileManager.default
+        let sourceURL = URL(fileURLWithPath: sourcePath)
+        let documentsURL = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let targetDir = documentsURL.appendingPathComponent("Downloads", isDirectory: true)
+
+        try fileManager.createDirectory(at: targetDir, withIntermediateDirectories: true, attributes: nil)
+        let destinationURL = targetDir.appendingPathComponent(fileName)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL.path
     }
 
     // Activates the audio session. Returns true on success, false if still interrupted.

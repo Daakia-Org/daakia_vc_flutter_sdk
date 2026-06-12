@@ -57,12 +57,14 @@ class RoomPage extends StatefulWidget {
   final EventsListener<RoomEvent> listener;
   final MeetingDetails meetingDetails;
   final bool fastConnection;
+  final bool saveAttachmentToDownloads;
 
   const RoomPage(
     this.room,
     this.listener,
     this.meetingDetails, {
     this.fastConnection = false,
+    this.saveAttachmentToDownloads = false,
     super.key,
   });
 
@@ -1222,6 +1224,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         key: _livekitProviderKey,
         room: widget.room,
         meetingDetails: widget.meetingDetails,
+        saveAttachmentToDownloads: widget.saveAttachmentToDownloads,
         child: MaterialApp(
           navigatorKey: _innerNavigatorKey,
           debugShowCheckedModeBanner: false,

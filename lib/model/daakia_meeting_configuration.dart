@@ -76,6 +76,13 @@ class DaakiaMeetingConfiguration {
   /// All fields are optional and can be left null to use default behavior.
   final VCConfig? vcConfig;
 
+  /// When true, downloaded chat attachments are saved to the device's
+  /// downloads folder (or the app documents directory on iOS) instead of a
+  /// temporary directory, so users can access them after the meeting ends.
+  ///
+  /// Defaults to `false` when not provided.
+  final bool? saveAttachmentToDownloads;
+
   const DaakiaMeetingConfiguration({
     this.metadata,
     this.participantNameConfig,
@@ -83,5 +90,6 @@ class DaakiaMeetingConfiguration {
     this.enableMicrophoneByDefault,
     this.enableCameraByDefault,
     this.vcConfig,
+    this.saveAttachmentToDownloads,
   });
 }

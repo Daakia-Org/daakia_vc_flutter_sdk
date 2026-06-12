@@ -2,6 +2,7 @@ import 'dart:collection';
 import 'dart:io';
 
 import 'package:daakia_vc_flutter_sdk/presentation/screens/web_preview.dart';
+import 'package:daakia_vc_flutter_sdk/utils/download_utils.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/cupertino.dart';
@@ -15,8 +16,16 @@ import 'package:path_provider/path_provider.dart';
 class FilePreviewWidget extends StatefulWidget {
   final String fileUrl;
   final bool isChatAttachmentDownloadEnable;
+  final bool isSender;
+  final bool saveAttachmentToDownloads;
 
-  const FilePreviewWidget({super.key, required this.fileUrl, required this.isChatAttachmentDownloadEnable});
+  const FilePreviewWidget({
+    super.key,
+    required this.fileUrl,
+    required this.isChatAttachmentDownloadEnable,
+    this.isSender = false,
+    this.saveAttachmentToDownloads = false,
+  });
 
   @override
   State<FilePreviewWidget> createState() => _FilePreviewWidgetState();
@@ -130,8 +139,8 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
             MaterialPageRoute(builder: (_) => WebPreview(url: widget.fileUrl)),
           );
         } else {
-          final tempDir = await getTemporaryDirectory();
-          final filePath = '${tempDir.path}/${widget.fileUrl.split('/').last}';
+          final fileName = Uri.decodeFull(widget.fileUrl.split('/').last);
+          final filePath = await _resolveFilePath(fileName);
 
           if (File(filePath).existsSync()) {
             try {
@@ -152,6 +161,14 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
             await _downloadFile(widget.fileUrl, filePath);
 
             setState(() => _progress = null);
+
+            if (widget.saveAttachmentToDownloads && !widget.isSender) {
+              await DownloadUtils.saveToDownloads(
+                sourcePath: filePath,
+                fileName: fileName,
+                mimeType: mimeType,
+              );
+            }
 
             try {
               final result = await OpenFile.open(filePath);
@@ -217,6 +234,11 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
         ],
       ),
     );
+  }
+
+  Future<String> _resolveFilePath(String fileName) async {
+    final tempDir = await getTemporaryDirectory();
+    return '${tempDir.path}/$fileName';
   }
 
   Future<void> _downloadFile(String url, String filePath) async {
