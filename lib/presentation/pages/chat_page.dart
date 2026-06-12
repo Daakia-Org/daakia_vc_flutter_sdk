@@ -1,12 +1,9 @@
-import 'dart:io';
-
+import 'package:daakia_vc_flutter_sdk/presentation/widgets/attachment_picker_sheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/message_bubble.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../events/rtc_events.dart';
-import '../../presentation/widgets/compact_file_preview.dart';
 import '../../utils/constants.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../widgets/edit_preview_widget.dart';
@@ -145,132 +142,17 @@ class _ChatState extends State<ChatPage> {
                       if (widget.viewModel.meetingDetails.features
                               ?.isConferenceChatAttachmentAllowed() ==
                           true)
-                        // Attachment Button
                         IconButton(
                           icon: const Icon(Icons.attach_file),
                           color: Colors.white,
-                          onPressed: () async {
-                            Utils.hideKeyboard(context);
-                            try {
-                              widget.viewModel
-                                  .sendMainChatControllerEvent(ShowLoading());
-                              FilePickerResult? result =
-                                  await FilePicker.platform.pickFiles(
-                                allowMultiple: false,
-                                type: FileType.custom,
-                                allowedExtensions: Constant.allowedExtensions(),
-                              );
-                              widget.viewModel
-                                  .sendMainChatControllerEvent(StopLoading());
-                              if (result != null) {
-                                File? file = result.files.single.path != null
-                                    ? File(result.files.single.path!)
-                                    : null;
-                                var isValidFileSize =
-                                    await Utils.validateFile(file, (error) {
-                                  widget.viewModel.sendMessageToUI(error);
-                                });
-                                if (!isValidFileSize) {
-                                  return;
-                                }
-                                if (file != null) {
-                                  if (!context.mounted) return;
-                                  showModalBottomSheet(
-                                    context: context,
-                                    builder: (context) => Padding(
-                                      padding: const EdgeInsets.all(8.0),
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          const Text(
-                                            "Selected File",
-                                            style: TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold),
-                                          ),
-                                          const SizedBox(height: 10),
-                                          LocalFilePreview(
-                                              file: file,
-                                              progress: widget.viewModel
-                                                  .publicMessageProgress,
-                                              viewModel: widget.viewModel),
-                                          const SizedBox(height: 10),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.center,
-                                            // Center the buttons
-                                            children: [
-                                              // Delete button
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.redAccent
-                                                      .withValues(alpha: 0.5),
-                                                  // Button-like background
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          8.0),
-                                                ),
-                                                child: IconButton(
-                                                  onPressed: () {
-                                                    Navigator.pop(context);
-                                                  },
-                                                  icon: const Icon(Icons.delete,
-                                                      color: Colors.redAccent),
-                                                  tooltip: "Delete",
-                                                ),
-                                              ),
-                                              const SizedBox(width: 10),
-                                              // Spacing between buttons
-                                              // Upload button
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.all(8.0),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green
-                                                      .withValues(alpha: 0.5),
-                                                  // Button-like background
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          8.0),
-                                                ),
-                                                child: IconButton(
-                                                  onPressed: () {
-                                                    widget.viewModel
-                                                        .uploadAttachment(file,
-                                                            () {
-                                                      Navigator.pop(context);
-                                                    });
-                                                  },
-                                                  icon: const Icon(Icons.upload,
-                                                      color: Colors.green),
-                                                  tooltip: "Upload",
-                                                ),
-                                              ),
-                                            ],
-                                          )
-                                        ],
-                                      ),
-                                    ),
-                                    backgroundColor: Colors.black,
-                                  );
-                                } else {
-                                  widget.viewModel
-                                      .sendMessageToUI("File not found!");
-                                }
-                              } else {
-                                widget.viewModel
-                                    .sendMessageToUI("File not selected!");
-                              }
-                            } catch (e) {
-                              widget.viewModel
-                                  .sendMessageToUI(e.runtimeType.toString());
-                            } finally {
-                              widget.viewModel
-                                  .sendMainChatControllerEvent(StopLoading());
-                            }
-                          },
+                          onPressed: () => AttachmentPickerSheet.show(
+                            context: context,
+                            viewModel: widget.viewModel,
+                            uploadProgress:
+                                widget.viewModel.publicMessageProgress,
+                            onUpload: (file, onDone) =>
+                                widget.viewModel.uploadAttachment(file, onDone),
+                          ),
                         ),
 
                       // Message input field

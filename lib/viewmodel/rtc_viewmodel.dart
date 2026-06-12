@@ -430,6 +430,24 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Releases the LiveKit camera so the native camera UI can use it.
+  /// Returns whether the camera was active, so the caller can restore it.
+  Future<bool> pauseCameraForHandoff() async {
+    final wasEnabled = participant.isCameraEnabled();
+    if (wasEnabled) {
+      await participant.setCameraEnabled(false);
+      notifyListeners();
+    }
+    return wasEnabled;
+  }
+
+  Future<void> resumeCameraAfterHandoff(bool wasEnabled) async {
+    if (wasEnabled) {
+      await participant.setCameraEnabled(true);
+      notifyListeners();
+    }
+  }
+
   double getMicAlpha() {
     if (isAudioInterrupted) return 0.5;
     if (isHost() || isCoHost()) return 1.0;
