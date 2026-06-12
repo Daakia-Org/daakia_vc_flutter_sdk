@@ -15,7 +15,7 @@ dependencies:
   flutter:
     sdk: flutter
 
-  retrofit: 4.9.2
+  retrofit: ^4.9.2
   logger: ^2.6.1
   json_annotation: ^4.9.0
   dio: ^5.9.0
@@ -57,7 +57,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  retrofit_generator: 10.2.6
+  retrofit_generator: ^10.2.6
   build_runner: ^2.7.1
   json_serializable: ^6.11.0
 
