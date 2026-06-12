@@ -7,23 +7,23 @@ PODS:
   - daakia_vc_flutter_sdk (4.4.0):
     - Flutter
   - datadog_flutter_plugin (0.0.1):
-    - DatadogCore (= 2.30.0)
-    - DatadogCrashReporting (= 2.30.0)
-    - DatadogInternal (= 2.30.0)
-    - DatadogLogs (= 2.30.0)
-    - DatadogRUM (= 2.30.0)
+    - DatadogCore (= 2.30.1)
+    - DatadogCrashReporting (= 2.30.1)
+    - DatadogInternal (= 2.30.1)
+    - DatadogLogs (= 2.30.1)
+    - DatadogRUM (= 2.30.1)
     - DictionaryCoder (= 1.2.0)
     - Flutter
-  - DatadogCore (2.30.0):
-    - DatadogInternal (= 2.30.0)
-  - DatadogCrashReporting (2.30.0):
-    - DatadogInternal (= 2.30.0)
+  - DatadogCore (2.30.1):
+    - DatadogInternal (= 2.30.1)
+  - DatadogCrashReporting (2.30.1):
+    - DatadogInternal (= 2.30.1)
     - PLCrashReporter (~> 1.12.0)
-  - DatadogInternal (2.30.0)
-  - DatadogLogs (2.30.0):
-    - DatadogInternal (= 2.30.0)
-  - DatadogRUM (2.30.0):
-    - DatadogInternal (= 2.30.0)
+  - DatadogInternal (2.30.1)
+  - DatadogLogs (2.30.1):
+    - DatadogInternal (= 2.30.1)
+  - DatadogRUM (2.30.1):
+    - DatadogInternal (= 2.30.1)
   - device_info_plus (0.0.1):
     - Flutter
   - DictionaryCoder (1.2.0)
@@ -182,12 +182,12 @@ SPEC CHECKSUMS:
   audioplayers_darwin: 4f9ca89d92d3d21cec7ec580e78ca888e5fb68bd
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   daakia_vc_flutter_sdk: b8382a2729ab1d78593251a24a0954c40ab944b1
-  datadog_flutter_plugin: 52c9877fbf3feae699a36868b32ea4f6ca979e37
-  DatadogCore: 5c01290a3b60b27bf49aa958f2e339c738364d9e
-  DatadogCrashReporting: 11286d48ab61baeb2b41b945c7c0d4ef23db317d
-  DatadogInternal: 7aeb48e254178a0c462c3953dc0a8a8d64499a93
-  DatadogLogs: 4324739de62a6059e07d70bf6ceceed78764edeb
-  DatadogRUM: f36949a38285f3b240a7be577d425f8518e087d4
+  datadog_flutter_plugin: 8cbbf0d89820bc9db1fa48e02bb87ee92d55d59c
+  DatadogCore: c09c6b3345d200ad8df6b8424562afc4c274d85e
+  DatadogCrashReporting: 19c67670fe9ee01cc4cbc3c859d6c69dc6344e9e
+  DatadogInternal: a712490b2c285095d748ccb437a9a630df949d7f
+  DatadogLogs: 084f7974d6dbe053b5fbabc07a245a700c1514f7
+  DatadogRUM: c9356f806db3599386f854bdb53494216600d2ae
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   DictionaryCoder: f7115fcd074c8301e91f2eb862da1ea7d0385e61
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
@@ -212,6 +212,6 @@ SPEC CHECKSUMS:
   WebRTC-SDK: ab9b5319e458c2bfebdc92b3600740da35d5630d
   webview_flutter_wkwebview: 1821ceac936eba6f7984d89a9f3bcb4dea99ebb2
 
-PODFILE CHECKSUM: 1959d098c91d8a792531a723c4a9d7e9f6a01e38
+PODFILE CHECKSUM: e63ed792e7a9cf4bd9cd1d26d173e459815f209f
 
 COCOAPODS: 1.16.2

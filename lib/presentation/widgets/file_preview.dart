@@ -162,11 +162,11 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
 
             setState(() => _progress = null);
 
-            if (widget.saveAttachmentToDownloads && !widget.isSender && Platform.isAndroid) {
-              await DownloadUtils.saveToPublicDownloads(
+            if (widget.saveAttachmentToDownloads && !widget.isSender) {
+              await DownloadUtils.saveToDownloads(
                 sourcePath: filePath,
                 fileName: fileName,
-                mimeType: mimeType ?? '*/*',
+                mimeType: mimeType,
               );
             }
 
@@ -237,12 +237,6 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
   }
 
   Future<String> _resolveFilePath(String fileName) async {
-    if (widget.saveAttachmentToDownloads && !widget.isSender && Platform.isIOS) {
-      // iOS: save directly to app Documents directory (accessible via Files app).
-      // Android copies to public Downloads after download via DownloadUtils.
-      final dir = await getApplicationDocumentsDirectory();
-      return '${dir.path}/$fileName';
-    }
     final tempDir = await getTemporaryDirectory();
     return '${tempDir.path}/$fileName';
   }
