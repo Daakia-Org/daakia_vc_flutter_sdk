@@ -121,12 +121,17 @@ class DaakiaMeetingService {
   /// flutter_webrtc can call getDisplayMedia. Must be called after the user
   /// grants screen capture permission and before setScreenShareEnabled(true).
   /// No-op on iOS and Android < 14 (flutter_background handles it there).
-  static Future<void> startScreenShare() async {
-    if (!Platform.isAndroid) return;
+  /// Returns false if the service is not running (e.g. killed by OS).
+  /// Callers must bail early on false — proceeding to setScreenShareEnabled
+  /// without the FGS mediaProjection type crashes on Android 14+.
+  static Future<bool> startScreenShare() async {
+    if (!Platform.isAndroid) return true;
     try {
       await _channel.invokeMethod('startScreenShareService');
+      return true;
     } catch (e) {
       debugPrint('DaakiaMeetingService startScreenShare error: $e');
+      return false;
     }
   }
 

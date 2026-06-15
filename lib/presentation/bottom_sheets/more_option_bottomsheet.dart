@@ -310,7 +310,14 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
         // meeting). Calling addMediaProjectionType() on the main thread is
         // synchronous, so the FGS type is registered before getDisplayMedia
         // is called — no race condition on rapid stop/start.
-        await DaakiaMeetingService.startScreenShare();
+        final ok = await DaakiaMeetingService.startScreenShare();
+        if (!ok) {
+          // Service was killed by the OS (common on Samsung with aggressive
+          // battery optimisation). Without the FGS mediaProjection type,
+          // getDisplayMedia throws SecurityException on Android 14+.
+          if (mounted) viewModel.sendMessageToUI("Screen share unavailable. Please rejoin the meeting and try again.");
+          return;
+        }
       } else {
         requestBackgroundPermission([bool isRetry = false]) async {
           try {
@@ -367,6 +374,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
       return;
     }
 
+    if (!mounted) return;
     await participant?.setScreenShareEnabled(true, captureScreenAudio: true);
   }
 
