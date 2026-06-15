@@ -80,6 +80,35 @@ class DaakiaMeetingService : Service() {
         super.onDestroy()
     }
 
+    // Base FGS type mask used for the meeting. Each startForeground() call
+    // replaces the previous mask, so every call must include all active types.
+    //
+    // FOREGROUND_SERVICE_TYPE_MICROPHONE requires API 30, the manifest permission
+    // FOREGROUND_SERVICE_MICROPHONE, AND the RECORD_AUDIO runtime permission to
+    // already be granted. Without the runtime grant Android 12+ (targetSdk 32+)
+    // throws SecurityException — same crash pattern as the old camera type crash.
+    // So we only include it when the permission is actually held.
+    private val baseFgsType: Int
+        get() {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
+            var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Only include microphone/camera types when the runtime permission is
+                // already granted. Including a type without its runtime grant throws
+                // SecurityException on Android 12+ (targetSdk 32+) — same crash
+                // pattern as the old IsolateHolderService camera type crash in v4.4.1.
+                if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                }
+                if (checkSelfPermission(android.Manifest.permission.CAMERA)
+                        == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+                }
+            }
+            return type
+        }
+
     /** Adds mediaProjection type to the running FGS. Must be called on the main thread,
      *  immediately after the user grants screen capture permission. */
     fun addMediaProjectionType() {
@@ -89,8 +118,7 @@ class DaakiaMeetingService : Service() {
                     this,
                     NOTIFICATION_ID,
                     buildNotification(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK or
-                            ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+                    baseFgsType or ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "addMediaProjectionType failed: $e")
@@ -106,7 +134,7 @@ class DaakiaMeetingService : Service() {
                     this,
                     NOTIFICATION_ID,
                     buildNotification(),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    baseFgsType
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "removeMediaProjectionType failed: $e")
@@ -157,15 +185,7 @@ class DaakiaMeetingService : Service() {
         createNotificationChannel()
         val notification = buildNotification()
         try {
-            ServiceCompat.startForeground(
-                this,
-                NOTIFICATION_ID,
-                notification,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                else
-                    0
-            )
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, baseFgsType)
         } catch (e: Exception) {
             Log.w(TAG, "startForeground failed, running without foreground promotion: $e")
         }
