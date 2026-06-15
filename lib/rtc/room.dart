@@ -335,81 +335,81 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       onReconnectSuccess();
     })
     ..on<RoomDisconnectedEvent>((event) async {
-      if (event.reason != null) {
-        _isProgrammaticPop = true;
-        DatadogDisconnectLogger.logDisconnectEvent(
-            meetingId: widget.meetingDetails.meetingUid,
-            room: widget.room,
-            reason: event.reason?.name);
-        _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
-        clearMemory(_livekitProviderKey.currentState?.viewModel);
-        switch (event.reason) {
-          case DisconnectReason.participantRemoved:
-            {
-              showSnackBar(message: "Host has removed you from the meeting!");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-          case DisconnectReason.duplicateIdentity:
-            {
-              showSnackBar(message: "You have joined with another device");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-          case DisconnectReason.roomDeleted:
-            {
-              showSnackBar(message: "Meeting ended");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!context.mounted) return;
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-
-          // ✅ New cases with user-friendly messages
-          case null:
-          case DisconnectReason.unknown:
-            _handleGenericDisconnect("Disconnected due to unknown reason.");
+      // Run cleanup and navigation for ALL disconnect reasons, including null.
+      // The outer null-guard that was here made the `case null` in the switch
+      // unreachable — any unexpected disconnect (network drop, server kill
+      // without a reason) would leave the page open and the service running.
+      _isProgrammaticPop = true;
+      DatadogDisconnectLogger.logDisconnectEvent(
+          meetingId: widget.meetingDetails.meetingUid,
+          room: widget.room,
+          reason: event.reason?.name);
+      _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
+      clearMemory(_livekitProviderKey.currentState?.viewModel);
+      switch (event.reason) {
+        case DisconnectReason.participantRemoved:
+          {
+            showSnackBar(message: "Host has removed you from the meeting!");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.clientInitiated:
-            _handleGenericDisconnect("You have left the meeting.");
+          }
+        case DisconnectReason.duplicateIdentity:
+          {
+            showSnackBar(message: "You have joined with another device");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.serverShutdown:
-            _handleGenericDisconnect("Meeting ended by the server.");
+          }
+        case DisconnectReason.roomDeleted:
+          {
+            showSnackBar(message: "Meeting ended");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!context.mounted) return;
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.stateMismatch:
-            _handleGenericDisconnect("Connection lost due to state mismatch.");
-            break;
-          case DisconnectReason.joinFailure:
-            _handleGenericDisconnect("Failed to join the meeting.");
-            break;
-          case DisconnectReason.disconnected:
-            _handleGenericDisconnect("You have been disconnected.");
-            break;
-          case DisconnectReason.signalingConnectionFailure:
-            _handleGenericDisconnect("Signaling connection failed.");
-            break;
-          case DisconnectReason.reconnectAttemptsExceeded:
-            _handleGenericDisconnect(
-                "Could not reconnect. Please check your internet.");
-            break;
-        }
+          }
+        case null:
+        case DisconnectReason.unknown:
+          _handleGenericDisconnect("Disconnected due to unknown reason.");
+          break;
+        case DisconnectReason.clientInitiated:
+          _handleGenericDisconnect("You have left the meeting.");
+          break;
+        case DisconnectReason.serverShutdown:
+          _handleGenericDisconnect("Meeting ended by the server.");
+          break;
+        case DisconnectReason.stateMismatch:
+          _handleGenericDisconnect("Connection lost due to state mismatch.");
+          break;
+        case DisconnectReason.joinFailure:
+          _handleGenericDisconnect("Failed to join the meeting.");
+          break;
+        case DisconnectReason.disconnected:
+          _handleGenericDisconnect("You have been disconnected.");
+          break;
+        case DisconnectReason.signalingConnectionFailure:
+          _handleGenericDisconnect("Signaling connection failed.");
+          break;
+        case DisconnectReason.reconnectAttemptsExceeded:
+          _handleGenericDisconnect(
+              "Could not reconnect. Please check your internet.");
+          break;
       }
     })
     ..on<ParticipantEvent>((event) {
@@ -1895,7 +1895,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   void clearMemory(RtcViewmodel? viewModel) {
     viewModel?.disposeScreenShare();
     viewModel?.unregisterCaption();
-    handleAndroidNotification(enable: false);
+    // unawaited is intentional — dispose() is synchronous so we can't await here.
+    // DaakiaMeetingService.stop() has its own try-catch and is safe to fire-and-forget.
+    unawaited(handleAndroidNotification(enable: false));
     _disposePip();
     DaakiaPiP.disposePiP();
   }
