@@ -8,8 +8,15 @@ class RtcProvider extends StatefulWidget {
   final Room room;
   final MeetingDetails meetingDetails;
   final Widget child;
+  final bool saveAttachmentToDownloads;
 
-  const RtcProvider({required this.room, required this.meetingDetails, required this.child, super.key});
+  const RtcProvider({
+    required this.room,
+    required this.meetingDetails,
+    required this.child,
+    this.saveAttachmentToDownloads = false,
+    super.key,
+  });
 
   @override
   RtcProviderState createState() => RtcProviderState();
@@ -21,7 +28,7 @@ class RtcProviderState extends State<RtcProvider> {
   @override
   void initState() {
     super.initState();
-    viewModel = RtcViewmodel(widget.room, widget.meetingDetails); // Initialize the view model
+    viewModel = RtcViewmodel(widget.room, widget.meetingDetails, saveAttachmentToDownloads: widget.saveAttachmentToDownloads);
   }
 
   @override

@@ -378,24 +378,34 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (isParticipant) {
       body["lobby_request_id"] = lobbyRequestId;
     }
-    // Add custom_metadata only if metadata is provided
-    if (widget.configuration?.metadata != null) {
-      body["custom_metadata"] = widget.configuration?.metadata;
-    }
+    // Always include client_platform; merge with any caller-supplied metadata.
+    final Map<String, dynamic> customMetadata =
+        Map<String, dynamic>.from(widget.configuration?.metadata ?? {});
+    customMetadata["client_platform"] = Utils.getClientPlatform();
+    body["custom_metadata"] = customMetadata;
     final cacheData = StorageHelper();
+    var tokenFromCache = false;
     if (await cacheData.getMeetingUid() == widget.meetingId) {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
         if (await cacheData.getAttendanceId() != "") {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
-            hostToken = await cacheData.getHostToken() ?? "";
+            final cachedToken = await cacheData.getHostToken() ?? "";
+            if (cachedToken.isNotEmpty) {
+              hostToken = cachedToken;
+              tokenFromCache = true;
+            }
           }
         }
       }
     }
 
-    final token = hostToken;
+    // Never forward a cached token to the join API — its role claim may be stale
+    // (e.g. saved when cohost but user was later demoted). Send meeting_attendance_uid
+    // instead and let the server determine the current role. The token is kept in
+    // hostToken for in-session API calls that do require it.
+    final token = tokenFromCache ? "" : hostToken;
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
@@ -708,8 +718,8 @@ class _PreJoinState extends State<PreJoinScreen> {
 
       final room = Room(
         roomOptions: RoomOptions(
-          adaptiveStream: false,
-          dynacast: false,
+          adaptiveStream: true,
+          dynacast: true,
           defaultAudioPublishOptions: const AudioPublishOptions(
             name: 'custom_audio_track_name',
           ),
@@ -765,7 +775,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         final navigator = Navigator.of(this.context);
         await navigator.push<void>(
           MaterialPageRoute(
-              builder: (_) => RoomPage(room, listener, meetingDetails)),
+              builder: (_) => RoomPage(room, listener, meetingDetails, fastConnection: true, saveAttachmentToDownloads: widget.configuration?.saveAttachmentToDownloads == true)),
         );
         if (mounted && navigator.canPop()) {
           navigator.pop();

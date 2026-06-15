@@ -216,10 +216,18 @@ class Utils {
     return text.replaceAll(_urlRegex, '').trim();
   }
 
+  // lookupMimeType works purely by extension but misses some JPEG variants.
+  static String? resolveMimeType(String url) {
+    final mime = lookupMimeType(url);
+    if (mime != null) return mime;
+    final ext = url.split('?').first.split('.').last.toLowerCase();
+    const extraMappings = {'jfif': 'image/jpeg'};
+    return extraMappings[ext];
+  }
+
   static bool isFileLink(String url) {
     if (!isUrl(url)) return false;
-    final mimeType = lookupMimeType(url);
-    return mimeType != null; // If MIME type exists → it's likely a file
+    return resolveMimeType(url) != null;
   }
 
   static bool isLink(String message) {
@@ -332,7 +340,8 @@ class Utils {
     final match = RegExp(r'-file-(.+)$').firstMatch(fileName);
 
     // If a match is found, return the matched group; otherwise, return the original file name
-    return match != null ? match.group(1)! : fileName;
+    final name = match != null ? match.group(1)! : fileName;
+    return Uri.decodeFull(name);
   }
 
   static String decodeUnicode(String? input) {
@@ -504,6 +513,36 @@ class Utils {
     return null;
   }
 
+  /// Returns the current platform identifier.
+  ///
+  /// Possible values: `"android"`, `"ios"`, `"macos"`, `"windows"`, `"linux"`, `"web"`.
+  /// Web clients (browser) should pass `"web"` or `"mobile_web"` manually via custom metadata.
+  static String getClientPlatform() {
+    if (kIsWeb) return 'web';
+    if (Platform.isAndroid) return 'android';
+    if (Platform.isIOS) return 'ios';
+    if (Platform.isMacOS) return 'macos';
+    if (Platform.isWindows) return 'windows';
+    if (Platform.isLinux) return 'linux';
+    return 'unknown';
+  }
+
+  static String? extractClientPlatform(String? metadata) {
+    if (metadata == null || metadata.trim().isEmpty) return null;
+
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(metadata);
+      if (decoded['custom_metadata'] is Map) {
+        final platform = decoded['custom_metadata']['client_platform'];
+        if (platform is String && platform.isNotEmpty) return platform;
+      }
+    } catch (_) {
+      return null;
+    }
+
+    return null;
+  }
+
   static String extractMessage(String prefix, dynamic data, String fallback) {
     if (data is Map<String, dynamic> && data['message'] != null) {
       return "$prefix ${data['message']}";
@@ -535,6 +574,17 @@ class Utils {
   static bool isVideoEnabled(Map<String, dynamic>? attributes) {
     final value = attributes?['is_video_enabled'];
     return _toBool(value);
+  }
+
+  static bool isAnnotationAllowed(Map<String, dynamic>? attributes) {
+    final value = attributes?['annotation_allowed'];
+    return _toBool(value);
+  }
+
+  static bool isMobilePlatform(String? metadata) {
+    final platform = extractClientPlatform(metadata);
+    if (platform == null) return false;
+    return platform == 'android' || platform == 'ios' || platform == 'mobile_web';
   }
 
   static bool _toBool(dynamic value) {

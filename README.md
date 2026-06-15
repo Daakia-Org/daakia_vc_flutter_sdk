@@ -9,7 +9,7 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ✅ **Android**  | ✅ **iOS**
 
 ## Latest Release
-**v4.4.1** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
+**v4.5.0** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
 
 # How to use
 
@@ -21,7 +21,7 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
 
 ```yaml
   dependencies:
-    daakia_vc_flutter_sdk: ^4.4.1
+    daakia_vc_flutter_sdk: ^4.5.0
 ```
 
 
@@ -114,37 +114,72 @@ Daakia SDK supports **Picture-in-Picture (PiP)** mode on Android to allow users 
 
 ## iOS
 
-Camera and microphone usage need to be declared in your `Info.plist` file.
+### Required Info.plist Permissions
 
-```
+All of the following entries **must** be present in your `Info.plist`. Apple will reject your App Store submission if any purpose string is missing — even if your app doesn't call the API directly, a dependency may reference it.
+
+```xml
 <dict>
   ...
+  <!-- Required: video conferencing -->
   <key>NSCameraUsageDescription</key>
-  <string>$(PRODUCT_NAME) uses your camera</string>
+  <string>$(PRODUCT_NAME) uses your camera for video conferencing</string>
+
+  <!-- Required: audio conferencing -->
   <key>NSMicrophoneUsageDescription</key>
-  <string>$(PRODUCT_NAME) uses your microphone</string>
-```
+  <string>$(PRODUCT_NAME) uses your microphone for audio conferencing</string>
 
-Your application can still run the voice call when it is switched to the background if the background mode is enabled. Select the app target in Xcode, click the Capabilities tab, enable __Background Modes__, and check __Audio, AirPlay, and Picture in Picture__.
+  <!-- Required: sharing images in chat -->
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>$(PRODUCT_NAME) accesses your photo library to share images in the conference chat</string>
 
-Your `Info.plist` should have the following entries.
-
-```
-<dict>
-  ...
+  <!-- Required: keep audio running when app is backgrounded -->
   <key>UIBackgroundModes</key>
   <array>
     <string>audio</string>
   </array>
+  ...
+</dict>
 ```
 
-For iOS, the minimum supported deployment target is 12.1. You will need to add the following to your Podfile.
+> **Note:** `NSPhotoLibraryUsageDescription` is required by the SDK's chat attachment feature. Omitting it will cause App Store submission to fail even if the user never picks a photo.
 
-```
-platform :ios, '12.1'
+To keep audio running when the app is backgrounded, also enable **Background Modes → Audio, AirPlay, and Picture in Picture** in Xcode under your target's Capabilities tab.
+
+### Minimum Deployment Target
+
+For iOS, the minimum supported deployment target is 14.0. Add the following to your Podfile:
+
+```ruby
+platform :ios, '14.0'
 ```
 
-You may need to delete Podfile.lock and re-run pod install after updating deployment target.
+You may need to delete `Podfile.lock` and re-run `pod install` after updating the deployment target.
+
+### Podfile Permission Macros
+
+The SDK uses [`permission_handler`](https://pub.dev/packages/permission_handler) to check and request camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
+
+```ruby
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
+        '$(inherited)',
+        'PERMISSION_CAMERA=1',
+        'PERMISSION_MICROPHONE=1',
+      ]
+    end
+  end
+end
+```
+
+After updating your Podfile, run:
+
+```bash
+cd ios && pod install
+```
 ## Usage/Examples
 
 ```dart

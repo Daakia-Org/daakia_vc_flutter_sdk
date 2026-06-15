@@ -10,11 +10,13 @@ import 'package:daakia_vc_flutter_sdk/model/screen_share_consent_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/session_details_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/translation_data.dart';
 import 'package:daakia_vc_flutter_sdk/model/webinar_permission_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/participant_drawer_consent_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/workshop_permission_model.dart';
 import 'package:dio/dio.dart';
 import 'package:retrofit/retrofit.dart';
 
 import '../model/agent_dispatch_data.dart';
+import '../model/host_controls_data.dart';
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
 import '../model/event_password_protected_data.dart';
@@ -225,6 +227,15 @@ abstract class RestClient {
     @Query("session_id") String sessionId,
   );
 
+  // Returns all host control states in a single call.
+  // Use this instead of the individual GET endpoints below.
+  @GET("rtc/meeting/hostControls")
+  Future<BaseResponse<HostControlsData>> getHostControls(
+    @Header("x-self-identity") String selfIdentity,
+    @Query("meeting_uid") String meetingUid,
+  );
+
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/screenShareConsent")
   Future<BaseResponse<ScreenShareConsentModel>> getScreenShareConsent(
     @Header("x-self-identity") String selfIdentity,
@@ -238,6 +249,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/chatAttachmentDownloadConsent")
   Future<BaseResponse<ChatAttachmentConsentModel>> getChatAttachmentConsent(
     @Header("x-self-identity") String selfIdentity,
@@ -251,6 +263,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/audioPermission")
   Future<BaseResponse<WebinarPermissionModel>> getAudioPermission(
     @Header("x-self-identity") String selfIdentity,
@@ -264,6 +277,7 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  @Deprecated('Use getHostControls() instead.')
   @GET("rtc/videoPermission")
   Future<BaseResponse<WebinarPermissionModel>> getVideoPermission(
     @Header("x-self-identity") String selfIdentity,
@@ -286,6 +300,34 @@ abstract class RestClient {
 
   @PUT("rtc/meeting/update/participantVideoPermission")
   Future<BaseResponse<WorkshopPermissionModel>> updateWorkshopVideoPermission(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @Deprecated('Use getHostControls() instead.')
+  @GET("rtc/meeting/get/participantDrawer")
+  Future<BaseResponse<ParticipantDrawerConsentModel>> getParticipantDrawerConsent(
+    @Header("x-self-identity") String selfIdentity,
+    @Query("meeting_uid") String meetingUid,
+  );
+
+  @PUT("rtc/meeting/allow/participantDrawer")
+  Future<BaseResponse<ParticipantDrawerConsentModel>> updateParticipantDrawerConsent(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @PUT("rtc/meeting/allowAnnotation")
+  Future<BaseResponse<dynamic>> allowAnnotation(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  @PUT("rtc/meeting/participant/allowAnnotation")
+  Future<BaseResponse<dynamic>> allowParticipantAnnotation(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,

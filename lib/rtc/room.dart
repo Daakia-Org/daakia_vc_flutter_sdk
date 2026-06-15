@@ -13,6 +13,7 @@ import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget
 import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
@@ -29,17 +30,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../service/daakia_meeting_service.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:livekit_client/src/track/audio_management.dart'
+    show onConfigureNativeAudio, defaultNativeAudioConfigurationFunc, AudioTrackState;
+import 'package:livekit_client/src/support/native_audio.dart'
+    show NativeAudioConfiguration, AppleAudioCategory, AppleAudioCategoryOption, AppleAudioMode;
 import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
+import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
 import '../utils/consent_status_enum.dart';
+import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 import '../utils/utils.dart';
 import 'meeting_manager.dart';
@@ -49,11 +56,15 @@ class RoomPage extends StatefulWidget {
   final Room room;
   final EventsListener<RoomEvent> listener;
   final MeetingDetails meetingDetails;
+  final bool fastConnection;
+  final bool saveAttachmentToDownloads;
 
   const RoomPage(
     this.room,
     this.listener,
     this.meetingDetails, {
+    this.fastConnection = false,
+    this.saveAttachmentToDownloads = false,
     super.key,
   });
 
@@ -66,10 +77,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   EventsListener<RoomEvent> get _listener => widget.listener;
 
-  bool get fastConnection => widget.room.engine.fastConnectOptions != null;
+  bool get fastConnection => widget.fastConnection;
   bool _flagStartedReplayKit = false;
-
-  bool _isInForeground = true;
 
   SimplePip? pip;
   bool _isInPipMode = false;
@@ -86,9 +95,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    setState(() {
-      _isInForeground = state == AppLifecycleState.resumed;
-    });
     if (state == AppLifecycleState.resumed) {
       // Re-ensure the meeting notification is visible. Covers the case where the
       // user granted POST_NOTIFICATIONS in system Settings while in the meeting.
@@ -101,8 +107,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     WakelockPlus.enable();
+    _setupIosAudioConfig();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
         setState(() {
@@ -112,10 +123,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         setState(() {
           _isInPipMode = false;
         });
-      })
-        ..setAutoPipMode(
-            aspectRatio: (1, 1), seamlessResize: true, autoEnter: true);
+      });
+      pip?.setAutoPipMode(
+          aspectRatio: (1, 1), seamlessResize: true, autoEnter: true)
+        .catchError((e) {
+          // setAutoPipMode requires Android S (API 31+); silently ignore on older versions
+          return false;
+        });
     }
+    _zoomController = TransformationController();
+    _zoomController.addListener(_onZoomChanged);
     isCheckedWhileJoining = false;
     player = AudioPlayer();
     // add callback for a `RoomEvent` as opposed to a `ParticipantEvent`
@@ -156,16 +173,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.fetchAndStoreSessionUid();
       }
 
-      if (viewModel?.meetingDetails.features?.isScreenShareRequestAllowed() == true) {
-        viewModel?.getScreenShareConsent();
-      }
-
-      if (viewModel?.meetingDetails.features?.isConferenceChatAttachmentAllowed() == true) {
-        viewModel?.getChatAttachmentConsent();
-      }
-
-      viewModel?.getAudioPermission();
-      viewModel?.getVideoPermission();
+      // Single call fetches all host control states; falls back to individual APIs if endpoint unavailable.
+      // ignore: deprecated_member_use
+      viewModel?.getHostControls();
 
       DaakiaPiP.createPipVideoCall(
           name: widget.room.localParticipant?.name ?? "Unknown",
@@ -183,7 +193,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
 
     if (lkPlatformIs(PlatformType.android)) {
-      Hardware.instance.setSpeakerphoneOn(false);
+      Hardware.instance.setSpeakerphoneOn(true);
     }
 
     if (lkPlatformIsDesktop()) {
@@ -199,6 +209,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   bool _isReconnecting = false;
   bool _isConnected = false;
+  bool _isPhoneCallActive = false;
+
+  late final TransformationController _zoomController;
+  double _zoomScale = 1.0;
 
   void onReconnectStart() {
     setState(() {
@@ -231,8 +245,64 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
   }
 
+  void _onZoomChanged() {
+    final scale = _zoomController.value.getMaxScaleOnAxis();
+    if ((scale - _zoomScale).abs() > 0.01) {
+      setState(() => _zoomScale = scale);
+    }
+  }
+
+  void _resetZoom() {
+    _zoomController.value = Matrix4.identity();
+  }
+
+  bool _speakerHasActiveVideo() {
+    if (participantTracks.isEmpty) return false;
+    final track = participantTracks.first;
+    if (track.type == ParticipantTrackType.kScreenShare) return true;
+    return track.participant.videoTrackPublications
+        .where((p) => !p.isScreenShare)
+        .any((p) => p.track != null && !p.muted);
+  }
+
+  // On iOS, override LiveKit's default audio config function so that when the user
+  // has chosen speaker output, we use overrideOutputAudioPort(.speaker) — applied by
+  // setting preferSpeakerOutput:true — instead of the defaultToSpeaker category option.
+  // defaultToSpeaker is only valid for PlayAndRecord; when audioTrackState=remoteOnly
+  // LiveKit picks Playback category, causing OSStatus error -50 with defaultToSpeaker.
+  // overrideOutputAudioPort(.speaker) works with any category and persists through
+  // LiveKit's automatic session reconfigurations.
+  void _setupIosAudioConfig() {
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    onConfigureNativeAudio = (AudioTrackState state) async {
+      // Only force speaker when user explicitly tapped "Speaker" (forceSpeakerOutput = true).
+      // At startup preferSpeakerOutput is true but forceSpeakerOutput is false, so iOS
+      // can auto-route to BT/wired if connected (videoChat + allowBluetooth handles it).
+      if (Hardware.instance.forceSpeakerOutput) {
+        if (state == AudioTrackState.none) return NativeAudioConfiguration.soloAmbient;
+        // Use PlayAndRecord so defaultToSpeaker (added by setSpeakerphoneOn forceSpeakerOutput)
+        // is valid, and preferSpeakerOutput calls overrideOutputAudioPort(.speaker) which
+        // forces the built-in loudspeaker even when BT is connected.
+        return NativeAudioConfiguration(
+          appleAudioCategory: AppleAudioCategory.playAndRecord,
+          appleAudioCategoryOptions: {
+            AppleAudioCategoryOption.allowBluetooth,
+            AppleAudioCategoryOption.allowBluetoothA2DP,
+            AppleAudioCategoryOption.allowAirPlay,
+          },
+          appleAudioMode: AppleAudioMode.videoChat,
+          preferSpeakerOutput: true,
+        );
+      }
+      return defaultNativeAudioConfigurationFunc(state);
+    };
+  }
+
   @override
   void dispose() {
+    onConfigureNativeAudio = defaultNativeAudioConfigurationFunc;
+    _zoomController.removeListener(_onZoomChanged);
+    _zoomController.dispose();
     super.dispose();
     WidgetsBinding.instance.removeObserver(this);
     var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -417,11 +487,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           }
         }
       }
+      _sortParticipants();
     })
     ..on<LocalTrackPublishedEvent>((track){
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       final localParticipant = widget.room.localParticipant;
       if (localParticipant?.isScreenShareEnabled() == true) {
+        // Reset any prior annotation state for the local sharer
+        viewModel?.resetAnnotationSharer(localParticipant!.identity);
         viewModel?.sendAction(ActionModel(
             action: MeetingActions.screenShareStarted,
             timeStamp: DateTime.now().microsecondsSinceEpoch));
@@ -429,6 +502,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _sortParticipants();
     })
     ..on<LocalTrackUnpublishedEvent>((track){
+      if (track.publication.source == TrackSource.screenShareVideo) {
+        final viewModel = _livekitProviderKey.currentState?.viewModel;
+        final localId = widget.room.localParticipant?.identity;
+        if (localId != null) viewModel?.resetAnnotationSharer(localId);
+      }
       _sortParticipants();
     })
     ..on<TrackSubscribedEvent>((_) => _sortParticipants())
@@ -455,9 +533,69 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
 
   void _handleDataChannel(DataReceivedEvent event) {
+    // Intercept annotation messages before MeetingActions validation
+    try {
+      final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
+      if (AnnotationActions.all.contains(json['action'])) {
+        _handleAnnotationData(json, event.participant);
+        return;
+      }
+    } catch (_) {}
+
     var eventData0 = parseJsonData(event.data);
     var eventData = eventData0.copyWith(identity: event.participant);
     _checkReceivedDataType(eventData);
+  }
+
+  void _handleAnnotationData(
+      Map<String, dynamic> data, RemoteParticipant? participant) {
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    if (viewModel == null) return;
+
+    final action = data['action'] as String;
+    final sharerIdentity =
+        (data['sharerIdentity'] as String?) ?? participant?.identity ?? '';
+    if (sharerIdentity.isEmpty) return;
+
+    final localIdentity = widget.room.localParticipant?.identity ?? '';
+
+    // Ignore echo from self, except snapshotRequest (sharer must respond to own unicast)
+    if (participant?.identity == localIdentity &&
+        action != AnnotationActions.snapshotRequest) return;
+
+    switch (action) {
+      case AnnotationActions.stroke:
+        final raw = data['stroke'] as Map<String, dynamic>?;
+        if (raw == null) return;
+        final stroke = AnnotationStroke.fromJson({
+          ...raw,
+          'fromIdentity': raw['fromIdentity'] ?? participant?.identity ?? '',
+        });
+        viewModel.addAnnotationStroke(sharerIdentity, stroke);
+
+      case AnnotationActions.remove:
+        final ids = List<String>.from(data['ids'] ?? []);
+        viewModel.removeAnnotationStrokes(sharerIdentity, ids);
+
+      case AnnotationActions.clear:
+        viewModel.clearAnnotationStrokes(sharerIdentity);
+
+      case AnnotationActions.snapshot:
+        final strokes = (data['strokes'] as List? ?? [])
+            .map((s) => AnnotationStroke.fromJson(s as Map<String, dynamic>))
+            .toList();
+        viewModel.replaceAnnotationStrokes(sharerIdentity, strokes);
+
+      case AnnotationActions.snapshotRequest:
+        final requesterIdentity =
+            (data['requesterIdentity'] as String?) ?? participant?.identity ?? '';
+        if (localIdentity == sharerIdentity &&
+            requesterIdentity.isNotEmpty &&
+            requesterIdentity != localIdentity) {
+          viewModel.publishAnnotationSnapshot(
+              widget.room, sharerIdentity, [requesterIdentity]);
+        }
+    }
   }
 
   late LobbyRequestManager? lobbyManager;
@@ -534,37 +672,31 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.makeCoHost:
-        if (Utils.isCoHost(viewModel?.room.localParticipant?.metadata)) {
-          viewModel?.setCoHost(true);
-          viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
-          var metadata = viewModel?.room.localParticipant?.metadata;
-          final storageHelper = StorageHelper();
-          storageHelper
-              .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
+        viewModel?.setCoHost(true);
+        viewModel?.meetingDetails.authorizationToken = remoteData.token ?? "";
+        var metadata = viewModel?.room.localParticipant?.metadata;
+        final storageHelper = StorageHelper();
+        storageHelper
+            .setMeetingUid(viewModel?.meetingDetails.meetingUid ?? "");
 
-          final sessionUid = Utils.getMetadataSessionUid(metadata);
+        final sessionUid = Utils.getMetadataSessionUid(metadata);
 
-          if (sessionUid != null) {
-            storageHelper.setSessionUid(sessionUid);
-          }
-
-          storageHelper
-              .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
-          storageHelper.setAttendanceRole(AttendanceRole.cohost);
-          storageHelper.setHostToken(remoteData.token ?? "");
-          viewModel?.getAttendanceListForParticipant();
-          showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
-        } else {
-          viewModel?.setCoHost(false);
-          StorageHelper().setAttendanceRole(AttendanceRole.participant);
-          clearConsentList(viewModel);
-          showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
+        if (sessionUid != null) {
+          storageHelper.setSessionUid(sessionUid);
         }
+
+        storageHelper
+            .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
+        storageHelper.setAttendanceRole(AttendanceRole.cohost);
+        storageHelper.setHostToken(remoteData.token ?? "");
+        viewModel?.getAttendanceListForParticipant();
+        showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
         break;
 
       case MeetingActions.removeCoHost:
         viewModel?.setCoHost(false);
         StorageHelper().setAttendanceRole(AttendanceRole.participant);
+        StorageHelper().setHostToken("");
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
         break;
@@ -667,10 +799,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.screenShareStarted:
         showSnackBar(message: "${remoteData.identity?.name} has started sharing their screen.");
+        // Clear any stale annotation strokes from a previous share session
+        final startedSharerId = remoteData.identity?.identity;
+        if (startedSharerId != null) viewModel?.clearAnnotationStrokes(startedSharerId);
         break;
 
       case MeetingActions.screenShareStopped:
         showSnackBar(message: "${remoteData.identity?.name} has stopped sharing their screen.");
+        final stoppedSharerId = remoteData.identity?.identity;
+        if (stoppedSharerId != null) viewModel?.resetAnnotationSharer(stoppedSharerId);
         break;
 
       case MeetingActions.startRecording:
@@ -762,6 +899,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         showSnackBar(message: "Your video permission has been revoked");
         break;
 
+      case MeetingActions.allowScreenShareAnnotation:
+        viewModel?.isAnnotationEnabled = remoteData.value == true;
+        break;
+
+      case MeetingActions.allowAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = true;
+        showSnackBar(message: "You can now annotate the shared screen");
+        break;
+
+      case MeetingActions.revokeAnnotationPermission:
+        viewModel?.isAnnotationPermissionGranted = false;
+        showSnackBar(message: "Your annotation permission has been revoked");
+        break;
+
+      case MeetingActions.hideParticipantDrawer:
+        final isHidden = remoteData.value == true;
+        viewModel?.isParticipantDrawerHidden = isHidden;
+        if (isHidden && viewModel?.isParticipantPageOpen == true) {
+          _innerNavigatorKey.currentState?.maybePop();
+        }
+        break;
+
       case "":
       // Handle empty action case if needed
         break;
@@ -812,6 +971,34 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     DaakiaMeetingService.onEndCall = () {
       if (mounted) closeMeetingProgrammatically(context);
     };
+    if (lkPlatformIs(PlatformType.iOS)) {
+      DaakiaMeetingService.onAudioInterruptionBegan = () => _handleAudioInterruptionBegan();
+      DaakiaMeetingService.onAudioInterruptionEnded = _handleAudioInterruptionEnded;
+    }
+  }
+
+  Future<void> _handleAudioInterruptionBegan() async {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    if (vm == null || !mounted) return;
+    vm.setAudioInterrupted(true);
+    setState(() => _isPhoneCallActive = true);
+    // Mute the LiveKit track so other participants see the user as muted,
+    // not "mic on but silent" for the duration of the phone call.
+    final participant = widget.room.localParticipant;
+    if (participant != null && participant.isMicrophoneEnabled()) {
+      await participant.setMicrophoneEnabled(false);
+    }
+  }
+
+  // After a phone-call interruption ends on iOS, AVAudioSession has been reactivated
+  // by the native side. The mic is left OFF — the user decides when to re-enable it.
+  void _handleAudioInterruptionEnded() {
+    final vm = _livekitProviderKey.currentState?.viewModel;
+    if (vm != null && mounted) {
+      vm.setAudioInterrupted(false);
+      setState(() => _isPhoneCallActive = false);
+      showSnackBar(message: "Phone call ended");
+    }
   }
 
   Future<void> _handleNotificationMuteToggle() async {
@@ -952,8 +1139,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   final GlobalKey<RtcProviderState> _livekitProviderKey =
       GlobalKey<RtcProviderState>();
 
-  final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
-      GlobalKey<ScaffoldMessengerState>();
+  final GlobalKey<RoomNotificationState> _notificationKey =
+      GlobalKey<RoomNotificationState>();
+
+  final GlobalKey<NavigatorState> _innerNavigatorKey =
+      GlobalKey<NavigatorState>();
 
   late final WebViewController _webViewController;
   bool _webViewInitialized = false;
@@ -990,7 +1180,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
-        const SystemUiOverlayStyle(statusBarColor: Colors.black));
+        const SystemUiOverlayStyle(
+          statusBarColor: Colors.black,
+          statusBarIconBrightness: Brightness.light, // white icons on Android
+          statusBarBrightness: Brightness.dark,      // white icons on iOS
+        ));
     // Ensure the viewModel is accessed after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Check if the viewModel is ready
@@ -1030,16 +1224,27 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         key: _livekitProviderKey,
         room: widget.room,
         meetingDetails: widget.meetingDetails,
+        saveAttachmentToDownloads: widget.saveAttachmentToDownloads,
         child: MaterialApp(
-          scaffoldMessengerKey: scaffoldMessengerKey,
+          navigatorKey: _innerNavigatorKey,
           debugShowCheckedModeBanner: false,
-          home: (_isInPipMode)
+          theme: Theme.of(context).copyWith(
+            scaffoldBackgroundColor: Colors.black,
+          ),
+          home: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: const SystemUiOverlayStyle(
+              statusBarColor: Colors.transparent,
+              statusBarIconBrightness: Brightness.light,
+              statusBarBrightness: Brightness.dark,
+            ),
+            child: (_isInPipMode)
               ? PipScreen(
                   name: widget.room.localParticipant?.name,
                 )
               : Stack(
                   children: [
                     Scaffold(
+                      backgroundColor: Colors.black,
                       body: SafeArea(
                         child: Stack(children: [
                           Container(
@@ -1061,13 +1266,55 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                         _webViewController,
                                                   )
                                                 : participantTracks.isNotEmpty
-                                                    ? ParticipantWidget
-                                                        .widgetFor(
-                                                            participantTracks
-                                                                .first,
-                                                            showStatsLayer:
-                                                                true,
-                                                            isSpeaker: true)
+                                                    ? Stack(
+                                                        children: [
+                                                          _speakerHasActiveVideo()
+                                                              ? GestureDetector(
+                                                                  onDoubleTap: _resetZoom,
+                                                                  child: InteractiveViewer(
+                                                                    transformationController: _zoomController,
+                                                                    minScale: 1.0,
+                                                                    maxScale: 4.0,
+                                                                    clipBehavior: Clip.hardEdge,
+                                                                    child: ParticipantWidget.widgetFor(
+                                                                      participantTracks.first,
+                                                                      showStatsLayer: true,
+                                                                      isSpeaker: true,
+                                                                      key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
+                                                                    ),
+                                                                  ),
+                                                                )
+                                                              : ParticipantWidget.widgetFor(
+                                                                  participantTracks.first,
+                                                                  showStatsLayer: true,
+                                                                  isSpeaker: true,
+                                                                  key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
+                                                                ),
+                                                          if (_speakerHasActiveVideo() && _zoomScale > 1.05)
+                                                            Positioned(
+                                                              top: 8,
+                                                              left: 8,
+                                                              child: GestureDetector(
+                                                                onTap: _resetZoom,
+                                                                child: Container(
+                                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                                                  decoration: BoxDecoration(
+                                                                    color: Colors.black.withValues(alpha: 0.55),
+                                                                    borderRadius: BorderRadius.circular(20),
+                                                                  ),
+                                                                  child: const Row(
+                                                                    mainAxisSize: MainAxisSize.min,
+                                                                    children: [
+                                                                      Icon(Icons.zoom_out, color: Colors.white, size: 16),
+                                                                      SizedBox(width: 4),
+                                                                      Text('Reset', style: TextStyle(color: Colors.white, fontSize: 12)),
+                                                                    ],
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                            ),
+                                                        ],
+                                                      )
                                                     : Container(),
                                           ),
 
@@ -1099,8 +1346,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                                                   return SizedBox(
                                                     width: 180,
                                                     height: 120,
-                                                    child: ParticipantWidget
-                                                        .widgetFor(track),
+                                                    child: ParticipantWidget.widgetFor(
+                                                      track,
+                                                      key: ValueKey(track.participant.identity),
+                                                    ),
                                                   );
                                                 },
                                               ),
@@ -1164,6 +1413,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       ),
                     ),
 
+                    /// Toast notification overlay (top-anchored, deduped)
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+                      child: RoomNotification(key: _notificationKey),
+                    ),
+
                     /// Overlay banner
                     if (_isReconnecting)
                       const Positioned(
@@ -1186,10 +1443,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                           backgroundColor: Colors.green,
                         ),
                       ),
+                    if (_isPhoneCallActive)
+                      const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: ConnectivityBanner(
+                          message: "Phone call in progress — audio unavailable",
+                          backgroundColor: Colors.orange,
+                        ),
+                      ),
                   ],
                 ),
-        ),
-      ),
+          ),        // closes AnnotatedRegion
+        ),          // closes MaterialApp
+      ),            // closes RtcProvider
     );
   }
 
@@ -1270,22 +1538,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     String? actionText,
     Function? actionCallBack,
   }) {
-    final messenger = scaffoldMessengerKey.currentState;
-
-    messenger?.clearSnackBars(); // 👈 add this
-
-    messenger?.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        action: actionText != null
-            ? SnackBarAction(
-          label: actionText,
-          onPressed: () {
-            actionCallBack?.call();
-          },
-        )
-            : null,
-      ),
+    _notificationKey.currentState?.show(
+      message: message,
+      actionText: actionText,
+      actionCallback: actionCallBack != null ? () => actionCallBack() : null,
     );
   }
 

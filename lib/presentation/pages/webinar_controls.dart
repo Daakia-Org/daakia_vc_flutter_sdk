@@ -54,10 +54,13 @@ class WebinarControls extends StatelessWidget {
                 subtitle:
                     'If turned ON, all participants except Hosts / CoHosts stay muted with their camera off.',
                 value: viewModel.isWebinarModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isWebinarModeEnable = value;
                   viewModel.updateAudioPermission(value);
                   viewModel.updateVideoPermission(value);
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
                 },
                 isDividerRequired: false,
               ),
@@ -67,6 +70,7 @@ class WebinarControls extends StatelessWidget {
                 title: 'Participants Audio',
                 subtitle: 'If turned off, participants can unmute themselves.',
                 value: viewModel.isAudioModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isAudioModeEnable = value;
                   viewModel.updateAudioPermission(value);
@@ -81,9 +85,25 @@ class WebinarControls extends StatelessWidget {
                 subtitle:
                     'If turned off, participants can turn their camera on.',
                 value: viewModel.isVideoModeEnable,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
                   viewModel.isVideoModeEnable = value;
                   viewModel.updateVideoPermission(value);
+                },
+                isChild: true,
+                isDividerRequired: false,
+              ),
+
+              // Hide Participant List Switch
+              HostControlSwitch(
+                title: 'Hide Participant list',
+                subtitle:
+                    'If turned on, participants cannot open the participant list.',
+                value: viewModel.isParticipantDrawerHidden,
+                isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
+                onChanged: (value) {
+                  viewModel.isParticipantDrawerHidden = value;
+                  viewModel.updateParticipantDrawerConsent(value);
                 },
                 isChild: true,
                 isDividerRequired: false,
@@ -106,6 +126,20 @@ class WebinarControls extends StatelessWidget {
                 },
               ),
 
+              const Divider(color: Colors.white),
+
+              // Screen Share Annotation
+              HostControlSwitch(
+                title: 'Allow Annotation',
+                subtitle:
+                'If turned ON, host can grant individual participants permission to annotate the shared screen.',
+                value: viewModel.isAnnotationEnabled,
+                isEnable: viewModel.meetingDetails.features?.isBasicPlan() == false,
+                onChanged: (value) {
+                  viewModel.updateAnnotationConsent(value);
+                },
+              ),
+
               // Screen Share
               HostControlSwitch(
                 title: 'Allow Screen Share',
@@ -119,6 +153,7 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isScreenShareEnable = value;
                   viewModel.updateScreenShareConsent(value);
                 },
+                isDividerRequired: false,
               ),
             ],
           ),

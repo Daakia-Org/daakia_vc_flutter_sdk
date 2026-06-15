@@ -22,6 +22,7 @@ import 'package:flutter_background/flutter_background.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:uuid/uuid.dart';
 
+import '../model/annotation_stroke.dart';
 import '../enum/chat_type_enum.dart';
 import '../enum/attendance_role_enum.dart';
 import '../model/action_model.dart';
@@ -36,6 +37,7 @@ import '../rtc/widgets/participant_info.dart';
 import '../utils/chat_message_mapper.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
+import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 
 class RtcViewmodel extends ChangeNotifier {
@@ -63,6 +65,15 @@ class RtcViewmodel extends ChangeNotifier {
   bool _isRecording = false;
 
   bool _isMeetingEnded = false;
+
+  // True while an iOS audio session interruption (e.g. phone call) is active.
+  // The mic button is disabled during this window.
+  bool isAudioInterrupted = false;
+
+  void setAudioInterrupted(bool value) {
+    isAudioInterrupted = value;
+    notifyListeners();
+  }
 
   // Getter
   bool get isMeetingEnded => _isMeetingEnded;
@@ -115,7 +126,9 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  RtcViewmodel(this.room, this.meetingDetails);
+  final bool saveAttachmentToDownloads;
+
+  RtcViewmodel(this.room, this.meetingDetails, {this.saveAttachmentToDownloads = false});
 
   List<RemoteActivityData> getMessageList() {
     return _messageList;
@@ -417,7 +430,26 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Releases the LiveKit camera so the native camera UI can use it.
+  /// Returns whether the camera was active, so the caller can restore it.
+  Future<bool> pauseCameraForHandoff() async {
+    final wasEnabled = participant.isCameraEnabled();
+    if (wasEnabled) {
+      await participant.setCameraEnabled(false);
+      notifyListeners();
+    }
+    return wasEnabled;
+  }
+
+  Future<void> resumeCameraAfterHandoff(bool wasEnabled) async {
+    if (wasEnabled) {
+      await participant.setCameraEnabled(true);
+      notifyListeners();
+    }
+  }
+
   double getMicAlpha() {
+    if (isAudioInterrupted) return 0.5;
     if (isHost() || isCoHost()) return 1.0;
     if (!isAudioPermissionEnable) {
       return isMicPermissionGranted ? 1.0 : 0.5;
@@ -1396,6 +1428,11 @@ class RtcViewmodel extends ChangeNotifier {
     return _identityToNameMap[identity] ?? "Unknown";
   }
 
+  String? getParticipantNameOrNull(String? identity) {
+    if (identity == null) return null;
+    return _identityToNameMap[identity];
+  }
+
   var _isRequestedForTranscription = false;
 
   void requestForTranscriptionState() {
@@ -1503,7 +1540,8 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void configAutoRecording() {
-    if (isHost()) {
+    if (isHost() || isCoHost()) {
+      if (meetingDetails.features?.isRecordingAllowed() != true) return;
       if (meetingDetails.meetingBasicDetails?.meetingConfig != null) {
         var meetingConfig = meetingDetails.meetingBasicDetails?.meetingConfig!;
         if (meetingConfig?.recordingForceStopped != 1 &&
@@ -2230,6 +2268,45 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Fetches all host control states in a single request.
+  // Falls back to the individual deprecated methods if the unified endpoint is unavailable (pre-prod).
+  void getHostControls() {
+    networkRequestHandler(
+      apiCall: () => apiClient.getHostControls(selfIdentity, meetingDetails.meetingUid),
+      onSuccess: (data) {
+        if (data == null) {
+          _fallbackToIndividualHostControlAPIs();
+          return;
+        }
+        isAnnotationEnabled = data.annotationAllowed;
+        isAudioModeEnable = data.audioPermission;
+        isAudioPermissionEnable = !data.audioPermission;
+        isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isParticipantDrawerHidden = !data.participantDrawer;
+        isScreenShareEnable = data.screenSharePermissionGranted;
+        isVideoModeEnable = data.videoPermission;
+        isVideoPermissionEnable = !data.videoPermission;
+        //if (data.isRecordingActive) setRecording(true); NOTE: Not Needed
+      },
+      onError: (_) => _fallbackToIndividualHostControlAPIs(),
+    );
+  }
+
+  // ignore: deprecated_member_use_from_same_package
+  void _fallbackToIndividualHostControlAPIs() {
+    // ignore: deprecated_member_use_from_same_package
+    getAudioPermission();
+    // ignore: deprecated_member_use_from_same_package
+    getVideoPermission();
+    // ignore: deprecated_member_use_from_same_package
+    getParticipantDrawerConsent();
+    // ignore: deprecated_member_use_from_same_package
+    getScreenShareConsent();
+    // ignore: deprecated_member_use_from_same_package
+    getChatAttachmentConsent();
+  }
+
+  @Deprecated('Use getHostControls() instead.')
   void getScreenShareConsent() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getScreenShareConsent(selfIdentity, meetingDetails.meetingUid),
@@ -2362,6 +2439,7 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getChatAttachmentConsent() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getChatAttachmentConsent(selfIdentity, meetingDetails.meetingUid),
@@ -2438,6 +2516,7 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getAudioPermission() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getAudioPermission(selfIdentity, meetingDetails.meetingUid),
@@ -2474,6 +2553,7 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  @Deprecated('Use getHostControls() instead.')
   void getVideoPermission() {
     networkRequestHandler(
         apiCall: ()=> apiClient.getVideoPermission(selfIdentity, meetingDetails.meetingUid),
@@ -2551,6 +2631,112 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) {
           sendMessageToUI(message);
         }
+    );
+  }
+
+  //===============================[Participant Drawer]===============================
+
+  bool _isParticipantDrawerHidden = false;
+
+  bool get isParticipantDrawerHidden => _isParticipantDrawerHidden;
+
+  set isParticipantDrawerHidden(bool value) {
+    _isParticipantDrawerHidden = value;
+    notifyListeners();
+  }
+
+  bool isParticipantPageOpen = false;
+
+  @Deprecated('Use getHostControls() instead.')
+  void getParticipantDrawerConsent() {
+    networkRequestHandler(
+        apiCall: () => apiClient.getParticipantDrawerConsent(selfIdentity, meetingDetails.meetingUid),
+        onSuccess: (data) {
+          isParticipantDrawerHidden = !(data?.isAllowed ?? true);
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+          isParticipantDrawerHidden = false;
+        }
+    );
+  }
+
+  void updateParticipantDrawerConsent(bool isHidden) {
+    Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "is_allowed": !isHidden,
+    };
+
+    networkRequestHandler(
+        apiCall: () => apiClient.updateParticipantDrawerConsent(meetingDetails.authorizationToken, selfIdentity, body),
+        onSuccess: (data) {
+          isParticipantDrawerHidden = !(data?.isAllowed ?? true);
+          sendAction(ActionModel(action: MeetingActions.hideParticipantDrawer, value: _isParticipantDrawerHidden));
+        },
+        onError: (message) {
+          sendMessageToUI(message);
+          isParticipantDrawerHidden = !isParticipantDrawerHidden;
+        }
+    );
+  }
+
+  //===============================[Annotation Permission]===============================
+
+  bool _isAnnotationEnabled = false;
+
+  bool get isAnnotationEnabled => _isAnnotationEnabled;
+
+  set isAnnotationEnabled(bool value) {
+    _isAnnotationEnabled = value;
+    notifyListeners();
+  }
+
+  bool _isAnnotationPermissionGranted = false;
+
+  bool get isAnnotationPermissionGranted => _isAnnotationPermissionGranted;
+
+  set isAnnotationPermissionGranted(bool value) {
+    _isAnnotationPermissionGranted = value;
+    notifyListeners();
+  }
+
+  void updateAnnotationConsent(bool value) {
+    final Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "annotation_allowed": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.allowAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (_) {
+        isAnnotationEnabled = value;
+        sendAction(ActionModel(action: MeetingActions.allowScreenShareAnnotation, value: value));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isAnnotationEnabled = !value;
+      },
+    );
+  }
+
+  void updateAnnotationPermissionForParticipant(String participantIdentity, bool value) {
+    final Map<String, dynamic> body = {
+      "meeting_uid": meetingDetails.meetingUid,
+      "participant_identity": participantIdentity,
+      "annotation_allowed": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.allowParticipantAnnotation(meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (data) {
+        sendPrivateAction(
+          ActionModel(action: value ? MeetingActions.allowAnnotationPermission : MeetingActions.revokeAnnotationPermission),
+          participantIdentity,
+        );
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+      },
     );
   }
 
@@ -2839,6 +3025,133 @@ class RtcViewmodel extends ChangeNotifier {
     } else {
       sendPrivateAction(ActionModel(action: MeetingActions.lowerHand), identity);
     }
+  }
+
+  // ─── Annotation state ────────────────────────────────────────────────────
+
+  final Map<String, List<AnnotationStroke>> _strokesBySharer = {};
+  String? _activeAnnotationSharerIdentity;
+  bool _isAnnotationActive = false;
+  String _annotationTool = 'pen';
+  String _annotationColor = '#FF0000';
+  double _annotationWidth = 4.0;
+  final Set<String> _requestedAnnotationSnapshotKeys = {};
+
+  bool get isAnnotationActive => _isAnnotationActive;
+  String? get activeAnnotationSharerIdentity => _activeAnnotationSharerIdentity;
+  String get annotationTool => _annotationTool;
+  String get annotationColor => _annotationColor;
+  double get annotationWidth => _annotationWidth;
+
+  List<AnnotationStroke> getAnnotationStrokes(String sharerIdentity) =>
+      List.unmodifiable(_strokesBySharer[sharerIdentity] ?? const []);
+
+  bool hasRequestedAnnotationSnapshot(String key) =>
+      _requestedAnnotationSnapshotKeys.contains(key);
+
+  void markAnnotationSnapshotRequested(String key) =>
+      _requestedAnnotationSnapshotKeys.add(key);
+
+  void setAnnotationActive(bool active, {String? sharerIdentity}) {
+    _isAnnotationActive = active;
+    if (active && sharerIdentity != null) {
+      _activeAnnotationSharerIdentity = sharerIdentity;
+    } else if (!active) {
+      _activeAnnotationSharerIdentity = null;
+    }
+    notifyListeners();
+  }
+
+  void setAnnotationTool(String tool) {
+    _annotationTool = tool;
+    notifyListeners();
+  }
+
+  void setAnnotationColor(String color) {
+    _annotationColor = color;
+    notifyListeners();
+  }
+
+  void setAnnotationWidth(double width) {
+    _annotationWidth = width;
+    notifyListeners();
+  }
+
+  void addAnnotationStroke(String sharerIdentity, AnnotationStroke stroke) {
+    final list = _strokesBySharer.putIfAbsent(sharerIdentity, () => []);
+    if (list.any((s) => s.id == stroke.id)) return; // deduplicate
+    list.add(stroke);
+    notifyListeners();
+  }
+
+  void removeAnnotationStrokes(String sharerIdentity, List<String> ids) {
+    _strokesBySharer[sharerIdentity]?.removeWhere((s) => ids.contains(s.id));
+    notifyListeners();
+  }
+
+  void clearAnnotationStrokes(String sharerIdentity) {
+    _strokesBySharer[sharerIdentity]?.clear();
+    notifyListeners();
+  }
+
+  void replaceAnnotationStrokes(
+      String sharerIdentity, List<AnnotationStroke> strokes) {
+    _strokesBySharer[sharerIdentity] = List.from(strokes);
+    notifyListeners();
+  }
+
+  void resetAnnotationSharer(String sharerIdentity) {
+    _strokesBySharer.remove(sharerIdentity);
+    _requestedAnnotationSnapshotKeys
+        .removeWhere((k) => k.startsWith('$sharerIdentity:'));
+    if (_activeAnnotationSharerIdentity == sharerIdentity) {
+      _activeAnnotationSharerIdentity = null;
+      _isAnnotationActive = false;
+    }
+    notifyListeners();
+  }
+
+  /// Removes and returns the last stroke drawn by [localIdentity] for undo.
+  AnnotationStroke? undoLastAnnotationStroke(
+      String sharerIdentity, String localIdentity) {
+    final list = _strokesBySharer[sharerIdentity];
+    if (list == null) return null;
+    final idx = list.lastIndexWhere((s) => s.fromIdentity == localIdentity);
+    if (idx == -1) return null;
+    final stroke = list[idx];
+    list.removeAt(idx);
+    notifyListeners();
+    return stroke;
+  }
+
+  Future<void> publishAnnotationData(
+    Room room,
+    Map<String, dynamic> payload, {
+    List<String>? destinationIdentities,
+  }) async {
+    final encoded = utf8.encode(jsonEncode(payload));
+    await room.localParticipant?.publishData(
+      Uint8List.fromList(encoded),
+      reliable: true,
+      destinationIdentities: destinationIdentities,
+    );
+  }
+
+  Future<void> publishAnnotationSnapshot(
+    Room room,
+    String sharerIdentity,
+    List<String> destinationIdentities,
+  ) async {
+    final strokes = _strokesBySharer[sharerIdentity] ?? [];
+    await publishAnnotationData(
+      room,
+      {
+        'action': AnnotationActions.snapshot,
+        'sharerIdentity': sharerIdentity,
+        'strokes': strokes.map((s) => s.toJson()).toList(),
+      },
+      destinationIdentities: destinationIdentities,
+    );
   }
 
 }

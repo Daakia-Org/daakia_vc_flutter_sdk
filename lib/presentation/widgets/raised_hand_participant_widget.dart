@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../model/action_model.dart';
+import '../../model/raised_hand.dart';
 import '../../resources/colors/color.dart';
 import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
@@ -25,12 +26,17 @@ class _RaisedHandParticipantWidgetState
   Widget build(BuildContext context) {
     final raisedQueue = widget.viewModel.raisedHandQueue;
 
-    final raisedParticipants = raisedQueue
-        .map((e) => widget.viewModel.getParticipantNameByIdentity(e.identity))
-        .whereType<String>()
+    // Only keep entries for participants still present in the room.
+    // getParticipantNameOrNull returns null for stale/ghost identities.
+    final raisedEntries = raisedQueue
+        .map((e) {
+          final name = widget.viewModel.getParticipantNameOrNull(e.identity);
+          return name != null ? (e, name) : null;
+        })
+        .whereType<(RaisedHand, String)>()
         .toList();
 
-    if (raisedParticipants.isEmpty) return const SizedBox.shrink();
+    if (raisedEntries.isEmpty) return const SizedBox.shrink();
 
     return Theme(
       data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -82,10 +88,10 @@ class _RaisedHandParticipantWidgetState
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: raisedParticipants.length,
+            itemCount: raisedEntries.length,
             itemBuilder: (context, index) {
-              final name = raisedParticipants[index];
-              final identity = raisedQueue[index].identity;
+              final (entry, name) = raisedEntries[index];
+              final identity = entry.identity;
 
               return Container(
                 width: double.maxFinite,

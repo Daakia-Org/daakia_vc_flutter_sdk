@@ -13,6 +13,7 @@ It includes optional metadata, participant name behavior, pre-join flow behavior
 - [Participant Name Configuration](#participant-name-configuration)
 - [Skip Pre-Join Page](#skip-pre-join-page)
 - [Default Mic and Camera State](#default-mic-and-camera-state)
+- [Save Attachments to Downloads](#save-attachments-to-downloads)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 
@@ -186,6 +187,64 @@ DaakiaMeetingConfiguration(
 ```
 
 ---
+## Save Attachments to Downloads
+
+The `saveAttachmentToDownloads` flag controls whether received chat file attachments are saved to a persistent, user-accessible location instead of a temporary cache directory.
+
+> **Default:** `false` — attachments are stored in a temporary directory and may be cleared by the OS.
+
+### Behavior
+
+| Platform | Where the file is saved |
+|----------|------------------------|
+| Android API 29+ | Public Downloads folder via MediaStore (no permission needed) |
+| Android API < 29 | Public Downloads folder via direct file copy (requests `WRITE_EXTERNAL_STORAGE` at runtime) |
+| iOS | `Documents/Downloads/` inside the app sandbox |
+
+- Only **received** attachments are saved to downloads. Files sent by the local user are unaffected.
+- On Android the file is accessible in any file manager app immediately after saving.
+- On iOS the file is saved persistently but is only visible in **Files > On My iPhone > [App Name] > Downloads** if the host app adds `UIFileSharingEnabled` to its `Info.plist` (see iOS setup below).
+
+### Permissions
+
+#### Android
+
+No changes to your `AndroidManifest.xml` are required. The SDK's manifest already declares:
+
+```xml
+<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+```
+
+This is automatically merged into your app. On Android 10+ (API 29+) no storage permission is needed at all. On Android 9 and below, the SDK requests `WRITE_EXTERNAL_STORAGE` at runtime **only when this feature is enabled and the user taps a received attachment** — it is never requested otherwise.
+
+> **Existing users not using this feature:** no impact. The permission is declared in the merged manifest but the runtime request is never triggered.
+
+#### iOS
+
+No mandatory changes are required. The file is always saved successfully to the app's `Documents/Downloads/` directory.
+
+To make saved files visible to the user in the **Files app**, add these keys to your host app's `Info.plist`:
+
+```xml
+<key>UIFileSharingEnabled</key>
+<true/>
+<key>LSSupportsOpeningDocumentsInPlace</key>
+<true/>
+```
+
+Without these keys the feature still works — files are saved persistently — but users cannot browse them through the Files app.
+
+> **Existing users not using this feature:** no `Info.plist` changes are needed and no behavior changes occur.
+
+### Example
+
+```dart
+DaakiaMeetingConfiguration(
+  saveAttachmentToDownloads: true,
+);
+```
+
+---
 ## Examples
 
 ### Example 1: Basic Metadata
@@ -237,3 +296,4 @@ DaakiaMeetingConfiguration(
 - **Security:** Avoid storing sensitive information in `metadata` as it may be accessible on the client side.
 - **Future-Proofing:** Since this is a BETA feature, keep your implementation flexible to accommodate future updates or new fields.
 - **Permission Flow:** If you use `skipPreJoinPage` and expect mic/camera to start enabled, request camera/microphone permission in your app before opening the SDK. Otherwise the SDK joins with those devices disabled.
+- **Save Attachments:** `saveAttachmentToDownloads` is opt-in and off by default. Enable it only when you want received files to persist after the meeting. On iOS, pair it with `UIFileSharingEnabled` in `Info.plist` so users can find their files in the Files app.

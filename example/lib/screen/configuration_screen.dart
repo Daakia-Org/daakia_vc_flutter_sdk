@@ -22,6 +22,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
   bool _skipPreJoinPage = false;
   bool _enableMicrophoneByDefault = false;
   bool _enableCameraByDefault = false;
+  bool _saveAttachmentToDownloads = false;
   final TextEditingController _configNameController = TextEditingController();
 
   void _addMetadataField() {
@@ -78,6 +79,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       skipPreJoinPage: _skipPreJoinPage,
       enableMicrophoneByDefault: _enableMicrophoneByDefault,
       enableCameraByDefault: _enableCameraByDefault,
+      saveAttachmentToDownloads: _saveAttachmentToDownloads,
     );
   }
 
@@ -110,6 +112,7 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
       _skipPreJoinPage = config.skipPreJoinPage == true;
       _enableMicrophoneByDefault = config.enableMicrophoneByDefault == true;
       _enableCameraByDefault = config.enableCameraByDefault == true;
+      _saveAttachmentToDownloads = config.saveAttachmentToDownloads == true;
     }
   }
 
@@ -232,6 +235,18 @@ class _ConfigurationScreenState extends State<ConfigurationScreen> {
                       onChanged: (value) {
                         setState(() {
                           _enableCameraByDefault = value;
+                        });
+                      },
+                    ),
+                    SwitchListTile(
+                      title: const Text("Save Attachments to Downloads"),
+                      subtitle: const Text(
+                        "Save received chat attachments to the downloads folder instead of temp",
+                      ),
+                      value: _saveAttachmentToDownloads,
+                      onChanged: (value) {
+                        setState(() {
+                          _saveAttachmentToDownloads = value;
                         });
                       },
                     ),

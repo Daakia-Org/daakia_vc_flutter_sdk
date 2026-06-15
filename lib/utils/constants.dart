@@ -3,8 +3,8 @@ import 'dart:io';
 class Constant {
   static final String platform = getPlatform();
 
-  static const String baseUrl = "https://api.daakia.co.in/v2.0/";
-  static const String whiteboardDomain = "https://www.daakia.co.in/";
+  static String baseUrl = "https://api.daakia.co.in/v2.0/";
+  static String whiteboardDomain = "https://www.daakia.co.in/";
 
   static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
   static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
