@@ -315,7 +315,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
           // Service was killed by the OS (common on Samsung with aggressive
           // battery optimisation). Without the FGS mediaProjection type,
           // getDisplayMedia throws SecurityException on Android 14+.
-          if (mounted) viewModel.sendMessageToUI("Screen share unavailable. Please rejoin the meeting and try again.");
+          viewModel.sendMessageToUI("Screen share unavailable. Please rejoin the meeting and try again.");
           return;
         }
       } else {
@@ -374,7 +374,6 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
       return;
     }
 
-    if (!mounted) return;
     await participant?.setScreenShareEnabled(true, captureScreenAudio: true);
   }
 
