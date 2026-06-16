@@ -546,6 +546,16 @@ class RtcViewmodel extends ChangeNotifier {
 
   bool isRecordingStartByMe = false;
 
+  bool _isScreenShareActionInProgress = false;
+
+  bool get isScreenShareActionInProgress => _isScreenShareActionInProgress;
+
+  set isScreenShareActionInProgress(bool value) {
+    if (_isScreenShareActionInProgress == value) return;
+    _isScreenShareActionInProgress = value;
+    notifyListeners();
+  }
+
   String? dispatchId;
   bool _stopRecordingRetried = false;
 

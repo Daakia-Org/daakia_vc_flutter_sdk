@@ -52,7 +52,12 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 result.success(null)
             }
             "startScreenShareService" -> {
-                DaakiaMeetingService.instance?.addMediaProjectionType()
+                val svc = DaakiaMeetingService.instance
+                if (svc == null) {
+                    result.error("SERVICE_NOT_RUNNING", "DaakiaMeetingService is not running", null)
+                    return
+                }
+                svc.addMediaProjectionType()
                 result.success(null)
             }
             "stopScreenShareService" -> {

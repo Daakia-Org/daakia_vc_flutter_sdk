@@ -16,6 +16,7 @@ import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
+import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
 import '../pages/permission_request_page.dart';
 import '../pages/transcription_screen.dart';
@@ -115,7 +116,8 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                   text:
                       '${(viewModel.room.localParticipant?.isScreenShareEnabled() == true) ? "Stop" : "Start"} Screen Sharing',
                   isVisible: viewModel.meetingDetails.features!
-                      .isScreenSharingAllowed(), onTap: () {
+                      .isScreenSharingAllowed(),
+                  isEnabled: !viewModel.isScreenShareActionInProgress, onTap: () {
                 Navigator.pop(context);
                 if (viewModel.room.localParticipant?.isScreenShareEnabled() ==
                     true) {
@@ -253,6 +255,21 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
   }
 
   void _enableScreenShare(RtcViewmodel viewModel) async {
+    // Guards against overlapping start/stop native calls when the user mashes
+    // the toggle quickly. Stacking up screen-capture start/dispose calls before
+    // the previous one's native teardown (Surface/MediaProjection/codec)
+    // finishes can block the platform thread for several seconds on some
+    // devices and trigger an ANR.
+    if (viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await _doEnableScreenShare(viewModel);
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
+    }
+  }
+
+  Future<void> _doEnableScreenShare(RtcViewmodel viewModel) async {
     final participant = viewModel.room.localParticipant;
 
     if (viewModel.isScreenSharePermissionNeeded()) {
@@ -299,6 +316,27 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
 
     if (lkPlatformIs(PlatformType.android)) {
       // Android specific
+      // Screen share is the highest-risk action for OEM background throttling
+      // without a visible foreground-service notification (root caused an ANR
+      // on MIUI). Unlike the soft reminder at meeting join, this is a hard
+      // gate: screen share will not start without notification permission.
+      // Shown before the system capture-permission dialog so the two don't
+      // stack; the user must grant it via Settings and retry.
+      if (!await DaakiaMeetingService.hasNotificationPermission()) {
+        if (mounted) {
+          await showNotificationPermissionDialog(
+            context,
+            title: 'Notification Permission Required',
+            message:
+                'Screen sharing needs notification permission to keep running reliably in the background. Enable it in Settings, then try again.',
+            dismissLabel: 'Cancel',
+          );
+        }
+        viewModel.sendMessageToUI(
+            'Screen sharing requires notification permission. Please enable it and try again.');
+        return;
+      }
+
       bool hasCapturePermission = await Helper.requestCapturePermission();
       if (!hasCapturePermission) {
         return;
@@ -310,7 +348,14 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
         // meeting). Calling addMediaProjectionType() on the main thread is
         // synchronous, so the FGS type is registered before getDisplayMedia
         // is called — no race condition on rapid stop/start.
-        await DaakiaMeetingService.startScreenShare();
+        final ok = await DaakiaMeetingService.startScreenShare();
+        if (!ok) {
+          // Service was killed by the OS (common on Samsung with aggressive
+          // battery optimisation). Without the FGS mediaProjection type,
+          // getDisplayMedia throws SecurityException on Android 14+.
+          viewModel.sendMessageToUI("Screen share unavailable. Please rejoin the meeting and try again.");
+          return;
+        }
       } else {
         requestBackgroundPermission([bool isRetry = false]) async {
           try {
@@ -371,6 +416,16 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
   }
 
   void _disableScreenShare(RtcViewmodel viewModel) async {
+    if (viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await _doDisableScreenShare(viewModel);
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
+    }
+  }
+
+  Future<void> _doDisableScreenShare(RtcViewmodel viewModel) async {
     final participant = viewModel.room.localParticipant;
     await participant?.setScreenShareEnabled(false);
     viewModel

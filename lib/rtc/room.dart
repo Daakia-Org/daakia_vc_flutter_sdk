@@ -9,6 +9,7 @@ import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
@@ -89,6 +90,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   bool? _lastMicEnabled;
 
   Timer? _configRecordingTimer;
+
+  // Coalesces rapid-fire track add/remove events (e.g. both sides repeatedly
+  // toggling screen share) into a single rebuild instead of one per event,
+  // to reduce main-thread churn during toggle storms.
+  Timer? _sortParticipantsDebounceTimer;
 
   late final MeetingManager meetingManager;
 
@@ -204,7 +210,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       };
     }
 
-    handleAndroidNotification(enable: true);
+    unawaited(_setupAndroidMeetingNotification());
+  }
+
+  Future<void> _setupAndroidMeetingNotification() async {
+    await handleAndroidNotification(enable: true);
+    if (!lkPlatformIs(PlatformType.android)) return;
+    final hasPermission = await DaakiaMeetingService.hasNotificationPermission();
+    if (!hasPermission && mounted) {
+      showNotificationPermissionDialog(context);
+    }
   }
 
   bool _isReconnecting = false;
@@ -313,6 +328,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     lobbyManager?.dispose();
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
+    _sortParticipantsDebounceTimer?.cancel();
     // always dispose listener
     (() async {
       DaakiaPiP.disposePiP();
@@ -335,81 +351,81 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       onReconnectSuccess();
     })
     ..on<RoomDisconnectedEvent>((event) async {
-      if (event.reason != null) {
-        _isProgrammaticPop = true;
-        DatadogDisconnectLogger.logDisconnectEvent(
-            meetingId: widget.meetingDetails.meetingUid,
-            room: widget.room,
-            reason: event.reason?.name);
-        _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
-        clearMemory(_livekitProviderKey.currentState?.viewModel);
-        switch (event.reason) {
-          case DisconnectReason.participantRemoved:
-            {
-              showSnackBar(message: "Host has removed you from the meeting!");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-          case DisconnectReason.duplicateIdentity:
-            {
-              showSnackBar(message: "You have joined with another device");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-          case DisconnectReason.roomDeleted:
-            {
-              showSnackBar(message: "Meeting ended");
-              Timer(const Duration(seconds: 3), () {
-                if (mounted) {
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!context.mounted) return;
-                    closeMeetingProgrammatically(context);
-                  });
-                }
-              });
-              break;
-            }
-
-          // ✅ New cases with user-friendly messages
-          case null:
-          case DisconnectReason.unknown:
-            _handleGenericDisconnect("Disconnected due to unknown reason.");
+      // Run cleanup and navigation for ALL disconnect reasons, including null.
+      // The outer null-guard that was here made the `case null` in the switch
+      // unreachable — any unexpected disconnect (network drop, server kill
+      // without a reason) would leave the page open and the service running.
+      _isProgrammaticPop = true;
+      DatadogDisconnectLogger.logDisconnectEvent(
+          meetingId: widget.meetingDetails.meetingUid,
+          room: widget.room,
+          reason: event.reason?.name);
+      _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
+      clearMemory(_livekitProviderKey.currentState?.viewModel);
+      switch (event.reason) {
+        case DisconnectReason.participantRemoved:
+          {
+            showSnackBar(message: "Host has removed you from the meeting!");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.clientInitiated:
-            _handleGenericDisconnect("You have left the meeting.");
+          }
+        case DisconnectReason.duplicateIdentity:
+          {
+            showSnackBar(message: "You have joined with another device");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.serverShutdown:
-            _handleGenericDisconnect("Meeting ended by the server.");
+          }
+        case DisconnectReason.roomDeleted:
+          {
+            showSnackBar(message: "Meeting ended");
+            Timer(const Duration(seconds: 3), () {
+              if (mounted) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!context.mounted) return;
+                  closeMeetingProgrammatically(context);
+                });
+              }
+            });
             break;
-          case DisconnectReason.stateMismatch:
-            _handleGenericDisconnect("Connection lost due to state mismatch.");
-            break;
-          case DisconnectReason.joinFailure:
-            _handleGenericDisconnect("Failed to join the meeting.");
-            break;
-          case DisconnectReason.disconnected:
-            _handleGenericDisconnect("You have been disconnected.");
-            break;
-          case DisconnectReason.signalingConnectionFailure:
-            _handleGenericDisconnect("Signaling connection failed.");
-            break;
-          case DisconnectReason.reconnectAttemptsExceeded:
-            _handleGenericDisconnect(
-                "Could not reconnect. Please check your internet.");
-            break;
-        }
+          }
+        case null:
+        case DisconnectReason.unknown:
+          _handleGenericDisconnect("Disconnected due to unknown reason.");
+          break;
+        case DisconnectReason.clientInitiated:
+          _handleGenericDisconnect("You have left the meeting.");
+          break;
+        case DisconnectReason.serverShutdown:
+          _handleGenericDisconnect("Meeting ended by the server.");
+          break;
+        case DisconnectReason.stateMismatch:
+          _handleGenericDisconnect("Connection lost due to state mismatch.");
+          break;
+        case DisconnectReason.joinFailure:
+          _handleGenericDisconnect("Failed to join the meeting.");
+          break;
+        case DisconnectReason.disconnected:
+          _handleGenericDisconnect("You have been disconnected.");
+          break;
+        case DisconnectReason.signalingConnectionFailure:
+          _handleGenericDisconnect("Signaling connection failed.");
+          break;
+        case DisconnectReason.reconnectAttemptsExceeded:
+          _handleGenericDisconnect(
+              "Could not reconnect. Please check your internet.");
+          break;
       }
     })
     ..on<ParticipantEvent>((event) {
@@ -418,7 +434,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       checkRecordingPlayer(widget.room.isRecording);
       // sort participants on many track events as noted in documentation linked above
-      _sortParticipants();
+      _scheduleSortParticipants();
 
       // Debounce `configAutoRecording` to ensure it is called only once within 1 second
       if (_configRecordingTimer?.isActive ?? false) {
@@ -483,11 +499,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       if (localParticipant?.isScreenShareEnabled() == true) {
         if (localParticipant?.identity != track.participant.identity) {
           if (track.participant.isScreenShareEnabled()) {
-            viewModel?.disposeScreenShare();
+            _autoStopLocalScreenShare(viewModel);
           }
         }
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<LocalTrackPublishedEvent>((track){
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -499,7 +515,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             action: MeetingActions.screenShareStarted,
             timeStamp: DateTime.now().microsecondsSinceEpoch));
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<LocalTrackUnpublishedEvent>((track){
       if (track.publication.source == TrackSource.screenShareVideo) {
@@ -507,10 +523,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         final localId = widget.room.localParticipant?.identity;
         if (localId != null) viewModel?.resetAnnotationSharer(localId);
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
-    ..on<TrackSubscribedEvent>((_) => _sortParticipants())
-    ..on<TrackUnsubscribedEvent>((_) => _sortParticipants())
+    ..on<TrackSubscribedEvent>((_) => _scheduleSortParticipants())
+    ..on<TrackUnsubscribedEvent>((_) => _scheduleSortParticipants())
     ..on<TrackE2EEStateEvent>(_onE2EEStateEvent)
     ..on<ParticipantNameUpdatedEvent>((event) {
       _sortParticipants();
@@ -1037,6 +1053,30 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (kDebugMode) {
       print('e2ee state: $e2eeState');
     }
+  }
+
+  // Auto-stops the local user's screen share when another participant
+  // (e.g. a web client) starts theirs. Guarded by the same
+  // isScreenShareActionInProgress flag as the manual toggle button so that
+  // a remote participant rapidly starting/stopping their share can't stack
+  // overlapping native teardown calls on top of (or with) a manual toggle —
+  // that race is what triggers ANRs on low-end devices (see 07c022b).
+  void _autoStopLocalScreenShare(RtcViewmodel? viewModel) async {
+    if (viewModel == null || viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await viewModel.disposeScreenShare();
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
+    }
+  }
+
+  void _scheduleSortParticipants() {
+    _sortParticipantsDebounceTimer?.cancel();
+    _sortParticipantsDebounceTimer =
+        Timer(const Duration(milliseconds: 200), () {
+      if (mounted) _sortParticipants();
+    });
   }
 
   void _sortParticipants() {
@@ -1895,7 +1935,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   void clearMemory(RtcViewmodel? viewModel) {
     viewModel?.disposeScreenShare();
     viewModel?.unregisterCaption();
-    handleAndroidNotification(enable: false);
+    // unawaited is intentional — dispose() is synchronous so we can't await here.
+    // DaakiaMeetingService.stop() has its own try-catch and is safe to fire-and-forget.
+    unawaited(handleAndroidNotification(enable: false));
     _disposePip();
     DaakiaPiP.disposePiP();
   }
