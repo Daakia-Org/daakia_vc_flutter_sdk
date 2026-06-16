@@ -91,6 +91,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   Timer? _configRecordingTimer;
 
+  // Coalesces rapid-fire track add/remove events (e.g. both sides repeatedly
+  // toggling screen share) into a single rebuild instead of one per event,
+  // to reduce main-thread churn during toggle storms.
+  Timer? _sortParticipantsDebounceTimer;
+
   late final MeetingManager meetingManager;
 
   @override
@@ -323,6 +328,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     lobbyManager?.dispose();
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
+    _sortParticipantsDebounceTimer?.cancel();
     // always dispose listener
     (() async {
       DaakiaPiP.disposePiP();
@@ -428,7 +434,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       checkRecordingPlayer(widget.room.isRecording);
       // sort participants on many track events as noted in documentation linked above
-      _sortParticipants();
+      _scheduleSortParticipants();
 
       // Debounce `configAutoRecording` to ensure it is called only once within 1 second
       if (_configRecordingTimer?.isActive ?? false) {
@@ -497,7 +503,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           }
         }
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<LocalTrackPublishedEvent>((track){
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -509,7 +515,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             action: MeetingActions.screenShareStarted,
             timeStamp: DateTime.now().microsecondsSinceEpoch));
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<LocalTrackUnpublishedEvent>((track){
       if (track.publication.source == TrackSource.screenShareVideo) {
@@ -517,10 +523,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         final localId = widget.room.localParticipant?.identity;
         if (localId != null) viewModel?.resetAnnotationSharer(localId);
       }
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
-    ..on<TrackSubscribedEvent>((_) => _sortParticipants())
-    ..on<TrackUnsubscribedEvent>((_) => _sortParticipants())
+    ..on<TrackSubscribedEvent>((_) => _scheduleSortParticipants())
+    ..on<TrackUnsubscribedEvent>((_) => _scheduleSortParticipants())
     ..on<TrackE2EEStateEvent>(_onE2EEStateEvent)
     ..on<ParticipantNameUpdatedEvent>((event) {
       _sortParticipants();
@@ -1047,6 +1053,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (kDebugMode) {
       print('e2ee state: $e2eeState');
     }
+  }
+
+  void _scheduleSortParticipants() {
+    _sortParticipantsDebounceTimer?.cancel();
+    _sortParticipantsDebounceTimer =
+        Timer(const Duration(milliseconds: 200), () {
+      if (mounted) _sortParticipants();
+    });
   }
 
   void _sortParticipants() {
