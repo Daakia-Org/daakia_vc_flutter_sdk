@@ -1,5 +1,22 @@
 # CHANGELOG
 
+## v4.5.1 – (2026-06)
+
+### 🚀 New Features
+- **Notification Permission Dialog (Android)** — Customizable dialog enforcing notification permission before starting screen sharing.
+
+### 🧩 Improvements
+- Debounced participant list sorting to reduce main-thread churn.
+
+### 🐞 Bug Fixes
+- Fixed screen-share crash by setting `singleTask` launch mode and adding a guarded auto-stop for local screen sharing.
+- Fixed concurrent screen-share actions causing ANRs.
+- Fixed ANRs during app resume by refactoring `restartIfActive`.
+- Fixed cleanup and navigation on all room disconnect events.
+- Added missing microphone/camera foreground service types to `DaakiaMeetingService`.
+- Fixed screen-share service availability handling on Android 14+.
+- Removed unnecessary `mounted` checks in `more_option_bottomsheet.dart`.
+
 ## v4.5.0 – (2026-06)
 
 > **Major release.** Requires **Flutter 3.22+ (Dart SDK ^3.8.0)**. After upgrading, run `flutter clean && flutter pub get` to avoid conflicts from major dependency updates.
