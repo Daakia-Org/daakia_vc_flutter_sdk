@@ -115,7 +115,8 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                   text:
                       '${(viewModel.room.localParticipant?.isScreenShareEnabled() == true) ? "Stop" : "Start"} Screen Sharing',
                   isVisible: viewModel.meetingDetails.features!
-                      .isScreenSharingAllowed(), onTap: () {
+                      .isScreenSharingAllowed(),
+                  isEnabled: !viewModel.isScreenShareActionInProgress, onTap: () {
                 Navigator.pop(context);
                 if (viewModel.room.localParticipant?.isScreenShareEnabled() ==
                     true) {
@@ -253,6 +254,21 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
   }
 
   void _enableScreenShare(RtcViewmodel viewModel) async {
+    // Guards against overlapping start/stop native calls when the user mashes
+    // the toggle quickly. Stacking up screen-capture start/dispose calls before
+    // the previous one's native teardown (Surface/MediaProjection/codec)
+    // finishes can block the platform thread for several seconds on some
+    // devices and trigger an ANR.
+    if (viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await _doEnableScreenShare(viewModel);
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
+    }
+  }
+
+  Future<void> _doEnableScreenShare(RtcViewmodel viewModel) async {
     final participant = viewModel.room.localParticipant;
 
     if (viewModel.isScreenSharePermissionNeeded()) {
@@ -378,6 +394,16 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
   }
 
   void _disableScreenShare(RtcViewmodel viewModel) async {
+    if (viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await _doDisableScreenShare(viewModel);
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
+    }
+  }
+
+  Future<void> _doDisableScreenShare(RtcViewmodel viewModel) async {
     final participant = viewModel.room.localParticipant;
     await participant?.setScreenShareEnabled(false);
     viewModel
