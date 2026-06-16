@@ -9,6 +9,7 @@ import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
@@ -204,7 +205,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       };
     }
 
-    handleAndroidNotification(enable: true);
+    unawaited(_setupAndroidMeetingNotification());
+  }
+
+  Future<void> _setupAndroidMeetingNotification() async {
+    await handleAndroidNotification(enable: true);
+    if (!lkPlatformIs(PlatformType.android)) return;
+    final hasPermission = await DaakiaMeetingService.hasNotificationPermission();
+    if (!hasPermission && mounted) {
+      showNotificationPermissionDialog(context);
+    }
   }
 
   bool _isReconnecting = false;

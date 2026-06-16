@@ -103,6 +103,15 @@ class DaakiaMeetingService {
     }
   }
 
+  /// Whether the app currently has permission to show notifications.
+  /// Always true on iOS and on Android versions where POST_NOTIFICATIONS
+  /// isn't a runtime permission (Android < 13). Does not request — callers
+  /// use this after [start] to decide whether to prompt the user themselves.
+  static Future<bool> hasNotificationPermission() async {
+    if (!Platform.isAndroid) return true;
+    return (await Permission.notification.status).isGranted;
+  }
+
   /// Re-attaches the Android notification after returning from system Settings
   /// (e.g. user just granted POST_NOTIFICATIONS mid-meeting). No-op on iOS.
   ///
