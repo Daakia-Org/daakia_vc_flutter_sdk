@@ -7,9 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 class DaakiaMeetingService {
   static const _channel = MethodChannel('io.daakia/meeting_service');
 
-  // Cached params so restartIfActive() can replay the last start() call.
+  // Cached params so restartIfActive() can refresh the notification.
   static String? _title;
-  static String? _text;
   static bool _showMuteButton = false;
   static bool _isMuted = false;
 
@@ -62,7 +61,6 @@ class DaakiaMeetingService {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
     _title = title;
-    _text = text;
     _isMuted = isMuted;
     _showMuteButton = showMuteButton;
 
@@ -107,14 +105,26 @@ class DaakiaMeetingService {
 
   /// Re-attaches the Android notification after returning from system Settings
   /// (e.g. user just granted POST_NOTIFICATIONS mid-meeting). No-op on iOS.
+  ///
+  /// This is called on every app resume (see RoomPage.didChangeAppLifecycleState),
+  /// which includes the resume that happens right after the screen-capture
+  /// permission dialog closes. It must NOT call start() / startForegroundService()
+  /// here: that re-arms Android's "must call startForeground() within a few
+  /// seconds" watchdog, and racing it against the screen-share flow's own
+  /// startForeground() call (addMediaProjectionType) on a busy main thread can
+  /// throw ForegroundServiceDidNotStartInTimeException (ANR) on slower devices.
+  /// updateMuteState only does a plain startService() + notify() refresh, which
+  /// carries no such timing requirement.
   static Future<void> restartIfActive() async {
     if (!Platform.isAndroid || _title == null) return;
-    await start(
-      title: _title!,
-      text: _text ?? 'Tap to return to the meeting',
-      isMuted: _isMuted,
-      showMuteButton: _showMuteButton,
-    );
+    try {
+      await _channel.invokeMethod('updateMuteState', {
+        'isMuted': _isMuted,
+        'showMuteButton': _showMuteButton,
+      });
+    } catch (e) {
+      debugPrint('DaakiaMeetingService restartIfActive error: $e');
+    }
   }
 
   /// Upgrades the running FGS to include mediaProjection type so that
@@ -148,7 +158,6 @@ class DaakiaMeetingService {
   static Future<void> stop() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
     _title = null;
-    _text = null;
     _isMuted = false;
     _showMuteButton = false;
     onMuteToggle = null;
