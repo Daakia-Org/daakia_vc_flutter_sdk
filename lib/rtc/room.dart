@@ -499,7 +499,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       if (localParticipant?.isScreenShareEnabled() == true) {
         if (localParticipant?.identity != track.participant.identity) {
           if (track.participant.isScreenShareEnabled()) {
-            viewModel?.disposeScreenShare();
+            _autoStopLocalScreenShare(viewModel);
           }
         }
       }
@@ -1052,6 +1052,22 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   void _onE2EEStateEvent(TrackE2EEStateEvent e2eeState) {
     if (kDebugMode) {
       print('e2ee state: $e2eeState');
+    }
+  }
+
+  // Auto-stops the local user's screen share when another participant
+  // (e.g. a web client) starts theirs. Guarded by the same
+  // isScreenShareActionInProgress flag as the manual toggle button so that
+  // a remote participant rapidly starting/stopping their share can't stack
+  // overlapping native teardown calls on top of (or with) a manual toggle —
+  // that race is what triggers ANRs on low-end devices (see 07c022b).
+  void _autoStopLocalScreenShare(RtcViewmodel? viewModel) async {
+    if (viewModel == null || viewModel.isScreenShareActionInProgress) return;
+    viewModel.isScreenShareActionInProgress = true;
+    try {
+      await viewModel.disposeScreenShare();
+    } finally {
+      viewModel.isScreenShareActionInProgress = false;
     }
   }
 
