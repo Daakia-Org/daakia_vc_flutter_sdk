@@ -3,15 +3,34 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../resources/colors/color.dart';
 
-void showNotificationPermissionDialog(BuildContext context) {
-  showDialog(
+Future<void> showNotificationPermissionDialog(
+  BuildContext context, {
+  String title = 'Keep Your Meeting Alive',
+  String message =
+      'Allow notifications to keep your call running in the background.',
+  String dismissLabel = 'Maybe Later',
+}) {
+  return showDialog(
     context: context,
-    builder: (_) => const NotificationPermissionDialog(),
+    builder: (_) => NotificationPermissionDialog(
+      title: title,
+      message: message,
+      dismissLabel: dismissLabel,
+    ),
   );
 }
 
 class NotificationPermissionDialog extends StatelessWidget {
-  const NotificationPermissionDialog({super.key});
+  final String title;
+  final String message;
+  final String dismissLabel;
+
+  const NotificationPermissionDialog({
+    super.key,
+    required this.title,
+    required this.message,
+    this.dismissLabel = 'Maybe Later',
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -37,20 +56,20 @@ class NotificationPermissionDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            const Text(
-              'Keep Your Meeting Alive',
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.black87,
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              'Allow notifications to keep your call running in the background.',
+            Text(
+              message,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.black54,
                 fontSize: 14,
                 height: 1.4,
@@ -79,9 +98,9 @@ class NotificationPermissionDialog extends StatelessWidget {
               width: double.infinity,
               child: TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text(
-                  'Maybe Later',
-                  style: TextStyle(color: Colors.black54),
+                child: Text(
+                  dismissLabel,
+                  style: const TextStyle(color: Colors.black54),
                 ),
               ),
             ),

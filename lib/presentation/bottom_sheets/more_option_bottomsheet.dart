@@ -16,6 +16,7 @@ import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
+import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
 import '../pages/permission_request_page.dart';
 import '../pages/transcription_screen.dart';
@@ -315,6 +316,27 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
 
     if (lkPlatformIs(PlatformType.android)) {
       // Android specific
+      // Screen share is the highest-risk action for OEM background throttling
+      // without a visible foreground-service notification (root caused an ANR
+      // on MIUI). Unlike the soft reminder at meeting join, this is a hard
+      // gate: screen share will not start without notification permission.
+      // Shown before the system capture-permission dialog so the two don't
+      // stack; the user must grant it via Settings and retry.
+      if (!await DaakiaMeetingService.hasNotificationPermission()) {
+        if (mounted) {
+          await showNotificationPermissionDialog(
+            context,
+            title: 'Notification Permission Required',
+            message:
+                'Screen sharing needs notification permission to keep running reliably in the background. Enable it in Settings, then try again.',
+            dismissLabel: 'Cancel',
+          );
+        }
+        viewModel.sendMessageToUI(
+            'Screen sharing requires notification permission. Please enable it and try again.');
+        return;
+      }
+
       bool hasCapturePermission = await Helper.requestCapturePermission();
       if (!hasCapturePermission) {
         return;
