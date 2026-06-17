@@ -20,7 +20,6 @@ class DatadogObsConfig {
 
 class SentryObsConfig {
   final String dsn;
-  final String? release;
 
-  const SentryObsConfig({required this.dsn, this.release});
+  const SentryObsConfig({required this.dsn});
 }

@@ -33,10 +33,7 @@ class DaakiaVcLogger {
       );
     }
     if (sentry != null) {
-      await DaakiaVcSentryService.initialize(
-        dsn: sentry.dsn,
-        release: sentry.release,
-      );
+      await DaakiaVcSentryService.initialize(dsn: sentry.dsn);
     }
   }
 

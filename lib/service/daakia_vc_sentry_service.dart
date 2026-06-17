@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../utils/constants.dart';
+
 /// Internal Sentry service for SDK-level error and event tracking.
 ///
 /// Uses a dedicated [SentryClient] so it never touches the host app's global
@@ -12,11 +14,11 @@ class DaakiaVcSentryService {
 
   static bool get isInitialized => _client != null;
 
-  static Future<void> initialize({required String dsn, String? release}) async {
+  static Future<void> initialize({required String dsn}) async {
     if (_client != null) return;
     try {
       _options = SentryOptions(dsn: dsn)
-        ..release = release
+        ..release = 'daakia_vc_flutter_sdk@${Constant.sdkVersion}'
         ..tracesSampleRate = 1.0;
       _client = SentryClient(_options!);
       _hookFlutterErrorHandlers();

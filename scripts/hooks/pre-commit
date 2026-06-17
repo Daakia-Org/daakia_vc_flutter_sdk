@@ -1,0 +1,19 @@
+#!/bin/bash
+
+# Auto-syncs Constant.sdkVersion whenever pubspec.yaml is part of a commit.
+# Installed via: bash scripts/install_hooks.sh
+
+if git diff --cached --name-only | grep -q "pubspec.yaml"; then
+  VERSION=$(grep '^version:' pubspec.yaml | sed 's/version:[[:space:]]*//')
+
+  if [ -z "$VERSION" ]; then
+    echo "pre-commit: could not read version from pubspec.yaml"
+    exit 1
+  fi
+
+  sed -i '' "s/static const String sdkVersion = '.*'/static const String sdkVersion = '$VERSION'/" lib/utils/constants.dart
+
+  git add lib/utils/constants.dart
+
+  echo "pre-commit: Constant.sdkVersion synced to '$VERSION'"
+fi
