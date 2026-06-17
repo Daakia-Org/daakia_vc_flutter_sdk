@@ -24,22 +24,29 @@ class DaakiaVcSentryService {
   }
 
   /// Chains Sentry onto Flutter's existing error handlers without replacing them.
-  /// Firebase Crashlytics (or any other handler) continues to work normally.
+  /// Only errors that originate inside the SDK are captured; host app errors
+  /// are passed through untouched. Firebase Crashlytics (or any other handler)
+  /// continues to work normally.
   static void _hookFlutterErrorHandlers() {
     final previousFlutterError = FlutterError.onError;
     FlutterError.onError = (FlutterErrorDetails details) {
-      _client?.captureException(
-        details.exception,
-        stackTrace: details.stack,
-      );
+      if (_isFromSdk(details.stack)) {
+        _client?.captureException(details.exception, stackTrace: details.stack);
+      }
       previousFlutterError?.call(details);
     };
 
     final previousPlatformError = PlatformDispatcher.instance.onError;
     PlatformDispatcher.instance.onError = (error, stack) {
-      _client?.captureException(error, stackTrace: stack);
+      if (_isFromSdk(stack)) {
+        _client?.captureException(error, stackTrace: stack);
+      }
       return previousPlatformError?.call(error, stack) ?? false;
     };
+  }
+
+  static bool _isFromSdk(StackTrace? stack) {
+    return stack.toString().contains('package:daakia_vc_flutter_sdk');
   }
 
   static Future<Scope?> _buildScope(Map<String, Object?>? context) async {
