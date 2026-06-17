@@ -1,15 +1,48 @@
 import 'package:sentry_flutter/sentry_flutter.dart';
 
+import '../model/observability_config.dart';
 import 'daakia_vc_datadog_service.dart';
 import 'daakia_vc_sentry_service.dart';
 
 /// Unified observability entry point.
 ///
-/// Routes log calls to Datadog and Sentry independently — each service is
-/// called only if it has been initialized; an uninitialized service is silently
-/// skipped without affecting the other.
+/// Both services are independent — initialize either or both; an uninitialized
+/// service is silently skipped without affecting the other.
 class DaakiaVcLogger {
   DaakiaVcLogger._();
+
+  // ---------------------------------------------------------------------------
+  // Initialization
+  // ---------------------------------------------------------------------------
+
+  /// Initializes whichever services have credentials supplied.
+  /// Pass null for a service to skip it entirely.
+  static Future<void> initialize({
+    DatadogObsConfig? datadog,
+    SentryObsConfig? sentry,
+  }) async {
+    if (datadog != null) {
+      await DaakiaVcDatadogService.initialize(
+        clientToken: datadog.clientToken,
+        env: datadog.env,
+        serviceName: datadog.serviceName,
+        applicationId: datadog.applicationId,
+        version: datadog.version,
+        site: datadog.site,
+        enableCrashReporting: false,
+      );
+    }
+    if (sentry != null) {
+      await DaakiaVcSentryService.initialize(
+        dsn: sentry.dsn,
+        release: sentry.release,
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Logging
+  // ---------------------------------------------------------------------------
 
   static void logDebug(String message, {Map<String, Object?>? attributes}) {
     DaakiaVcDatadogService.logDebug(message, attributes: attributes);
@@ -33,17 +66,15 @@ class DaakiaVcLogger {
     );
   }
 
-  /// Logs an error to both services.
-  ///
-  /// If [error] is provided, Sentry receives it as an exception (with a full
-  /// stack trace). Otherwise Sentry receives a message at error level.
+  /// Logs an error message to Datadog; Sentry receives it as an exception
+  /// (with stack trace) if [error] is provided, or as an error message if not.
   static void logError(
     String message, {
     dynamic error,
     StackTrace? stackTrace,
     Map<String, Object?>? attributes,
   }) {
-    DaakiaVcDatadogService.logError(message, error, stackTrace, attributes);
+    DaakiaVcDatadogService.logError(message, null, null, attributes);
     if (error != null) {
       DaakiaVcSentryService.captureException(
         error,
@@ -59,18 +90,13 @@ class DaakiaVcLogger {
     }
   }
 
-  /// Captures a raw exception in both services without a log-style message.
+  /// Captures a raw exception with stack trace — Sentry only.
+  /// Datadog is not involved; crash/exception capture is Sentry's domain.
   static void captureException(
     dynamic throwable, {
     dynamic stackTrace,
     Map<String, Object?>? context,
   }) {
-    DaakiaVcDatadogService.logError(
-      throwable.toString(),
-      throwable,
-      stackTrace is StackTrace ? stackTrace : null,
-      context,
-    );
     DaakiaVcSentryService.captureException(
       throwable,
       stackTrace: stackTrace,
