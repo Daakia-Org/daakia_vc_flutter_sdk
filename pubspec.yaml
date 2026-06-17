@@ -12,6 +12,7 @@ platforms:
   ios:
 
 dependencies:
+  sentry_flutter: ^9.21.0
   flutter:
     sdk: flutter
 
@@ -54,6 +55,7 @@ dependencies:
   device_info_plus: ^12.2.0
 
 dev_dependencies:
+  sentry_dart_plugin: ^3.4.0
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
@@ -103,3 +105,9 @@ flutter:
   #
   # For details regarding fonts in packages, see
   # https://flutter.dev/to/font-from-package
+
+sentry:
+  upload_debug_symbols: true
+  upload_source_maps: true
+  project: flutter
+  org: daakia-op

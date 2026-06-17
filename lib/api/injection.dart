@@ -3,7 +3,7 @@ import 'package:dio/dio.dart';
 
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
-import '../utils/datadog_logger_helper.dart';
+import '../service/daakia_vc_logger.dart';
 import '../utils/utils.dart';
 import 'api_client.dart';
 
@@ -18,34 +18,31 @@ Dio setDio() {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
-        // Optionally capture request payload here if needed
         handler.next(options);
       },
       onResponse: (response, handler) {
-        DatadogLoggerHelper.saveDatadogLog(
-          level: DatadogLogLevel.info,
-          message: Utils.extractMessage(
-            "Success",
-            response.data,
-            response.requestOptions.path,
-          ),
-          requestOptions: response.requestOptions,
-          dioException: null,
-          payload: response.requestOptions.data,
+        DaakiaVcLogger.logInfo(
+          Utils.extractMessage("Success", response.data, response.requestOptions.path),
+          attributes: {
+            'endpoint': response.requestOptions.path,
+            'method': response.requestOptions.method,
+            'payload': response.requestOptions.data,
+          },
         );
         handler.next(response);
       },
       onError: (DioException e, handler) {
-        DatadogLoggerHelper.saveDatadogLog(
-          level: DatadogLogLevel.error,
-          message: Utils.extractMessage(
-            "Error",
-            e.requestOptions.data,
-            e.requestOptions.path,
-          ),
-          requestOptions: e.requestOptions,
-          dioException: e,
-          payload: e.requestOptions.data,
+        DaakiaVcLogger.logError(
+          Utils.extractMessage("Error", e.requestOptions.data, e.requestOptions.path),
+          error: e,
+          stackTrace: e.stackTrace,
+          attributes: {
+            'endpoint': e.requestOptions.path,
+            'method': e.requestOptions.method,
+            'payload': e.requestOptions.data,
+            'response': e.response?.data,
+            'statusCode': e.response?.statusCode,
+          },
         );
         handler.next(e);
       },
@@ -69,10 +66,9 @@ Future<void> networkRequestHandler<T>({
       onError?.call(response.message ?? "Unknown error occurred.");
     }
   } on DioException catch (dioError) {
-    // Handling network or API request errors
     onError?.call(_getDioErrorMessage(dioError));
-  } catch (e) {
-    // Generic error fallback
+  } catch (e, st) {
+    DaakiaVcLogger.captureException(e, stackTrace: st);
     onError?.call("Unexpected error: ${e.toString()}");
   }
 }
@@ -80,13 +76,13 @@ Future<void> networkRequestHandler<T>({
 /// Generic API request handler with message
 Future<void> networkRequestHandlerWithMessage<T>({
   required Future<BaseResponse<T>> Function() apiCall,
-  Function(BaseResponse<T>?)? onSuccess, // Pass full response
+  Function(BaseResponse<T>?)? onSuccess,
   Function(String)? onError,
 }) async {
   try {
     final response = await apiCall();
     if (response.success == Constant.successResCheckValue) {
-      onSuccess?.call(response); // Pass full response
+      onSuccess?.call(response);
     } else {
       onError?.call(response.message ?? "Unknown error occurred.");
     }
