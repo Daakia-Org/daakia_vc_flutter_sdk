@@ -1,4 +1,6 @@
 import 'package:datadog_flutter_plugin/datadog_flutter_plugin.dart';
+import '../model/observability_config.dart';
+import '../utils/constants.dart';
 
 class DaakiaVcDatadogService {
   static DatadogLogger? _logger;
@@ -34,6 +36,17 @@ class DaakiaVcDatadogService {
 
     _logger = DatadogSdk.instance.logs?.createLogger(
       DatadogLoggerConfiguration(remoteLogThreshold: LogLevel.info),
+    );
+  }
+
+  static Future<void> initializeFromConfig(DatadogObsConfig config) async {
+    await initialize(
+      clientToken: config.clientToken,
+      applicationId: config.applicationId,
+      env: config.env,
+      serviceName: 'vc-${Constant.platform}-log',
+      version: null,
+      site: config.site,
     );
   }
 
