@@ -10,55 +10,68 @@ import 'model/daakia_meeting_configuration.dart';
 import 'model/meeting_details_model.dart';
 import 'utils/constants.dart';
 
-/// Optional SDK-level configuration. Call [DaakiaSdk.initialize] once in your
-/// app's startup (e.g. before [runApp]) to override default URLs.
+/// SDK-level configuration. Call [DaakiaSdk.initialize] once in your app's
+/// startup (e.g. in [main] before [runApp]).
 ///
+/// **New flow — recommended:**
 /// ```dart
 /// DaakiaSdk.initialize(
-///   baseUrl: '<BASE_URL>',
-///   whiteboardDomain: '<WHITEBOARD_URL>',
+///   secret: '<YOUR_SECRET_KEY>',
+///   baseUrl: '<BASE_URL>',         // optional, defaults to production
+///   whiteboardDomain: '<WB_URL>',  // optional
 /// );
 /// ```
 ///
-/// Omitting a parameter keeps the production default.
+/// Once the secret is set here, omit [secretKey] from [DaakiaVideoConferenceWidget].
+/// Omitting any parameter keeps the current default.
 class DaakiaSdk {
   DaakiaSdk._();
 
+  static String? _secret;
+
   static void initialize({
+    String? secret,
     String? baseUrl,
     String? whiteboardDomain,
   }) {
-    if (baseUrl != null) {
-      Constant.baseUrl = baseUrl;
-    }
-    if (whiteboardDomain != null) {
-      Constant.whiteboardDomain = whiteboardDomain;
-    }
+    if (secret != null) _secret = secret;
+    if (baseUrl != null) Constant.baseUrl = baseUrl;
+    if (whiteboardDomain != null) Constant.whiteboardDomain = whiteboardDomain;
   }
 }
 
 class DaakiaVideoConferenceWidget extends StatefulWidget {
   /// Creates a new instance of the [DaakiaVideoConferenceWidget].
   ///
-  /// [secretKey] is the license key required for authenticating the meeting session.
-  /// [meetingId] is the unique identifier for the meeting.
-  /// [isHost] determines if the current participant is the meeting host.
-  /// [configuration] provides optional advanced customizations.
-  const DaakiaVideoConferenceWidget(
-      {required this.meetingId,
-      required this.secretKey,
-      this.isHost = false,
-      this.configuration,
-      super.key});
+  /// **Recommended:** Set the secret key once at app startup via
+  /// [DaakiaSdk.initialize] and omit [secretKey] here:
+  /// ```dart
+  /// // main.dart
+  /// DaakiaSdk.initialize(secret: '<YOUR_SECRET_KEY>');
+  ///
+  /// // meeting screen
+  /// DaakiaVideoConferenceWidget(meetingId: id, isHost: true)
+  /// ```
+  ///
+  /// Passing [secretKey] directly still works but is deprecated — move it to
+  /// [DaakiaSdk.initialize] to avoid repeating it on every widget instantiation.
+  const DaakiaVideoConferenceWidget({
+    required this.meetingId,
+    this.secretKey,
+    this.isHost = false,
+    this.configuration,
+    super.key,
+  });
 
   /// Unique identifier for the meeting session.
   final String meetingId;
 
   /// License key used to verify and authorize access to the meeting.
   ///
-  /// This key is validated before allowing the user to join the session.
-  /// Make sure the provided key is valid for the associated [meetingId].
-  final String secretKey;
+  /// Deprecated: pass the secret key via [DaakiaSdk.initialize] at app startup
+  /// and remove this parameter from the widget. It will be removed in a future
+  /// major version.
+  final String? secretKey;
 
   /// Determines whether the user is a host.
   ///
@@ -82,23 +95,40 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
   var _verified = false;
   var _licenseMessage = "";
   MeetingDetailsModel? meetingDetails;
+  late final String? _secret;
 
   @override
   void initState() {
-    _verifyLicense();
     super.initState();
+    _secret = widget.secretKey ?? DaakiaSdk._secret;
+    if (widget.secretKey != null) {
+      debugPrint(
+        '[DaakiaSDK] secretKey passed directly to DaakiaVideoConferenceWidget is deprecated. '
+        'Move it to DaakiaSdk.initialize(secret: yourKey) in main() and remove it from the widget.',
+      );
+    }
+    _verifyLicense();
   }
 
   void _verifyLicense() {
+    if (_secret == null || _secret.isEmpty) {
+      setState(() {
+        _isLoading = false;
+        _licenseMessage =
+            'DaakiaSdk secret key is not configured. '
+            'Call DaakiaSdk.initialize(secret: \'<your_key>\') in main() '
+            'before launching DaakiaVideoConferenceWidget.';
+      });
+      return;
+    }
     setState(() {
       _isLoading = true;
     });
-    Map<String, dynamic> body = {
-      "secret_key": widget.secretKey,
-      "meeting_uid": widget.meetingId
-    };
     networkRequestHandler(
-        apiCall: () => apiClient.licenceVerify(body),
+        apiCall: () => apiClient.licenceVerify({
+              "secret_key": _secret,
+              "meeting_uid": widget.meetingId,
+            }),
         onSuccess: (data) {
           _verified = data?.userVerified ?? false;
           if (_verified) {
@@ -123,7 +153,7 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
   void _getMeetingDetails() {
     networkRequestHandler(
       apiCall: () =>
-          apiClient.getMeetingDetails(widget.meetingId, widget.secretKey),
+          apiClient.getMeetingDetails(widget.meetingId, _secret!),
       onSuccess: (response) {
         meetingDetails = response;
         setState(() {
@@ -148,7 +178,7 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
     } else if (_verified) {
       screen = PreJoinScreen(
         meetingId: widget.meetingId,
-        secretKey: widget.secretKey,
+        secretKey: _secret!,
         isHost: widget.isHost,
         basicMeetingDetails: meetingDetails,
         configuration: widget.configuration,
