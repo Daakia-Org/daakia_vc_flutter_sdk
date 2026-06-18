@@ -1,14 +1,22 @@
 library daakia_vc_flutter_sdk;
 
+import 'dart:convert';
+
 import 'package:daakia_vc_flutter_sdk/api/injection.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/screens/license_expired.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/screens/loading_screen.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/screens/prejoin_screen.dart';
 import 'package:flutter/widgets.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'model/daakia_meeting_configuration.dart';
 import 'model/meeting_details_model.dart';
+import 'model/observability_config.dart';
+import 'model/observability_payload_model.dart';
+import 'service/daakia_vc_datadog_service.dart';
+import 'service/daakia_vc_sentry_service.dart';
 import 'utils/constants.dart';
+import 'utils/sdk_crypto.dart';
 
 /// SDK-level configuration. Call [DaakiaSdk.initialize] once in your app's
 /// startup (e.g. in [main] before [runApp]).
@@ -133,6 +141,7 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
           _verified = data?.userVerified ?? false;
           if (_verified) {
             _getMeetingDetails();
+            _initObservability();
             return;
           } else {
             _licenseMessage = "License key not verified!";
@@ -148,6 +157,43 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
             _licenseMessage = message;
           });
         });
+  }
+
+  Future<void> _initObservability() async {
+    if (DaakiaVcDatadogService.isInitialized && DaakiaVcSentryService.isInitialized) return;
+    try {
+      PackageInfo? pkgInfo;
+      try { pkgInfo = await PackageInfo.fromPlatform(); } catch (_) {}
+
+      final body = <String, dynamic>{
+        'sdk_name': Constant.sdkName,
+        'sdk_version': Constant.sdkVersion,
+        if (pkgInfo != null) ...{
+          'app_name': pkgInfo.appName,
+          'app_version': pkgInfo.version,
+          'app_identifier': pkgInfo.packageName,
+        },
+      };
+
+      await networkRequestHandler<ObservabilityPayloadModel>(
+        apiCall: () => apiClient.getObservabilityCredentials(_secret!, body),
+        onSuccess: (data) async {
+          final payload = data?.payload;
+          if (payload == null) return;
+          final json = SdkCrypto.decryptPayload(payload, _secret!);
+          if (json == null) return;
+          final config = ObservabilityConfigModel.fromJson(
+            jsonDecode(json) as Map<String, dynamic>,
+          );
+          if (config.datadog != null) {
+            await DaakiaVcDatadogService.initializeFromConfig(config.datadog!);
+          }
+          if (config.sentry != null) {
+            await DaakiaVcSentryService.initializeFromConfig(config.sentry!);
+          }
+        },
+      );
+    } catch (_) {}
   }
 
   void _getMeetingDetails() {
