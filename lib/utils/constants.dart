@@ -1,6 +1,8 @@
 import 'dart:io';
 
 class Constant {
+  static const String sdkVersion = '4.5.1';
+
   static final String platform = getPlatform();
 
   static String baseUrl = "https://api.daakia.co.in/v2.0/";

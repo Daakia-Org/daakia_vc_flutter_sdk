@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
 
-import '../service/daakia_vc_datadog_service.dart';
+import '../service/daakia_vc_logger.dart';
 import 'device_network_info.dart';
 
 class DatadogDisconnectLogger {
@@ -42,7 +42,7 @@ class DatadogDisconnectLogger {
       }
     };
 
-    DaakiaVcDatadogService.logInfo(
+    DaakiaVcLogger.logInfo(
       'DISCONNECT REASON: ${_formatDisconnectReason(reason)}',
       attributes: attributes,
     );

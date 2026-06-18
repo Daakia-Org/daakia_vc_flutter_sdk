@@ -1,9 +1,10 @@
 import 'dart:convert';
 
-import 'package:daakia_vc_flutter_sdk/service/daakia_vc_datadog_service.dart';
-import 'package:daakia_vc_flutter_sdk/utils/device_network_info.dart';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
+
+import '../service/daakia_vc_logger.dart';
+import 'device_network_info.dart';
 
 class DatadogReconnectLogger {
   static Future<void> logReconnectEvent({
@@ -47,11 +48,10 @@ class DatadogReconnectLogger {
         'network': await DeviceNetworkInfo.getNetworkType()
       }
     };
-    DaakiaVcDatadogService.logError(
+
+    DaakiaVcLogger.logError(
       'Reconnecting to the room!!!',
-      null,
-      null,
-      attributes,
+      attributes: attributes,
     );
   }
 }
