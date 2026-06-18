@@ -53,6 +53,7 @@ dependencies:
   datadog_flutter_plugin: ^2.16.1
   connectivity_plus: ^7.0.0
   device_info_plus: ^12.2.0
+  pointycastle: ^4.0.0
 
 dev_dependencies:
   sentry_dart_plugin: ^3.4.0
