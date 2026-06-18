@@ -3,6 +3,8 @@ import 'package:datadog_flutter_plugin/datadog_flutter_plugin.dart';
 class DaakiaVcDatadogService {
   static DatadogLogger? _logger;
 
+  static bool get isInitialized => _logger != null;
+
   static Future<void> initialize({
     required String clientToken,
     required String env,
@@ -12,6 +14,7 @@ class DaakiaVcDatadogService {
     DatadogSite site = DatadogSite.us3,
     bool enableCrashReporting = true,
   }) async {
+    if (_logger != null) return;
     final configuration = DatadogConfiguration(
       clientToken: clientToken,
       env: env,
