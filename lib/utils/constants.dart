@@ -43,7 +43,7 @@ class Constant {
     if (Platform.isAndroid) {
       return "android";
     } else if (Platform.isIOS) {
-      return "iOS";
+      return "ios";
     } else {
       return "unknown";
     }
