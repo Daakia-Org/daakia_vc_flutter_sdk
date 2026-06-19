@@ -1,17 +1,23 @@
 import 'package:datadog_flutter_plugin/datadog_flutter_plugin.dart';
+import '../utils/constants.dart';
 
 class DatadogObsConfig {
   final String clientToken;
   final String applicationId;
   final String env;
   final DatadogSite site;
+  final String serviceName;
+  final String version;
 
-  const DatadogObsConfig({
+  DatadogObsConfig({
     required this.clientToken,
     required this.applicationId,
     required this.env,
     this.site = DatadogSite.us3,
-  });
+    String? serviceName,
+    String? version,
+  })  : serviceName = serviceName ?? 'vc-${Constant.platform}-log',
+        version = version ?? Constant.sdkVersion;
 
   factory DatadogObsConfig.fromJson(Map<String, dynamic> json) {
     return DatadogObsConfig(

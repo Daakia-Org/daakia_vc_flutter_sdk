@@ -1,6 +1,5 @@
 import 'package:datadog_flutter_plugin/datadog_flutter_plugin.dart';
 import '../model/observability_config.dart';
-import '../utils/constants.dart';
 
 class DaakiaVcDatadogService {
   static DatadogLogger? _logger;
@@ -44,8 +43,8 @@ class DaakiaVcDatadogService {
       clientToken: config.clientToken,
       applicationId: config.applicationId,
       env: config.env,
-      serviceName: 'vc-${Constant.platform}-log',
-      version: null,
+      serviceName: config.serviceName,
+      version: config.version,
       site: config.site,
     );
   }
