@@ -2,6 +2,7 @@ import 'dart:io';
 
 class Constant {
   static const String sdkVersion = '4.5.1';
+  static const String sdkName = 'daakia_vc_flutter_sdk';
 
   static final String platform = getPlatform();
 
@@ -43,7 +44,7 @@ class Constant {
     if (Platform.isAndroid) {
       return "android";
     } else if (Platform.isIOS) {
-      return "iOS";
+      return "ios";
     } else {
       return "unknown";
     }

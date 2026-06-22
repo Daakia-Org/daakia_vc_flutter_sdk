@@ -204,10 +204,10 @@ packages:
     dependency: transitive
     description:
       name: datadog_flutter_plugin
-      sha256: cb5c1f8012abc42a5499011cf8a4c6b710c5fb071957f297ad5cc1c1d5a32b35
+      sha256: "927245669bad80bd25a153e562b5b145a396cba0e2cde0fb7dac96c0e3c19607"
       url: "https://pub.dev"
     source: hosted
-    version: "2.16.1"
+    version: "3.3.0"
   dbus:
     dependency: transitive
     description:
