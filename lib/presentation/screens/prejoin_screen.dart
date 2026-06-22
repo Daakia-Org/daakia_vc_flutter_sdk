@@ -775,7 +775,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         final navigator = Navigator.of(this.context);
         await navigator.push<void>(
           MaterialPageRoute(
-              builder: (_) => RoomPage(room, listener, meetingDetails, fastConnection: true, saveAttachmentToDownloads: widget.configuration?.saveAttachmentToDownloads == true)),
+              builder: (_) => RoomPage(room, listener, meetingDetails, fastConnection: true, sdkConfiguration: widget.configuration)),
         );
         if (mounted && navigator.canPop()) {
           navigator.pop();

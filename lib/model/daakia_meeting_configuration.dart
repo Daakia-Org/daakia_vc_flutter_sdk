@@ -83,6 +83,13 @@ class DaakiaMeetingConfiguration {
   /// Defaults to `false` when not provided.
   final bool? saveAttachmentToDownloads;
 
+  /// When true, the end-session bottom sheet labels use "Call" terminology
+  /// ("End Call" / "Leave Call") instead of the default "Meeting" terminology
+  /// ("End Meeting" / "Leave Meeting").
+  ///
+  /// Defaults to `false` when not provided.
+  final bool? useCallTerminology;
+
   const DaakiaMeetingConfiguration({
     this.metadata,
     this.participantNameConfig,
@@ -91,5 +98,6 @@ class DaakiaMeetingConfiguration {
     this.enableCameraByDefault,
     this.vcConfig,
     this.saveAttachmentToDownloads,
+    this.useCallTerminology,
   });
 }

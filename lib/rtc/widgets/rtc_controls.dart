@@ -464,6 +464,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       ),
       builder: (context) {
         return EndMeetingBottomSheet(
+          useCallTerminology: viewModel.useCallTerminology,
           onEndCall: () {
             Navigator.pop(context);
             viewModel.endMeetingForAll();
