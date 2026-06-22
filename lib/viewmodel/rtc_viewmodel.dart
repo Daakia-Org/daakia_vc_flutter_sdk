@@ -2989,7 +2989,7 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void sendPublicChatHistory(String? identity) {
-    if (identity == null) return;
+    if (identity == null || identity.isEmpty) return;
     final payload = ChatMessageMapper.toApiList(getMessageList());
     sendPrivateAction(
       ActionModel(action: MeetingActions.responsePublicChat, messages: payload, userIdentity: room.localParticipant?.identity),
