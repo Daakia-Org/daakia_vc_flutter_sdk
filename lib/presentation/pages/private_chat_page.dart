@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/attachment_picker_sheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/initials_circle.dart';
 import 'package:flutter/material.dart';
@@ -26,8 +28,11 @@ class PrivateChatPage extends StatefulWidget {
 }
 
 class PrivateChantState extends State<PrivateChatPage> {
+  StreamSubscription? _privateChatSubscription;
+
   @override
   void dispose() {
+    _privateChatSubscription?.cancel();
     super.dispose();
   }
 
@@ -336,12 +341,9 @@ class PrivateChantState extends State<PrivateChatPage> {
     );
   }
 
-  bool isEventAdded = false;
-
   void collectLobbyEvents(RtcViewmodel? viewModel, BuildContext context) {
-    if (isEventAdded) return;
-    isEventAdded = true;
-    viewModel?.privateChatEvents.listen((event) {
+    if (_privateChatSubscription != null) return;
+    _privateChatSubscription = viewModel?.privateChatEvents.listen((event) {
       if (event is UpdateView) {
         if (mounted) {
           setState(() {});

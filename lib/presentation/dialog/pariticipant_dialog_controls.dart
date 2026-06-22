@@ -172,15 +172,17 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 icon: Icons.chat_bubble_outline,
                 text: "Send private message",
                 onTap: () {
-                  // Dismiss the ParticipantDialogControls
+                  widget.viewModel.checkAndCreatePrivateChat(
+                      widget.participant.identity, widget.participant.name);
+                  widget.viewModel.setPrivateChatIdentity(widget.participant.identity);
+                  widget.viewModel.setPrivateChatUserName(widget.participant.name);
+                  // Navigate before dismissing so this context is still valid
+                  showChatBottomSheet(widget.viewModel,
+                      widget.participant.identity, widget.participant.name);
                   Navigator.of(context, rootNavigator: false).pop();
                   if (widget.onDismissBottomSheet != null) {
                     widget.onDismissBottomSheet!();
                   }
-                  widget.viewModel.checkAndCreatePrivateChat(
-                      widget.participant.identity, widget.participant.name);
-                  showChatBottomSheet(widget.viewModel,
-                      widget.participant.identity, widget.participant.name);
                 },
                 isVisible: widget.isForIndividual && (widget.viewModel.meetingDetails.features?.isPrivateChatAllowed() == true),
               ),
