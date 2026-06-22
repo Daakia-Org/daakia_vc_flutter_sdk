@@ -8,6 +8,7 @@ import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
@@ -58,14 +59,14 @@ class RoomPage extends StatefulWidget {
   final EventsListener<RoomEvent> listener;
   final MeetingDetails meetingDetails;
   final bool fastConnection;
-  final bool saveAttachmentToDownloads;
+  final DaakiaMeetingConfiguration? sdkConfiguration;
 
   const RoomPage(
     this.room,
     this.listener,
     this.meetingDetails, {
     this.fastConnection = false,
-    this.saveAttachmentToDownloads = false,
+    this.sdkConfiguration,
     super.key,
   });
 
@@ -874,7 +875,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.requestPublicChat:
-        viewModel?.sendPublicChatHistory(remoteData.userIdentity);
+        final requesterIdentity = (remoteData.userIdentity?.isNotEmpty == true)
+            ? remoteData.userIdentity
+            : remoteData.identity?.identity;
+        viewModel?.sendPublicChatHistory(requesterIdentity);
         break;
 
       case MeetingActions.responsePublicChat:
@@ -1264,7 +1268,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         key: _livekitProviderKey,
         room: widget.room,
         meetingDetails: widget.meetingDetails,
-        saveAttachmentToDownloads: widget.saveAttachmentToDownloads,
+        sdkConfiguration: widget.sdkConfiguration,
         child: MaterialApp(
           navigatorKey: _innerNavigatorKey,
           debugShowCheckedModeBanner: false,

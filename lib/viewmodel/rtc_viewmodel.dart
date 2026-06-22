@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:collection/collection.dart';
+import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
 import 'package:daakia_vc_flutter_sdk/api/injection.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/model/consent_participant.dart';
@@ -126,9 +127,12 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  final bool saveAttachmentToDownloads;
+  final DaakiaMeetingConfiguration? sdkConfiguration;
 
-  RtcViewmodel(this.room, this.meetingDetails, {this.saveAttachmentToDownloads = false});
+  bool get saveAttachmentToDownloads => sdkConfiguration?.saveAttachmentToDownloads == true;
+  bool get useCallTerminology => sdkConfiguration?.useCallTerminology == true;
+
+  RtcViewmodel(this.room, this.meetingDetails, {this.sdkConfiguration});
 
   List<RemoteActivityData> getMessageList() {
     return _messageList;
@@ -2989,7 +2993,7 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   void sendPublicChatHistory(String? identity) {
-    if (identity == null) return;
+    if (identity == null || identity.isEmpty) return;
     final payload = ChatMessageMapper.toApiList(getMessageList());
     sendPrivateAction(
       ActionModel(action: MeetingActions.responsePublicChat, messages: payload, userIdentity: room.localParticipant?.identity),

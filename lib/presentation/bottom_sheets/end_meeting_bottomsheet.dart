@@ -5,9 +5,10 @@ import '../../resources/colors/color.dart';
 class EndMeetingBottomSheet extends StatefulWidget {
   final VoidCallback onEndCall;
   final VoidCallback onLeaveCall;
+  final bool useCallTerminology;
 
   const EndMeetingBottomSheet(
-      {required this.onEndCall, required this.onLeaveCall, super.key});
+      {required this.onEndCall, required this.onLeaveCall, this.useCallTerminology = false, super.key});
 
   @override
   State<EndMeetingBottomSheet> createState() => _EndMeetingBottomSheetState();
@@ -40,9 +41,9 @@ class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
                   borderRadius: BorderRadius.circular(16.0), // Rounded corners
                 ),
               ),
-              child: const Text(
-                "End Call",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+              child: Text(
+                widget.useCallTerminology ? "End Call" : "End Meeting",
+                style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
               ),
             ),
           ),
@@ -59,9 +60,9 @@ class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
                   borderRadius: BorderRadius.circular(16.0), // Rounded corners
                 ),
               ),
-              child: const Text(
-                "Leave Call",
-                style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+              child: Text(
+                widget.useCallTerminology ? "Leave Call" : "Leave Meeting",
+                style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
               ),
             ),
           ),

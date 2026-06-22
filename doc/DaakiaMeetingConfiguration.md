@@ -14,6 +14,7 @@ It includes optional metadata, participant name behavior, pre-join flow behavior
 - [Skip Pre-Join Page](#skip-pre-join-page)
 - [Default Mic and Camera State](#default-mic-and-camera-state)
 - [Save Attachments to Downloads](#save-attachments-to-downloads)
+- [Session Terminology](#session-terminology)
 - [Examples](#examples)
 - [Best Practices](#best-practices)
 
@@ -245,6 +246,30 @@ DaakiaMeetingConfiguration(
 ```
 
 ---
+## Session Terminology
+
+The `useCallTerminology` flag controls the labels shown in the end-session bottom sheet.
+
+> **Default:** `false` — the bottom sheet uses "Meeting" terminology ("End Meeting" / "Leave Meeting").
+
+### Behavior
+
+| Value | End button label | Leave button label |
+|-------|------------------|--------------------|
+| `false` (default) | End Meeting | Leave Meeting |
+| `true` | End Call | Leave Call |
+
+Use `true` for 1:1 or call-style experiences where "meeting" language feels out of place.
+
+### Example
+
+```dart
+DaakiaMeetingConfiguration(
+  useCallTerminology: true,
+);
+```
+
+---
 ## Examples
 
 ### Example 1: Basic Metadata
@@ -297,3 +322,4 @@ DaakiaMeetingConfiguration(
 - **Future-Proofing:** Since this is a BETA feature, keep your implementation flexible to accommodate future updates or new fields.
 - **Permission Flow:** If you use `skipPreJoinPage` and expect mic/camera to start enabled, request camera/microphone permission in your app before opening the SDK. Otherwise the SDK joins with those devices disabled.
 - **Save Attachments:** `saveAttachmentToDownloads` is opt-in and off by default. Enable it only when you want received files to persist after the meeting. On iOS, pair it with `UIFileSharingEnabled` in `Info.plist` so users can find their files in the Files app.
+- **Session Terminology:** Use `useCallTerminology: true` only for call-style experiences (e.g., 1:1 video calls). Keep the default for group meetings where "meeting" language is appropriate.
