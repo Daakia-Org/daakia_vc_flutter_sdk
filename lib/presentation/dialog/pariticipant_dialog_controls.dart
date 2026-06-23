@@ -172,15 +172,25 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 icon: Icons.chat_bubble_outline,
                 text: "Send private message",
                 onTap: () {
-                  // Dismiss the ParticipantDialogControls
-                  Navigator.of(context, rootNavigator: false).pop();
-                  if (widget.onDismissBottomSheet != null) {
-                    widget.onDismissBottomSheet!();
-                  }
                   widget.viewModel.checkAndCreatePrivateChat(
                       widget.participant.identity, widget.participant.name);
-                  showChatBottomSheet(widget.viewModel,
-                      widget.participant.identity, widget.participant.name);
+                  widget.viewModel.setPrivateChatIdentity(widget.participant.identity);
+                  widget.viewModel.setPrivateChatUserName(widget.participant.name);
+                  // Capture navigator before closing anything — context becomes
+                  // invalid once the dialog is popped.
+                  final navigator = Navigator.of(context);
+                  navigator.pop(); // close this dialog
+                  if (widget.onDismissBottomSheet != null) {
+                    widget.onDismissBottomSheet!(); // close participant page
+                  }
+                  navigator.push(MaterialPageRoute<void>(
+                    builder: (_) => ChatController(
+                      identity: widget.participant.identity,
+                      name: widget.participant.name,
+                      viewModel: widget.viewModel,
+                    ),
+                    fullscreenDialog: true,
+                  ));
                 },
                 isVisible: widget.isForIndividual && (widget.viewModel.meetingDetails.features?.isPrivateChatAllowed() == true),
               ),
@@ -323,18 +333,6 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
     return false;
   }
 
-  void showChatBottomSheet(
-      RtcViewmodel viewmodel, String identity, String name) {
-    Navigator.of(context).push(MaterialPageRoute<Null>(
-        builder: (BuildContext context) {
-          return ChatController(
-            identity: identity,
-            name: name,
-            viewModel: viewmodel,
-          );
-        },
-        fullscreenDialog: true));
-  }
 }
 
 class CustomTextItem extends StatelessWidget {
