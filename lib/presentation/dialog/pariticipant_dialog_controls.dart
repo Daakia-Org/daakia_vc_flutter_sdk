@@ -176,13 +176,21 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                       widget.participant.identity, widget.participant.name);
                   widget.viewModel.setPrivateChatIdentity(widget.participant.identity);
                   widget.viewModel.setPrivateChatUserName(widget.participant.name);
-                  // Navigate before dismissing so this context is still valid
-                  showChatBottomSheet(widget.viewModel,
-                      widget.participant.identity, widget.participant.name);
-                  Navigator.of(context, rootNavigator: false).pop();
+                  // Capture navigator before closing anything — context becomes
+                  // invalid once the dialog is popped.
+                  final navigator = Navigator.of(context);
+                  navigator.pop(); // close this dialog
                   if (widget.onDismissBottomSheet != null) {
-                    widget.onDismissBottomSheet!();
+                    widget.onDismissBottomSheet!(); // close participant page
                   }
+                  navigator.push(MaterialPageRoute<void>(
+                    builder: (_) => ChatController(
+                      identity: widget.participant.identity,
+                      name: widget.participant.name,
+                      viewModel: widget.viewModel,
+                    ),
+                    fullscreenDialog: true,
+                  ));
                 },
                 isVisible: widget.isForIndividual && (widget.viewModel.meetingDetails.features?.isPrivateChatAllowed() == true),
               ),
@@ -325,18 +333,6 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
     return false;
   }
 
-  void showChatBottomSheet(
-      RtcViewmodel viewmodel, String identity, String name) {
-    Navigator.of(context).push(MaterialPageRoute<Null>(
-        builder: (BuildContext context) {
-          return ChatController(
-            identity: identity,
-            name: name,
-            viewModel: viewmodel,
-          );
-        },
-        fullscreenDialog: true));
-  }
 }
 
 class CustomTextItem extends StatelessWidget {
