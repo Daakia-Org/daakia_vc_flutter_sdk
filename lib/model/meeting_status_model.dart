@@ -17,11 +17,13 @@ class MeetingStatusData {
 class ActiveMeetingItem {
   String? meetingUid;
   String? name;
+  String? platform;
 
-  ActiveMeetingItem({this.meetingUid, this.name});
+  ActiveMeetingItem({this.meetingUid, this.name, this.platform});
 
   ActiveMeetingItem.fromJson(Map<String, dynamic> json) {
     meetingUid = json['meeting_uid'];
     name = json['name'];
+    platform = json['platform'];
   }
 }

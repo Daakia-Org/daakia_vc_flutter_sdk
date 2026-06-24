@@ -1199,7 +1199,11 @@ class _PreJoinState extends State<PreJoinScreen> {
       apiCall: () => apiClient.getMeetingStatus(token, widget.meetingId),
       onSuccess: (data) {
         if (data?.inMeeting == true) {
-          _showDuplicateDeviceSheet(stopLoading, onProceed);
+          final otherPlatform = data?.meetings?.isNotEmpty == true
+              ? data!.meetings!.first.platform
+              : null;
+          _showDuplicateDeviceSheet(stopLoading, onProceed,
+              otherPlatform: otherPlatform);
         } else {
           onProceed();
         }
@@ -1208,7 +1212,8 @@ class _PreJoinState extends State<PreJoinScreen> {
     );
   }
 
-  void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed) {
+  void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed,
+      {String? otherPlatform}) {
     if (!mounted) return;
     showModalBottomSheet<void>(
       context: context,
@@ -1216,6 +1221,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       enableDrag: false,
       backgroundColor: Colors.transparent,
       builder: (_) => DuplicateIdentityBottomSheet(
+        otherPlatform: otherPlatform,
         onLeave: () {
           Navigator.of(context).pop();
           isLoading = false;

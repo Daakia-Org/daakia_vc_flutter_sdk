@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../resources/colors/color.dart';
+import '../../utils/utils.dart';
 
 class DuplicateIdentityBottomSheet extends StatelessWidget {
   final VoidCallback onLeave;
   final VoidCallback onSwitch;
+  final String? otherPlatform;
 
   const DuplicateIdentityBottomSheet({
     required this.onLeave,
     required this.onSwitch,
+    this.otherPlatform,
     super.key,
   });
 
@@ -36,23 +39,15 @@ class DuplicateIdentityBottomSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _DeviceTransferIcon(),
+          _DeviceTransferIcon(otherPlatform: otherPlatform),
           const SizedBox(height: 20),
           const Text(
-            "You're already connected",
+            "You're already connected on\nanother device",
+            textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Colors.black87,
-            ),
-          ),
-          const SizedBox(height: 10),
-          const Text(
-            "This account is active in the meeting on another device.",
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.black54,
             ),
           ),
           const SizedBox(height: 16),
@@ -70,7 +65,7 @@ class DuplicateIdentityBottomSheet extends StatelessWidget {
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    "Your session on the other device will end when you join here.",
+                    "Switching devices will end your session on the other device.",
                     style: TextStyle(fontSize: 13, color: Colors.black87),
                   ),
                 ),
@@ -124,13 +119,22 @@ class DuplicateIdentityBottomSheet extends StatelessWidget {
 }
 
 class _DeviceTransferIcon extends StatelessWidget {
+  final String? otherPlatform;
+
+  const _DeviceTransferIcon({this.otherPlatform});
+
   @override
   Widget build(BuildContext context) {
+    final otherIcon = _iconForPlatform(otherPlatform);
+    final thisIcon = _iconForPlatform(Utils.getClientPlatform());
+    final otherSize = _isDesktopPlatform(otherPlatform) ? 48.0 : 40.0;
+    final thisSize = _isDesktopPlatform(Utils.getClientPlatform()) ? 48.0 : 40.0;
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Icon(Icons.laptop_mac, color: themeColor, size: 48),
+        Icon(otherIcon, color: themeColor, size: otherSize),
         const SizedBox(width: 8),
         Row(
           children: List.generate(
@@ -147,8 +151,41 @@ class _DeviceTransferIcon extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Icon(Icons.smartphone, color: themeColor, size: 40),
+        Icon(thisIcon, color: themeColor, size: thisSize),
       ],
     );
+  }
+
+  static IconData _iconForPlatform(String? platform) {
+    switch (platform?.toLowerCase()) {
+      case 'web':
+        return Icons.laptop_mac;
+      case 'macos':
+        return Icons.laptop_mac;
+      case 'windows':
+        return Icons.desktop_windows_outlined;
+      case 'linux':
+        return Icons.computer_outlined;
+      case 'android':
+        return Icons.smartphone;
+      case 'ios':
+        return Icons.phone_iphone;
+      case 'mobile_web':
+        return Icons.smartphone;
+      default:
+        return Icons.devices;
+    }
+  }
+
+  static bool _isDesktopPlatform(String? platform) {
+    switch (platform?.toLowerCase()) {
+      case 'web':
+      case 'macos':
+      case 'windows':
+      case 'linux':
+        return true;
+      default:
+        return false;
+    }
   }
 }
