@@ -191,12 +191,14 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                       activeVideoTrack!,
                       fit: VideoViewFit.contain,
                     )
-                  : NoVideoWidget(
-                      name: widget.participant.name,
-                      userAvatar:
-                          Utils.extractUserAvatar(widget.participant.metadata),
-                      isSpeaker: widget.isSpeaker,
-                    ),
+                  : isScreenShare && videoPublication != null
+                      ? const _ScreenSharePausedWidget()
+                      : NoVideoWidget(
+                          name: widget.participant.name,
+                          userAvatar: Utils.extractUserAvatar(
+                              widget.participant.metadata),
+                          isSpeaker: widget.isSpeaker,
+                        ),
             ),
             // Annotation overlay — renders remote strokes + drawing input on screen-share tiles
             if (isScreenShare && videoPublication != null)
@@ -553,4 +555,33 @@ class RemoteTrackQualityMenuWidget extends StatelessWidget {
           ],
         ),
       );
+}
+
+class _ScreenSharePausedWidget extends StatelessWidget {
+  const _ScreenSharePausedWidget();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: const Color(0xFF1E1E1E),
+      child: const Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.pause_circle_outline_rounded,
+                color: Colors.white70, size: 48),
+            SizedBox(height: 12),
+            Text(
+              'Screen share paused',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
