@@ -19,6 +19,7 @@ import 'package:retrofit/retrofit.dart';
 import '../model/agent_dispatch_data.dart';
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
+import '../model/meeting_status_model.dart';
 import '../model/event_password_protected_data.dart';
 import '../model/host_controls_data.dart';
 import '../model/host_token_model.dart';
@@ -70,6 +71,12 @@ abstract class RestClient {
   @POST("rtc/meeting/addParticipant/toLobby")
   Future<BaseResponse<RtcData>> addParticipantToLobby(
     @Body() Map<String, dynamic> body,
+  );
+
+  @GET("rtc/meeting/participant/meetingStatus")
+  Future<BaseResponse<MeetingStatusData>> getMeetingStatus(
+    @Header("Authorization") String token,
+    @Query("meeting_uid") String meetingUid,
   );
 
   @POST("saas/sdk/verify/key")

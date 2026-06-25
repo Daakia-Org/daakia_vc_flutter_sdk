@@ -249,6 +249,40 @@ class _RestClient implements RestClient {
   }
 
   @override
+  Future<BaseResponse<MeetingStatusData>> getMeetingStatus(
+    String token,
+    String meetingUid,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{r'meeting_uid': meetingUid};
+    final _headers = <String, dynamic>{r'Authorization': token};
+    _headers.removeWhere((k, v) => v == null);
+    const Map<String, dynamic>? _data = null;
+    final _options = _setStreamType<BaseResponse<MeetingStatusData>>(
+      Options(method: 'GET', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            'rtc/meeting/participant/meetingStatus',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BaseResponse<MeetingStatusData> _value;
+    try {
+      _value = BaseResponse<MeetingStatusData>.fromJson(
+        _result.data!,
+        (json) => MeetingStatusData.fromJson(json as Map<String, dynamic>),
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<BaseResponse<LicenceVerifyModel>> licenceVerify(
     Map<String, dynamic> body,
   ) async {

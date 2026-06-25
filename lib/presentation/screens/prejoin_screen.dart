@@ -18,6 +18,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../api/injection.dart';
 import '../../model/daakia_meeting_configuration.dart';
+import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
 import '../../utils/name_input_formatter.dart';
@@ -203,19 +204,20 @@ class _PreJoinState extends State<PreJoinScreen> {
       setState(() {});
     }
 
-    if (widget.isHost && !isHostVerified) {
-      final token = widget.configuration?.vcConfig?.hostToken;
-      if (token != null && token.isNotEmpty) {
-        hostToken = token;
-        isHostVerified = true;
-        getFeaturesAndJoinMeeting(_autoStopLoading);
+    _checkDuplicateJoinAndProceed(_autoStopLoading, () {
+      if (widget.isHost && !isHostVerified) {
+        final token = widget.configuration?.vcConfig?.hostToken;
+        if (token != null && token.isNotEmpty) {
+          hostToken = token;
+          isHostVerified = true;
+          getFeaturesAndJoinMeeting(_autoStopLoading);
+          return;
+        }
+        _getHostToken(_autoStopLoading);
         return;
       }
-      _getHostToken(_autoStopLoading);
-      return;
-    }
-
-    checkMeetingType(_autoStopLoading);
+      checkMeetingType(_autoStopLoading);
+    });
   }
 
   String? _getSkipPreJoinValidationError() {
@@ -1084,28 +1086,30 @@ class _PreJoinState extends State<PreJoinScreen> {
                           return;
                         } else {
                           isNeedToCancelApiCall = false;
-                          if (widget.isHost && !isHostVerified) {
-                            if (!context.mounted) return;
-                            final token =
-                                widget.configuration?.vcConfig?.hostToken;
+                          _checkDuplicateJoinAndProceed(stopLoading, () {
+                            if (widget.isHost && !isHostVerified) {
+                              if (!context.mounted) return;
+                              final token =
+                                  widget.configuration?.vcConfig?.hostToken;
 
-                            if (token != null && token.isNotEmpty) {
-                              hostToken = token;
-                              isHostVerified = true;
-                              isNeedToCancelApiCall = false;
-                              getFeaturesAndJoinMeeting(stopLoading);
-                              return;
-                            }
-                            if (widget.basicMeetingDetails
-                                    ?.hostPinVerificationRequired ==
-                                1) {
-                              _showVerificationDialog(context, stopLoading);
+                              if (token != null && token.isNotEmpty) {
+                                hostToken = token;
+                                isHostVerified = true;
+                                isNeedToCancelApiCall = false;
+                                getFeaturesAndJoinMeeting(stopLoading);
+                                return;
+                              }
+                              if (widget.basicMeetingDetails
+                                      ?.hostPinVerificationRequired ==
+                                  1) {
+                                _showVerificationDialog(context, stopLoading);
+                              } else {
+                                _getHostToken(stopLoading);
+                              }
                             } else {
-                              _getHostToken(stopLoading);
+                              checkMeetingType(stopLoading);
                             }
-                          } else {
-                            checkMeetingType(stopLoading);
-                          }
+                          });
                         }
                       }
                     },
@@ -1186,6 +1190,51 @@ class _PreJoinState extends State<PreJoinScreen> {
     _participantTimer?.cancel();
     _nameController?.dispose();
     super.dispose();
+  }
+
+  void _checkDuplicateJoinAndProceed(
+      Function stopLoading, VoidCallback onProceed) {
+    final token = widget.configuration?.vcConfig?.hostToken ?? hostToken;
+    networkRequestHandler(
+      apiCall: () => apiClient.getMeetingStatus(token, widget.meetingId),
+      onSuccess: (data) {
+        if (data?.inMeeting == true) {
+          final otherPlatform = data?.meetings?.isNotEmpty == true
+              ? data!.meetings!.first.platform
+              : null;
+          _showDuplicateDeviceSheet(stopLoading, onProceed,
+              otherPlatform: otherPlatform);
+        } else {
+          onProceed();
+        }
+      },
+      onError: (_) => onProceed(),
+    );
+  }
+
+  void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed,
+      {String? otherPlatform}) {
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isDismissible: false,
+      enableDrag: false,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DuplicateIdentityBottomSheet(
+        otherPlatform: otherPlatform,
+        onLeave: () {
+          Navigator.of(context).pop();
+          isLoading = false;
+          isNeedToCancelApiCall = true;
+          stopLoading();
+          if (mounted) setState(() {});
+        },
+        onSwitch: () {
+          Navigator.of(context).pop();
+          onProceed();
+        },
+      ),
+    );
   }
 
   void getFeaturesAndJoinMeeting(Function stopLoading,
