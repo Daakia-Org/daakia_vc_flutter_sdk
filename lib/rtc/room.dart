@@ -45,6 +45,7 @@ import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
+import '../presentation/dialog/duplicate_identity_dialog.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
 import '../utils/consent_status_enum.dart';
@@ -378,14 +379,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           }
         case DisconnectReason.duplicateIdentity:
           {
-            showSnackBar(message: "You have joined with another device");
-            Timer(const Duration(seconds: 3), () {
-              if (mounted) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  closeMeetingProgrammatically(context);
-                });
-              }
-            });
+            _showDuplicateIdentityDialog();
             break;
           }
         case DisconnectReason.roomDeleted:
@@ -1674,6 +1668,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         senderName: senderName,
         timestamp: DateTime.now().millisecondsSinceEpoch.toString());
     viewModel.addEmoji(newMessage);
+  }
+
+  void _showDuplicateIdentityDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => DuplicateIdentityDialog(
+        onLeave: () {
+          Navigator.of(dialogCtx).pop();
+          closeMeetingProgrammatically(context);
+        },
+      ),
+    );
   }
 
   // When closing the meeting programmatically
