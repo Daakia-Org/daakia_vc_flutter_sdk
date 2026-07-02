@@ -90,7 +90,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
                 ),
               CustomTextItem(
                 icon: Icons.mic_off,
-                text: "Mute All",
+                text: "Mute all",
                 onTap: () {
                   Navigator.pop(context);
                   widget.viewModel.sendAction(ActionModel(action: MeetingActions.muteMic));
@@ -99,7 +99,7 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
               ),
               CustomTextItem(
                 icon: Icons.videocam_off,
-                text: "Video Off All",
+                text: "Video off all",
                 onTap: () {
                   Navigator.pop(context);
                   widget.viewModel

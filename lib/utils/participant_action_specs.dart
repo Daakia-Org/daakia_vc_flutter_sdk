@@ -93,7 +93,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ParticipantActionSpec(
       icon: micPermGranted ? Icons.mic_off : Icons.mic,
       label:
-          micPermGranted ? 'Revoke Mic Permission' : 'Allow Mic Permission',
+          micPermGranted ? 'Revoke mic permission' : 'Allow mic permission',
       visible: isRemote &&
           viewModel.isAudioModeEnable &&
           !isTargetHost &&
@@ -107,7 +107,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ),
     ParticipantActionSpec(
       icon: micOn ? Icons.mic_off : Icons.mic,
-      label: micOn ? 'Mute Mic' : 'Ask To Unmute Mic',
+      label: micOn ? 'Mute mic' : 'Ask to unmute mic',
       visible: isRemote &&
           (amIHost || amICoHost) &&
           (!viewModel.isAudioModeEnable || micOn),
@@ -125,8 +125,8 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ParticipantActionSpec(
       icon: videoPermGranted ? Icons.videocam_off : Icons.videocam,
       label: videoPermGranted
-          ? 'Revoke Video Permission'
-          : 'Allow Video Permission',
+          ? 'Revoke video permission'
+          : 'Allow video permission',
       visible: isRemote &&
           viewModel.isVideoModeEnable &&
           !isTargetHost &&
@@ -140,7 +140,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ),
     ParticipantActionSpec(
       icon: cameraOn ? Icons.videocam_off : Icons.videocam,
-      label: cameraOn ? 'Turn Off Camera' : 'Ask To Turn ON Camera',
+      label: cameraOn ? 'Turn off camera' : 'Ask to turn on camera',
       visible: isRemote &&
           (amIHost || amICoHost) &&
           (!viewModel.isVideoModeEnable || cameraOn),
@@ -159,8 +159,8 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ParticipantActionSpec(
       icon: annotationPermGranted ? Icons.draw : Icons.draw_outlined,
       label: annotationPermGranted
-          ? 'Revoke Annotation Permission'
-          : 'Allow to Annotate',
+          ? 'Revoke annotation permission'
+          : 'Allow to annotate',
       visible: isRemote &&
           viewModel.isAnnotationEnabled &&
           !isTargetHost &&
@@ -190,7 +190,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ParticipantActionSpec(
       icon:
           isTargetCoHost ? Icons.remove_moderator : Icons.admin_panel_settings,
-      label: isTargetCoHost ? 'Remove Co-Host' : 'Make Co-Host',
+      label: isTargetCoHost ? 'Remove co-host' : 'Make co-host',
       visible: isRemote && canToggleCoHost(),
       onTap: () {
         onDismiss();
@@ -199,7 +199,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ),
     ParticipantActionSpec(
       icon: Icons.front_hand_outlined,
-      label: 'Lower Hand',
+      label: 'Lower hand',
       visible: isRemote &&
           isHandRaised &&
           (amIHost || amICoHost) &&
@@ -222,7 +222,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ),
     ParticipantActionSpec(
       icon: Icons.person_remove,
-      label: 'Remove From Call',
+      label: 'Remove from call',
       visible: isRemote && (amIHost || (amICoHost && !isTargetHost)),
       onTap: () {
         onDismiss();
