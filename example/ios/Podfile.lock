@@ -7,23 +7,24 @@ PODS:
   - daakia_vc_flutter_sdk (4.4.0):
     - Flutter
   - datadog_flutter_plugin (0.0.1):
-    - DatadogCore (= 2.30.1)
-    - DatadogCrashReporting (= 2.30.1)
-    - DatadogInternal (= 2.30.1)
-    - DatadogLogs (= 2.30.1)
-    - DatadogRUM (= 2.30.1)
+    - DatadogCore (= 3.12.0)
+    - DatadogCrashReporting (= 3.12.0)
+    - DatadogInternal (= 3.12.0)
+    - DatadogLogs (= 3.12.0)
+    - DatadogRUM (= 3.12.0)
     - DictionaryCoder (= 1.2.0)
     - Flutter
-  - DatadogCore (2.30.1):
-    - DatadogInternal (= 2.30.1)
-  - DatadogCrashReporting (2.30.1):
-    - DatadogInternal (= 2.30.1)
-    - PLCrashReporter (~> 1.12.0)
-  - DatadogInternal (2.30.1)
-  - DatadogLogs (2.30.1):
-    - DatadogInternal (= 2.30.1)
-  - DatadogRUM (2.30.1):
-    - DatadogInternal (= 2.30.1)
+  - DatadogCore (3.12.0):
+    - DatadogInternal (= 3.12.0)
+  - DatadogCrashReporting (3.12.0):
+    - DatadogInternal (= 3.12.0)
+    - KSCrash/Filters (= 2.5.0)
+    - KSCrash/Recording (= 2.5.0)
+  - DatadogInternal (3.12.0)
+  - DatadogLogs (3.12.0):
+    - DatadogInternal (= 3.12.0)
+  - DatadogRUM (3.12.0):
+    - DatadogInternal (= 3.12.0)
   - device_info_plus (0.0.1):
     - Flutter
   - DictionaryCoder (1.2.0)
@@ -70,6 +71,17 @@ PODS:
     - Flutter
   - image_picker_ios (0.0.1):
     - Flutter
+  - KSCrash/Core (2.5.0)
+  - KSCrash/Filters (2.5.0):
+    - KSCrash/Recording
+    - KSCrash/RecordingCore
+    - KSCrash/ReportingCore
+  - KSCrash/Recording (2.5.0):
+    - KSCrash/RecordingCore
+  - KSCrash/RecordingCore (2.5.0):
+    - KSCrash/Core
+  - KSCrash/ReportingCore (2.5.0):
+    - KSCrash/Core
   - livekit_client (2.7.0):
     - Flutter
     - flutter_webrtc
@@ -83,13 +95,17 @@ PODS:
     - FlutterMacOS
   - permission_handler_apple (9.3.0):
     - Flutter
-  - PLCrashReporter (1.12.0)
   - safe_device (1.0.0):
     - DTTJailbreakDetection
     - Flutter
   - SDWebImage (5.21.7):
     - SDWebImage/Core (= 5.21.7)
   - SDWebImage/Core (5.21.7)
+  - Sentry/HybridSDK (8.58.3)
+  - sentry_flutter (9.21.0):
+    - Flutter
+    - FlutterMacOS
+    - Sentry/HybridSDK (= 8.58.3)
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
@@ -120,6 +136,7 @@ DEPENDENCIES:
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - safe_device (from `.symlinks/plugins/safe_device/ios`)
+  - sentry_flutter (from `.symlinks/plugins/sentry_flutter/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
@@ -136,8 +153,9 @@ SPEC REPOS:
     - DKImagePickerController
     - DKPhotoGallery
     - DTTJailbreakDetection
-    - PLCrashReporter
+    - KSCrash
     - SDWebImage
+    - Sentry
     - SwiftyGif
     - WebRTC-SDK
 
@@ -174,6 +192,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   safe_device:
     :path: ".symlinks/plugins/safe_device/ios"
+  sentry_flutter:
+    :path: ".symlinks/plugins/sentry_flutter/ios"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
   url_launcher_ios:
@@ -187,12 +207,12 @@ SPEC CHECKSUMS:
   audioplayers_darwin: 4f9ca89d92d3d21cec7ec580e78ca888e5fb68bd
   connectivity_plus: cb623214f4e1f6ef8fe7403d580fdad517d2f7dd
   daakia_vc_flutter_sdk: b8382a2729ab1d78593251a24a0954c40ab944b1
-  datadog_flutter_plugin: 8cbbf0d89820bc9db1fa48e02bb87ee92d55d59c
-  DatadogCore: c09c6b3345d200ad8df6b8424562afc4c274d85e
-  DatadogCrashReporting: 19c67670fe9ee01cc4cbc3c859d6c69dc6344e9e
-  DatadogInternal: a712490b2c285095d748ccb437a9a630df949d7f
-  DatadogLogs: 084f7974d6dbe053b5fbabc07a245a700c1514f7
-  DatadogRUM: c9356f806db3599386f854bdb53494216600d2ae
+  datadog_flutter_plugin: d99fd562e26df55115d43ee71762ba41f1c4627e
+  DatadogCore: 21027a92b720b7860c0b450cde4dec2e7d06c42a
+  DatadogCrashReporting: 34fccdac1b5df7b2173d10017270c25d050e3a19
+  DatadogInternal: acde40825dbe79faac53ba54d8ca742e07b88cdd
+  DatadogLogs: 804ccdfdc7e854645fd7b5997b7c961bbd6f5916
+  DatadogRUM: 2aaf4f410dde48d28d9150deff807fa6339b197d
   device_info_plus: 21fcca2080fbcd348be798aa36c3e5ed849eefbe
   DictionaryCoder: f7115fcd074c8301e91f2eb862da1ea7d0385e61
   DKImagePickerController: 946cec48c7873164274ecc4624d19e3da4c1ef3c
@@ -203,14 +223,16 @@ SPEC CHECKSUMS:
   flutter_webrtc: ec91d94b484ad49cf191ef93413f64a40ffd3b4c
   fluttertoast: 2c67e14dce98bbdb200df9e1acf610d7a6264ea1
   image_picker_ios: e0ece4aa2a75771a7de3fa735d26d90817041326
+  KSCrash: 80e1e24eaefbe5134934ae11ca8d7746586bc2ed
   livekit_client: 9b9a08c5c78f694ac6a9e70c1c269704ba574b73
   open_file_ios: 5ff7526df64e4394b4fe207636b67a95e83078bb
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
-  PLCrashReporter: db59ef96fa3d25f3650040d02ec2798cffee75f2
   safe_device: 205ad04de30f4512ca889418d4783e1b6fdf8cfe
   SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
+  Sentry: 108fdbb76299c4189af12246bf0308c09c278922
+  sentry_flutter: 32e67cb4756ce3de42bbd56581fa935922ff328f
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
   SwiftyGif: 706c60cf65fa2bc5ee0313beece843c8eb8194d4
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
