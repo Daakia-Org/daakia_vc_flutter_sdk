@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
-import '../../events/rtc_events.dart';
-import '../../model/action_model.dart';
 import '../../presentation/pages/chat_controller.dart';
-import '../../utils/meeting_actions.dart';
+import '../../utils/participant_action_specs.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 
@@ -62,63 +60,38 @@ class _ParticipantQuickActionsSheetState
     final participant = widget.participant;
     final viewModel = widget.viewModel;
 
-    final bool isSelf =
-        participant.identity == viewModel.room.localParticipant?.identity;
-    final bool isRemote = !isSelf;
+    final bool isTargetHost = Utils.isHost(participant.metadata);
+    final bool isTargetCoHost = Utils.isCoHost(participant.metadata);
 
-    final String? myMetadata = viewModel.room.localParticipant?.metadata;
-    final String? targetMetadata = participant.metadata;
-
-    final bool amIHost = Utils.isHost(myMetadata);
-    final bool amICoHost = Utils.isCoHost(myMetadata);
-    final bool isTargetHost = Utils.isHost(targetMetadata);
-    final bool isTargetCoHost = Utils.isCoHost(targetMetadata);
-
-    final bool micOn = participant.isMicrophoneEnabled();
-    final bool cameraOn = participant.isCameraEnabled();
-    final bool micPermGranted = Utils.isMicEnabled(participant.attributes);
-    final bool videoPermGranted = Utils.isVideoEnabled(participant.attributes);
-    final bool isPinned =
-        viewModel.pinnedParticipantId == participant.identity;
-
-    // ── Visibility guards (mirrors pariticipant_dialog_controls.dart logic) ──
-
-    // Rename: self if self-edit allowed; remote if host/cohost + host-edit allowed
-    final bool canRename = isSelf
-        ? viewModel.meetingDetails.features?.isProfileEditBySelfAllowed() == true
-        : (amIHost || amICoHost) &&
-            viewModel.meetingDetails.features?.isProfileEditByHostAllowed() ==
-                true;
-
-    // Private message: remote only, feature-gated
-    final bool canPrivateChat = isRemote &&
-        viewModel.meetingDetails.features?.isPrivateChatAllowed() == true;
-
-    // Mic direct control: remote, host/cohost; restricted to mute-only when
-    // audio permission mode is active (same rule as the dialog)
-    final bool showMicControl = isRemote &&
-        (amIHost || amICoHost) &&
-        (!viewModel.isAudioModeEnable || micOn);
-
-    // Camera direct control: remote, host/cohost; restricted to turn-off-only
-    // when video permission mode is active
-    final bool showCameraControl = isRemote &&
-        (amIHost || amICoHost) &&
-        (!viewModel.isVideoModeEnable || cameraOn);
-
-    // Allow / Revoke mic permission (workshop audio mode)
-    final bool showMicPermission = isRemote &&
-        viewModel.isAudioModeEnable &&
-        !isTargetHost &&
-        !isTargetCoHost &&
-        (amIHost || amICoHost);
-
-    // Allow / Revoke video permission (workshop video mode)
-    final bool showVideoPermission = isRemote &&
-        viewModel.isVideoModeEnable &&
-        !isTargetHost &&
-        !isTargetCoHost &&
-        (amIHost || amICoHost);
+    final actions = buildParticipantActionSpecs(
+      participant: participant,
+      viewModel: viewModel,
+      onDismiss: () => Navigator.pop(context),
+      onRename: () {
+        Navigator.pop(context);
+        // Use the root navigator's context: the sheet is already dismissed
+        // at this point, so the builder's `context` param may be unmounted.
+        showParticipantRenameDialog(
+            Navigator.of(this.context, rootNavigator: false).context,
+            participant,
+            viewModel);
+      },
+      onOpenPrivateChat: () {
+        Navigator.pop(context);
+        widget.onNavigateTo(
+          MaterialPageRoute(
+            builder: (_) => ChatController(
+              identity: participant.identity,
+              name: participant.name,
+              viewModel: viewModel,
+            ),
+            fullscreenDialog: true,
+          ),
+        );
+      },
+      onAnnotationUnavailable: () => showAnnotationUnavailableDialog(
+          Navigator.of(this.context, rootNavigator: false).context),
+    );
 
     final String displayName = participant.name.isNotEmpty
         ? participant.name
@@ -199,142 +172,17 @@ class _ParticipantQuickActionsSheetState
             const SizedBox(height: 4),
 
             // ── Actions ─────────────────────────────────────────────────────
-
-            _ActionTile(
-              icon: Icons.edit_outlined,
-              label: 'Rename',
-              visible: canRename,
-              onTap: () {
-                Navigator.pop(context);
-                _showRenameDialog(participant, viewModel);
-              },
-            ),
-            _ActionTile(
-              icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin,
-              label: isPinned ? 'Unpin' : 'Pin to screen',
-              visible: true,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.pinnedParticipantId =
-                    isPinned ? null : participant.identity;
-                viewModel.sendEvent(SortParticipants());
-              },
-            ),
-            _ActionTile(
-              icon: Icons.chat_bubble_outline,
-              label: 'Send private message',
-              visible: canPrivateChat,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.checkAndCreatePrivateChat(
-                    participant.identity, participant.name);
-                widget.onNavigateTo(
-                  MaterialPageRoute(
-                    builder: (_) => ChatController(
-                      identity: participant.identity,
-                      name: participant.name,
-                      viewModel: viewModel,
-                    ),
-                    fullscreenDialog: true,
-                  ),
-                );
-              },
-            ),
-            _ActionTile(
-              icon: micOn ? Icons.mic_off : Icons.mic,
-              label: micOn ? 'Mute Mic' : 'Ask To Unmute Mic',
-              visible: showMicControl,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.sendPrivateAction(
-                  ActionModel(
-                    action: micOn
-                        ? MeetingActions.muteMic
-                        : MeetingActions.askToUnmuteMic,
-                  ),
-                  participant.identity,
-                );
-              },
-            ),
-            _ActionTile(
-              icon: cameraOn ? Icons.videocam_off : Icons.videocam,
-              label: cameraOn ? 'Turn Off Camera' : 'Ask To Turn ON Camera',
-              visible: showCameraControl,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.sendPrivateAction(
-                  ActionModel(
-                    action: cameraOn
-                        ? MeetingActions.muteCamera
-                        : MeetingActions.askToUnmuteCamera,
-                  ),
-                  participant.identity,
-                );
-              },
-            ),
-            _ActionTile(
-              icon: micPermGranted ? Icons.mic_off : Icons.mic,
-              label: micPermGranted
-                  ? 'Revoke Mic Permission'
-                  : 'Allow Mic Permission',
-              visible: showMicPermission,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.updateAudioPermissionForParticipant(
-                    participant.identity, !micPermGranted);
-              },
-            ),
-            _ActionTile(
-              icon: videoPermGranted ? Icons.videocam_off : Icons.videocam,
-              label: videoPermGranted
-                  ? 'Revoke Video Permission'
-                  : 'Allow Video Permission',
-              visible: showVideoPermission,
-              onTap: () {
-                Navigator.pop(context);
-                viewModel.updateVideoPermissionForParticipant(
-                    participant.identity, !videoPermGranted);
-              },
-            ),
+            for (final action in actions)
+              _ActionTile(
+                icon: action.icon,
+                label: action.label,
+                visible: action.visible,
+                onTap: action.onTap,
+              ),
 
             const SizedBox(height: 8),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showRenameDialog(Participant participant, RtcViewmodel viewModel) {
-    final controller = TextEditingController(text: participant.name);
-    // Use root context since the sheet is already dismissed at this point
-    final ctx = Navigator.of(context, rootNavigator: false).context;
-    showDialog(
-      context: ctx,
-      builder: (dialogCtx) => AlertDialog(
-        title: const Text('Rename'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration: const InputDecoration(labelText: 'Enter new name'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final newName = controller.text.trim();
-              if (newName.isNotEmpty) {
-                viewModel.updateParticipantName(
-                    participant: participant.identity, newName: newName);
-              }
-              Navigator.pop(dialogCtx);
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     );
   }
