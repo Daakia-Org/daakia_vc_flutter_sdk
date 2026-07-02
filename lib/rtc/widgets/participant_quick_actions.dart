@@ -62,6 +62,8 @@ class _ParticipantQuickActionsSheetState
 
     final bool isTargetHost = Utils.isHost(participant.metadata);
     final bool isTargetCoHost = Utils.isCoHost(participant.metadata);
+    final bool isSelf =
+        participant.identity == viewModel.room.localParticipant?.identity;
 
     final actions = buildParticipantActionSpecs(
       participant: participant,
@@ -143,15 +145,44 @@ class _ParticipantQuickActionsSheetState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayName,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            // Surfaced explicitly so a host isn't confused
+                            // about why fewer actions show up when they open
+                            // this sheet on their own tile — most actions
+                            // only apply to remote participants.
+                            if (isSelf) ...[
+                              const SizedBox(width: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text(
+                                  'You',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
                         ),
                         if (roleLabel.isNotEmpty)
                           Text(
