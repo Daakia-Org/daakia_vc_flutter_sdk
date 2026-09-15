@@ -1590,6 +1590,56 @@ class RtcViewmodel extends ChangeNotifier {
     return false;
   }
 
+  //===============================[End Meeting Warning Sound]===============================
+
+  // Defaults on so the warning is audible if the host-control fetch fails.
+  bool _isNotificationSoundEnabled = true;
+
+  /// Whether the end-of-meeting warning chime is switched on for this meeting.
+  /// Read from `getHostControls()` on join, then kept live by
+  /// [MeetingActions.notificationSoundSetting] broadcasts.
+  bool get isNotificationSoundEnabled => _isNotificationSoundEnabled;
+
+  set isNotificationSoundEnabled(bool value) {
+    if (_isNotificationSoundEnabled == value) return;
+    _isNotificationSoundEnabled = value;
+    notifyListeners();
+  }
+
+  /// Only moderators hear the warning chime — participants get the on-screen
+  /// message but no sound.
+  bool shouldPlayMeetingEndSound() =>
+      _isNotificationSoundEnabled && (isHost() || isCoHost());
+
+  /// Persists the toggle, then tells the room so nobody is left acting on a
+  /// value they read at join time.
+  void updateNotificationSoundConsent(bool value) {
+    final previous = _isNotificationSoundEnabled;
+    isNotificationSoundEnabled = value;
+
+    Map<String, dynamic> body = {
+      "meeting_id": meetingDetails.meetingUid,
+      "permission_granted": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.updateNotificationSoundConsent(
+          meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (_) {
+        // The accepted value is the one we sent; the response body carries no
+        // echo of it, so don't try to read one back.
+        sendAction(ActionModel(
+          action: MeetingActions.notificationSoundSetting,
+          value: value,
+        ));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isNotificationSoundEnabled = previous;
+      },
+    );
+  }
+
   /// The meeting's scheduled end, as an instant the client can trust.
   ///
   /// Prefers `end_date` because it is the only one of the two that is honestly
@@ -2382,6 +2432,7 @@ class RtcViewmodel extends ChangeNotifier {
         isAudioModeEnable = data.audioPermission;
         isAudioPermissionEnable = !data.audioPermission;
         isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isNotificationSoundEnabled = data.notificationSoundEnabled;
         isParticipantDrawerHidden = !data.participantDrawer;
         isScreenShareEnable = data.screenSharePermissionGranted;
         isVideoModeEnable = data.videoPermission;

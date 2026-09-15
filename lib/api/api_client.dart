@@ -299,6 +299,15 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  // The read side lives in getHostControls() as `notification_sound_enabled`;
+  // only the write needs its own endpoint.
+  @PUT("v2.0/rtc/notificationSoundConsent")
+  Future<BaseResponse<dynamic>> updateNotificationSoundConsent(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
   @Deprecated('Use getHostControls() instead.')
   @GET("v2.0/rtc/audioPermission")
   Future<BaseResponse<WebinarPermissionModel>> getAudioPermission(
