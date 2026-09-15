@@ -2200,12 +2200,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // dismissed while we waited, honour that instead of starting a sound the
       // user has already cancelled.
       if (!mounted || !_meetingEndWarningWanted) return;
-      // The message stops the loop when it goes, but the extend prompt stays up
-      // until someone acts on it — so the loop is also capped to the warning
-      // window rather than ringing indefinitely at an unattended device.
+      // Dismissing the warning stops the loop, but the card stays up until
+      // someone acts on it — so the loop is also capped rather than ringing
+      // indefinitely at an unattended device.
       _meetingEndWarningCutoff?.cancel();
       _meetingEndWarningCutoff = Timer(
-        const Duration(milliseconds: Constant.meetingEndWarningDurationMs),
+        const Duration(
+            milliseconds: Constant.meetingEndWarningSoundDurationMs),
         () => unawaited(_stopMeetingEndWarningSound()),
       );
       await warningPlayer.stop();
@@ -2278,13 +2279,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _showMeetingEndingNotice();
       return;
     }
-    // Message and chime are one unit: dismissing the message early has to stop
-    // the sound with it, so the sound is stopped from the notice's own dismiss.
+    // The chime is not tied to this message: the notice goes away on its own
+    // timeout or whenever any later notice replaces it, which would cut the
+    // sound short. It runs out on its own cutoff instead.
     showSnackBar(
       message: "Meeting will end in $tier minutes.",
       duration:
           const Duration(milliseconds: Constant.meetingEndWarningDurationMs),
-      onDismiss: () => unawaited(_stopMeetingEndWarningSound()),
     );
   }
 
