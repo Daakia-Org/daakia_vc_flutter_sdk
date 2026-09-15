@@ -1745,12 +1745,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     String? actionText,
     Function? actionCallBack,
     Duration? duration,
+    VoidCallback? onDismiss,
   }) {
     _notificationKey.currentState?.show(
       message: message,
       actionText: actionText,
       actionCallback: actionCallBack != null ? () => actionCallBack() : null,
       duration: duration,
+      onDismiss: onDismiss,
     );
   }
 
