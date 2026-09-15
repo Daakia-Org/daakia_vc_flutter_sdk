@@ -80,6 +80,7 @@ flutter:
 
   assets:
     - assets/icons/
+    - assets/sounds/
   #
   # For details regarding assets in packages, see
   # https://flutter.dev/to/asset-from-package

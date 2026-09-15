@@ -12,9 +12,8 @@ class Constant {
   static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
   static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
 
-  /// Warning chime played to hosts/co-hosts as the meeting approaches its end.
-  /// Same asset the web client uses, so both platforms sound identical.
-  static const String meetingEndWarningUrl = "https://daakiastaticcontent.blob.core.windows.net/sounds/meeting-end-mechanical-chime.mp3";
+  static const String meetingEndWarningSoundDir = "packages/daakia_vc_flutter_sdk/assets/sounds/";
+  static const String meetingEndWarningSound = "meeting_end_warning.m4a";
 
   static const String meetingUid = "MEETING_UID";
   static const String sessionUid = "SESSION_UID";

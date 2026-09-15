@@ -171,7 +171,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _showJoinNotice();
       // Before the scheduler: its first check runs synchronously, and joining a
       // meeting already inside its final minutes fires the warning there and
-      // then. Starting the download first gives that case a head start.
+      // then. Starting the load first gives that case a head start.
       unawaited(_prepareMeetingEndWarningSound());
       meetingManager = MeetingManager(
           endDate: viewModel?.getMeetingEndDate(),
@@ -405,6 +405,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     onWindowShouldClose = null;
     WakelockPlus.disable();
     player.stop();
+    _meetingEndWarningCutoff?.cancel();
     _meetingEndWarningPlayer?.dispose();
     _meetingEndWarningPlayer = null;
   }
@@ -2127,16 +2128,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// The in-flight preparation, shared by everyone who wants the chime.
   ///
   /// Joining a meeting that is already inside its final minutes fires the
-  /// warning on the scheduler's very first check — before the download has
-  /// finished. Routing every caller through this one future means a warning
+  /// warning on the scheduler's very first check — before the clip has
+  /// finished loading. Routing every caller through this one future means a warning
   /// that arrives early waits for the same player instead of racing ahead and
   /// building a second one.
   Future<AudioPlayer?>? _meetingEndWarningPreparation;
 
   /// Whether the chime is still wanted. Cleared on dismiss, so a warning that
-  /// is dismissed while the clip is still downloading stays silent rather than
-  /// starting up seconds after the user waved it away.
+  /// is dismissed while the clip is still loading stays silent rather than
+  /// starting up after the user waved it away.
   bool _meetingEndWarningWanted = false;
+
+  /// Ends the looping chime when the warning window closes. See
+  /// [_playMeetingEndWarningSound].
+  Timer? _meetingEndWarningCutoff;
   bool _isExtendDialogOpen = false;
   BuildContext? _extendDialogContext;
 
@@ -2150,26 +2155,34 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   /// Starts, or joins, preparation of the chime. Runs at most once.
   ///
-  /// Kicked off on join rather than when the warning fires: a cold fetch at the
-  /// five-minute mark can still be in flight when the twelve-second window
-  /// closes, leaving the chime to start after its message has gone.
+  /// Kicked off on join rather than when the warning fires, so that decoding
+  /// the clip is already done by the time a warning wants it.
+  ///
+  /// The clip is a bundled asset, not a URL. It used to be fetched from blob
+  /// storage on every join; on a late join that download raced the WebRTC
+  /// connect for the network and the chime trailed its dialog by 3–7s.
   Future<AudioPlayer?> _prepareMeetingEndWarningSound() =>
       _meetingEndWarningPreparation ??= _createMeetingEndWarningPlayer();
 
   Future<AudioPlayer?> _createMeetingEndWarningPlayer() async {
     try {
-      final warningPlayer = AudioPlayer();
+      final warningPlayer = AudioPlayer()
+        // Own cache, so pointing it at this package's assets doesn't change the
+        // prefix of the app-wide AudioCache.instance a host app may rely on.
+        ..audioCache = AudioCache(prefix: Constant.meetingEndWarningSoundDir);
       // Order matters. The Android backend is picked from the player mode, so
       // setting the mode after the source throws away whatever the previous
-      // backend had prepared. lowLatency selects SoundPool, which downloads
-      // and decodes the clip into memory here, at join time — otherwise the
-      // mp3 decoder is allocated at the instant the warning fires and the
-      // chime lags the dialog by a couple of seconds.
+      // backend had prepared. lowLatency selects SoundPool, which decodes the
+      // clip into memory here, at join time — otherwise the mp3 decoder is
+      // allocated at the instant the warning fires and the chime lags the
+      // dialog by a couple of seconds.
       await warningPlayer.setPlayerMode(PlayerMode.lowLatency);
-      // Default ReleaseMode.release unloads the clip the moment it finishes,
-      // which would make the second warning pay the whole load cost again.
-      await warningPlayer.setReleaseMode(ReleaseMode.stop);
-      await warningPlayer.setSourceUrl(Constant.meetingEndWarningUrl);
+      // The clip is three dings cut on exact period boundaries, so looping it
+      // keeps ringing for as long as the warning is up. Loop mode also keeps
+      // the clip loaded between warnings; the default ReleaseMode.release
+      // would unload it and make the second warning pay the load cost again.
+      await warningPlayer.setReleaseMode(ReleaseMode.loop);
+      await warningPlayer.setSourceAsset(Constant.meetingEndWarningSound);
       if (!mounted) {
         await warningPlayer.dispose();
         return null;
@@ -2177,8 +2190,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _meetingEndWarningPlayer = warningPlayer;
       return warningPlayer;
     } catch (e) {
-      // Offline at join, CDN hiccup. The warning message still shows; only the
-      // chime is lost, so this isn't worth surfacing to the user.
+      // Temp directory unwritable, audio backend refusing the clip. The warning
+      // message still shows; only the chime is lost, so this isn't worth
+      // surfacing to the user.
       debugPrint("Could not prepare meeting-end warning sound: $e");
       return null;
     }
@@ -2197,10 +2211,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     try {
       final warningPlayer = await _prepareMeetingEndWarningSound();
       if (warningPlayer == null) return;
-      // Preparation can still be downloading on a late join. If the warning was
+      // Preparation can still be loading on a late join. If the warning was
       // dismissed while we waited, honour that instead of starting a sound the
       // user has already cancelled.
       if (!mounted || !_meetingEndWarningWanted) return;
+      // The message stops the loop when it goes, but the extend prompt stays up
+      // until someone acts on it — so the loop is also capped to the warning
+      // window rather than ringing indefinitely at an unattended device.
+      _meetingEndWarningCutoff?.cancel();
+      _meetingEndWarningCutoff = Timer(
+        const Duration(milliseconds: Constant.meetingEndWarningDurationMs),
+        () => unawaited(_stopMeetingEndWarningSound()),
+      );
       await warningPlayer.stop();
       await warningPlayer.resume();
     } catch (e) {
@@ -2211,6 +2233,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   Future<void> _stopMeetingEndWarningSound() async {
     _meetingEndWarningWanted = false;
+    _meetingEndWarningCutoff?.cancel();
+    _meetingEndWarningCutoff = null;
     try {
       await _meetingEndWarningPlayer?.stop();
     } catch (e) {
