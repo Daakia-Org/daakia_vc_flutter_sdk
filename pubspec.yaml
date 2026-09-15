@@ -54,6 +54,7 @@ dependencies:
   connectivity_plus: ^7.0.0
   device_info_plus: ^12.2.0
   pointycastle: ^4.0.0
+  timezone: ^0.11.1
 
 dev_dependencies:
   sentry_dart_plugin: ^3.4.0

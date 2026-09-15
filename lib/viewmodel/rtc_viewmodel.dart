@@ -41,6 +41,7 @@ import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
+import '../utils/meeting_end_time.dart';
 
 class RtcViewmodel extends ChangeNotifier {
   final List<RemoteActivityData> _messageList = [];
@@ -1707,25 +1708,16 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
-  /// The meeting's scheduled end, as an instant the client can trust.
+  /// When the meeting really ends, extension included, as a UTC ISO string.
   ///
-  /// Prefers `end_date` because it is the only one of the two that is honestly
-  /// UTC. `auto_meeting_end_schedule` carries *local* wall-clock time with a
-  /// `Z` suffix stuck on the end, so reading it as UTC shifts the end time by
-  /// the venue's whole offset — observed on 2026-09-08 as
-  /// `auto_meeting_end_schedule=2026-09-08T15:19:23.000Z` next to
-  /// `end_date=2026-09-08T09:49:23.000Z` for a meeting that really ended at
-  /// 15:19 IST. Trusting the former put every warning 5h30m late, i.e. never.
-  ///
-  /// If the backend is fixed to send a real offset, this preference stays
-  /// correct — the two fields would then agree.
+  /// Neither backend field works alone: `end_date` is honest UTC but ignores
+  /// extensions, while `auto_meeting_end_schedule` includes them but is local
+  /// wall-clock time mislabelled with a `Z`. [MeetingEndTime] reconciles the
+  /// two.
   String? getMeetingEndDate() {
-    final basic = meetingDetails.meetingBasicDetails;
-    final endDate = basic?.endDate;
-    if (endDate == null || endDate.isEmpty) {
-      return basic?.meetingConfig?.autoMeetingEndSchedule;
-    }
-    return endDate;
+    return MeetingEndTime.from(meetingDetails.meetingBasicDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void getWhiteboardData() {

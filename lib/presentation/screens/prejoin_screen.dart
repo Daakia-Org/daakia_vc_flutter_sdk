@@ -23,6 +23,7 @@ import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
 import '../../service/daakia_vc_logger.dart';
 import '../../utils/join_failure.dart';
+import '../../utils/meeting_end_time.dart';
 import '../../utils/name_input_formatter.dart';
 import '../../utils/utils.dart';
 
@@ -359,17 +360,13 @@ class _PreJoinState extends State<PreJoinScreen> {
     return resolvedName;
   }
 
-  /// See `RtcViewmodel.getMeetingEndDate` — `end_date` is real UTC, whereas
-  /// `auto_meeting_end_schedule` is local wall-clock time mislabelled with a
-  /// `Z`. Reading the wrong one here made `isMeetingEnded()` stay false for a
-  /// whole timezone offset after the meeting really ended, so the "already
-  /// ended" guard below let people straight in.
+  /// See `RtcViewmodel.getMeetingEndDate`. The extension must be included:
+  /// reading only `end_date`, which the extend API never moves, told anyone
+  /// rejoining an extended meeting that it had already ended.
   String? getMeetingEndDate() {
-    final endDate = widget.basicMeetingDetails?.endDate;
-    if (endDate == null || endDate.isEmpty) {
-      return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule;
-    }
-    return endDate;
+    return MeetingEndTime.from(widget.basicMeetingDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void _loadDevices(List<MediaDevice> devices,
