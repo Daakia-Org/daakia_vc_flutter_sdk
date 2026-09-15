@@ -5,19 +5,20 @@ import 'package:flutter/material.dart';
 
 import '../../resources/colors/color.dart';
 
-/// Shows the "meeting ending soon" prompt to the one participant allowed to
-/// extend the meeting.
+/// Shows the "meeting ending soon" card with a live countdown.
 ///
-/// [endTime] is read live rather than captured, so the countdown follows the
-/// meeting's real end for as long as the card stays open. [onExtend] resolves
-/// to null once the extension is accepted, or to the message to show if it
-/// isn't. [onOpened] hands back the dialog's context so the caller can close it
-/// from outside — when another client extends first.
+/// With [onExtend] it is the prompt for the one participant allowed to extend
+/// the meeting by [extendMinutes]; without it, the same card is a plain notice
+/// for everyone else. [endTime] is read live rather than captured, so the
+/// countdown follows the meeting's real end for as long as the card stays open.
+/// [onExtend] resolves to null once the extension is accepted, or to the
+/// message to show if it isn't. [onOpened] hands back the dialog's context so
+/// the caller can close it from outside — when the meeting gets extended.
 Future<void> showMeetingEndingDialog(
   BuildContext context, {
   required DateTime? Function() endTime,
-  required Future<String?> Function() onExtend,
-  required int extendMinutes,
+  Future<String?> Function()? onExtend,
+  int extendMinutes = 0,
   ValueChanged<BuildContext>? onOpened,
 }) {
   return showDialog<void>(
@@ -34,7 +35,7 @@ Future<void> showMeetingEndingDialog(
   );
 }
 
-/// A live countdown to the end of the meeting, with the option to extend it.
+/// A live countdown to the end of the meeting, optionally with an Extend button.
 ///
 /// Shows whole minutes left — rounded up, so "3 min" never means more than
 /// three — until the final minute, then counts down second by second. The ring
@@ -45,12 +46,14 @@ class MeetingEndingDialog extends StatefulWidget {
   const MeetingEndingDialog({
     super.key,
     required this.endTime,
-    required this.onExtend,
-    required this.extendMinutes,
-  });
+    this.onExtend,
+    this.extendMinutes = 0,
+  }) : assert(onExtend == null || extendMinutes > 0);
 
   final DateTime? Function() endTime;
-  final Future<String?> Function() onExtend;
+
+  /// Null for the notice form, which has no Extend button.
+  final Future<String?> Function()? onExtend;
   final int extendMinutes;
 
   @override
@@ -125,7 +128,7 @@ class _MeetingEndingDialogState extends State<MeetingEndingDialog> {
     });
     String? error;
     try {
-      error = await widget.onExtend();
+      error = await widget.onExtend!();
     } catch (_) {
       error = "Couldn't extend the meeting. Please try again.";
     }
@@ -146,6 +149,7 @@ class _MeetingEndingDialogState extends State<MeetingEndingDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final canExtend = widget.onExtend != null;
     final isFinalMinute = _secondsLeft <= _finalCountdownSeconds;
     final accent = isFinalMinute ? _urgentColor : themeColor;
     final minutesLeft = (_secondsLeft / 60).ceil();
@@ -192,8 +196,11 @@ class _MeetingEndingDialogState extends State<MeetingEndingDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Extend by ${widget.extendMinutes} minutes to keep the meeting '
-                'going for everyone.',
+                canExtend
+                    ? 'Extend by ${widget.extendMinutes} minutes to keep the '
+                        'meeting going for everyone.'
+                    : 'The meeting will close automatically when the timer '
+                        'runs out.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: Colors.black54,
@@ -214,7 +221,9 @@ class _MeetingEndingDialogState extends State<MeetingEndingDialog> {
                     disabledBackgroundColor: themeColor.withValues(alpha: 0.6),
                     padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
-                  onPressed: _isExtending ? null : _extend,
+                  onPressed: canExtend
+                      ? (_isExtending ? null : _extend)
+                      : _close,
                   child: _isExtending
                       ? const SizedBox(
                           width: 18,
@@ -225,24 +234,28 @@ class _MeetingEndingDialogState extends State<MeetingEndingDialog> {
                           ),
                         )
                       : Text(
-                          _error == null
-                              ? 'Extend by ${widget.extendMinutes} minutes'
-                              : 'Try again',
+                          !canExtend
+                              ? 'Got it'
+                              : _error == null
+                                  ? 'Extend by ${widget.extendMinutes} minutes'
+                                  : 'Try again',
                           style: const TextStyle(color: Colors.white),
                         ),
                 ),
               ),
-              const SizedBox(height: 4),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: _close,
-                  child: const Text(
-                    'Not now',
-                    style: TextStyle(color: Colors.black54),
+              if (canExtend) ...[
+                const SizedBox(height: 4),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextButton(
+                    onPressed: _close,
+                    child: const Text(
+                      'Not now',
+                      style: TextStyle(color: Colors.black54),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

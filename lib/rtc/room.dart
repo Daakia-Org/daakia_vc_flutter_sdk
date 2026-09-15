@@ -849,7 +849,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                 "Meeting extended by ${Constant.meetingExtendTime} minutes");
         _applyMeetingExtension();
         // Somebody took the decision; nobody else needs the prompt any more.
-        _dismissExtendMeetingDialog();
+        _dismissMeetingEndingDialog();
         break;
 
       case MeetingActions.notificationSoundSetting:
@@ -1915,9 +1915,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void _meetingEndLogic(RtcViewmodel? viewModel) {
     //TODO NEED TO UPDATE LOGIC
-    if (viewModel?.meetingDetails.meetingBasicDetails?.meetingConfig
-            ?.autoMeetingEnd ==
-        1) {
+    if (viewModel?.meetingClosesAtScheduledEnd() == true) {
       DatadogDisconnectLogger.logDisconnectEvent(
           meetingId: widget.meetingDetails.meetingUid,
           room: widget.room,
@@ -1931,20 +1929,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
       });
       return;
-    }
-    if (viewModel?.meetingDetails.features?.isBasicPlan() == true) {
-      DatadogDisconnectLogger.logDisconnectEvent(
-          meetingId: widget.meetingDetails.meetingUid,
-          room: widget.room,
-          reason: "TIME_EXCEEDED");
-      showSnackBar(message: "Meeting ended");
-      Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            closeMeetingProgrammatically(context);
-          });
-        }
-      });
     }
     // TODO: Uncomment the following alert if you want to show a "Meeting Ended" dialog to basic users. For basic users, this alert remains visible by default.
     // else {
@@ -2143,8 +2127,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// Ends the looping chime when the warning window closes. See
   /// [_playMeetingEndWarningSound].
   Timer? _meetingEndWarningCutoff;
-  bool _isExtendDialogOpen = false;
-  BuildContext? _extendDialogContext;
+  bool _isEndingDialogOpen = false;
+  BuildContext? _endingDialogContext;
 
   /// Tiers whose message and chime have already been delivered here.
   final Set<int> _warnedTiers = {};
@@ -2245,10 +2229,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   /// Delivers one warning tier, split the same three ways as the web client:
   ///
-  ///  * the elected leader of an extendable meeting gets the extend dialog,
-  ///    which stands in for the message;
-  ///  * everyone else gets a twelve-second message — but only at the final
-  ///    tier, since the earlier one exists purely to offer the extension;
+  ///  * the elected leader of an extendable meeting gets the extend dialog at
+  ///    both tiers, which stands in for the notice;
+  ///  * everyone else gets a notice — at the early tier only if they are a host
+  ///    or co-host, at the final tier regardless. It is the same countdown card
+  ///    without Extend when the meeting really closes at zero, or a
+  ///    twelve-second message when it doesn't;
   ///  * hosts and co-hosts additionally hear the chime, at the final tier only,
   ///    and only while the setting is on.
   ///
@@ -2275,13 +2261,22 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       return;
     }
 
-    // The earlier tier exists purely to offer the extension; anyone who isn't
-    // being offered it hears nothing yet.
-    if (!event.isFinalWarning) return;
+    // The early tier is a heads-up for moderators; participants wait for the
+    // final one.
+    if (!event.isFinalWarning && !viewModel.isHost() && !viewModel.isCoHost()) {
+      return;
+    }
     if (!_warnedTiers.add(tier)) return;
 
-    if (viewModel.shouldPlayMeetingEndSound()) {
+    if (event.isFinalWarning && viewModel.shouldPlayMeetingEndSound()) {
       unawaited(_playMeetingEndWarningSound());
+    }
+    // Only a meeting that really closes at zero gets the countdown card; one
+    // that stays open keeps the message, as a countdown to nothing would tell
+    // everyone something untrue.
+    if (viewModel.meetingClosesAtScheduledEnd()) {
+      _showMeetingEndingNotice();
+      return;
     }
     // Message and chime are one unit: dismissing the message early has to stop
     // the sound with it, so the sound is stopped from the notice's own dismiss.
@@ -2304,21 +2299,39 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   void _showExtendMeetingDialog(RtcViewmodel viewModel) {
-    if (!mounted || _isExtendDialogOpen) return;
-    _isExtendDialogOpen = true;
+    if (!mounted || _isEndingDialogOpen) return;
+    _isEndingDialogOpen = true;
 
     showMeetingEndingDialog(
       context,
       // Read live, so a card left open keeps counting down to the real end.
       endTime: () => meetingManager.endDateTime,
       extendMinutes: Constant.meetingExtendTime,
-      onOpened: (dialogContext) => _extendDialogContext = dialogContext,
+      onOpened: (dialogContext) => _endingDialogContext = dialogContext,
       onExtend: () => _requestMeetingExtension(viewModel),
     ).then((_) {
-      _isExtendDialogOpen = false;
-      _extendDialogContext = null;
+      _isEndingDialogOpen = false;
+      _endingDialogContext = null;
       // Dismissing is personal and stops only this client's sound; the meeting
       // still ends on schedule, and the next tier still fires.
+      unawaited(_stopMeetingEndWarningSound());
+    });
+  }
+
+  /// The final warning for everyone who isn't being offered the extension: the
+  /// same live countdown card, without the Extend button.
+  void _showMeetingEndingNotice() {
+    if (!mounted || _isEndingDialogOpen) return;
+    _isEndingDialogOpen = true;
+
+    showMeetingEndingDialog(
+      context,
+      endTime: () => meetingManager.endDateTime,
+      onOpened: (dialogContext) => _endingDialogContext = dialogContext,
+    ).then((_) {
+      _isEndingDialogOpen = false;
+      _endingDialogContext = null;
+      // The card and the chime are one unit, as with the prompt.
       unawaited(_stopMeetingEndWarningSound());
     });
   }
@@ -2377,9 +2390,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   /// Closes the prompt once somebody, anybody, has extended the meeting.
-  void _dismissExtendMeetingDialog() {
-    final dialogContext = _extendDialogContext;
-    if (!_isExtendDialogOpen || dialogContext == null) return;
+  void _dismissMeetingEndingDialog() {
+    final dialogContext = _endingDialogContext;
+    if (!_isEndingDialogOpen || dialogContext == null) return;
     if (!dialogContext.mounted) return;
     Navigator.of(dialogContext).pop();
   }

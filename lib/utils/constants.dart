@@ -30,8 +30,9 @@ class Constant {
 
   static const int meetingExtendTime = 10;
 
-  /// First warning, minutes before the end. Extendable (SaaS) meetings only,
-  /// and only the elected leader sees it — see [MeetingManager].
+  /// Early warning, minutes before the end. Hosts and co-hosts only; in an
+  /// extendable meeting the elected leader gets the extend prompt instead —
+  /// see [MeetingManager].
   static const int meetingEndSoonTime = 10;
 
   /// Final warning, minutes before the end. Shown in every meeting, to everyone.

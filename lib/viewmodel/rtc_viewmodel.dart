@@ -1613,6 +1613,14 @@ class RtcViewmodel extends ChangeNotifier {
         1;
   }
 
+  /// Whether the meeting is actually closed when its scheduled time runs out:
+  /// extendable (SaaS) meetings and basic-plan meetings. Every other meeting
+  /// stays open past its end, so it must not be shown a countdown to zero.
+  bool meetingClosesAtScheduledEnd() {
+    return isAutoMeetingEndEnable() ||
+        meetingDetails.features?.isBasicPlan() == true;
+  }
+
   /// Picks the one participant who gets the "extend meeting" prompt.
   ///
   /// Every client runs this against the same roster and reaches the same

@@ -13,12 +13,12 @@ import 'package:intl/intl.dart';
 /// roster, which lives with the view model. This mirrors the web client so a
 /// mixed web/mobile room warns everyone at the same moments.
 ///
-/// Two meeting shapes, never both at once:
-/// * **Normal** — one warning at [Constant.meetingEndFinalWarningTime] minutes.
-/// * **Extendable / SaaS** ([isAutoMeetingEnd]) — an earlier warning at
-///   [Constant.meetingEndSoonTime] minutes carrying the extend prompt, then the
-///   final one. Extending is a one-shot: afterwards it behaves like a normal
-///   meeting against the new end time.
+/// Every meeting gets two warnings: an early one at
+/// [Constant.meetingEndSoonTime] minutes, meant for hosts and co-hosts, and a
+/// final one at [Constant.meetingEndFinalWarningTime] minutes for everyone.
+/// In an extendable (SaaS) meeting ([isAutoMeetingEnd]) the elected leader is
+/// offered the extension at both. Extending is a one-shot: afterwards the
+/// meeting behaves like a normal one against the new end time.
 class MeetingManager {
   DateTime? endDateTime;
   Timer? _checkTimer;
@@ -100,10 +100,9 @@ class MeetingManager {
       return;
     }
 
-    // The earlier warning exists only to offer the extension, so it is skipped
-    // entirely once the meeting can no longer be extended.
-    if (canExtendMeeting &&
-        remaining <= const Duration(minutes: Constant.meetingEndSoonTime)) {
+    // Raised in every meeting; the listener narrows it to hosts and co-hosts,
+    // and to the extend prompt for the leader while extending is still open.
+    if (remaining <= const Duration(minutes: Constant.meetingEndSoonTime)) {
       endMeetingCallBack.call(MeetingEndingSoon(
         minutesRemaining: Constant.meetingEndSoonTime,
         isFinalWarning: false,
