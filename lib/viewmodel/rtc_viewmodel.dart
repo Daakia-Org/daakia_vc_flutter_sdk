@@ -1590,10 +1590,25 @@ class RtcViewmodel extends ChangeNotifier {
     return false;
   }
 
+  /// The meeting's scheduled end, as an instant the client can trust.
+  ///
+  /// Prefers `end_date` because it is the only one of the two that is honestly
+  /// UTC. `auto_meeting_end_schedule` carries *local* wall-clock time with a
+  /// `Z` suffix stuck on the end, so reading it as UTC shifts the end time by
+  /// the venue's whole offset — observed on 2026-09-08 as
+  /// `auto_meeting_end_schedule=2026-09-08T15:19:23.000Z` next to
+  /// `end_date=2026-09-08T09:49:23.000Z` for a meeting that really ended at
+  /// 15:19 IST. Trusting the former put every warning 5h30m late, i.e. never.
+  ///
+  /// If the backend is fixed to send a real offset, this preference stays
+  /// correct — the two fields would then agree.
   String? getMeetingEndDate() {
-    return meetingDetails
-            .meetingBasicDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        meetingDetails.meetingBasicDetails?.endDate;
+    final basic = meetingDetails.meetingBasicDetails;
+    final endDate = basic?.endDate;
+    if (endDate == null || endDate.isEmpty) {
+      return basic?.meetingConfig?.autoMeetingEndSchedule;
+    }
+    return endDate;
   }
 
   void getWhiteboardData() {

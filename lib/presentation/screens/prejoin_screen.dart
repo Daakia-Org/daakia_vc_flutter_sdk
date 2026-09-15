@@ -359,9 +359,17 @@ class _PreJoinState extends State<PreJoinScreen> {
     return resolvedName;
   }
 
+  /// See `RtcViewmodel.getMeetingEndDate` — `end_date` is real UTC, whereas
+  /// `auto_meeting_end_schedule` is local wall-clock time mislabelled with a
+  /// `Z`. Reading the wrong one here made `isMeetingEnded()` stay false for a
+  /// whole timezone offset after the meeting really ended, so the "already
+  /// ended" guard below let people straight in.
   String? getMeetingEndDate() {
-    return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        widget.basicMeetingDetails?.endDate;
+    final endDate = widget.basicMeetingDetails?.endDate;
+    if (endDate == null || endDate.isEmpty) {
+      return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule;
+    }
+    return endDate;
   }
 
   void _loadDevices(List<MediaDevice> devices,
