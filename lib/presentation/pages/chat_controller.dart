@@ -122,84 +122,12 @@ class _ChatControllerState extends State<ChatController>
     final views = <Widget>[];
 
     if (isPublicChatAllowed) {
-      tabs.add(
-        Tab(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Align(
-                alignment: Alignment.center,
-                child: Text("All Chat"),
-              ),
-              if (totalPublicUnread > 0)
-                Positioned(
-                  right: -15,
-                  top: -5,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    constraints:
-                        const BoxConstraints(minWidth: 18, minHeight: 18),
-                    child: Text(
-                      '$totalPublicUnread',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
+      tabs.add(_buildTab("All Chat", totalPublicUnread));
       views.add(ChatPage(viewModel: widget.viewModel));
     }
 
     if (isPrivateChatAllowed) {
-      tabs.add(
-        Tab(
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              const Align(
-                alignment: Alignment.center,
-                child: Text("Private Chat"),
-              ),
-              if (totalPrivateUnread > 0)
-                Positioned(
-                  right: -15,
-                  top: -5,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    constraints:
-                        const BoxConstraints(minWidth: 18, minHeight: 18),
-                    child: Text(
-                      '$totalPrivateUnread',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
+      tabs.add(_buildTab("Private Chat", totalPrivateUnread));
       views.add(PrivateChatPage(
         viewModel: widget.viewModel,
         identity: widget.identity,
@@ -243,6 +171,20 @@ class _ChatControllerState extends State<ChatController>
           TabBarView(controller: _tabController, children: views),
           if (_isLoading) const CustomLoader(),
         ],
+      ),
+    );
+  }
+
+  // Badge anchors to the label text itself, so it stays at the text's
+  // top-end corner regardless of how wide the tab cell is.
+  Tab _buildTab(String title, int unread) {
+    return Tab(
+      child: Badge(
+        isLabelVisible: unread > 0,
+        label: Text('$unread', style: const TextStyle(color: Colors.white)),
+        backgroundColor: Colors.red,
+        offset: const Offset(16, -6),
+        child: Text(title),
       ),
     );
   }
