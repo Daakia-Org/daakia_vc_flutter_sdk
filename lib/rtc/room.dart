@@ -169,6 +169,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         _askPublish();
       }
       _showJoinNotice();
+      // Before the scheduler: its first check runs synchronously, and joining a
+      // meeting already inside its final minutes fires the warning there and
+      // then. Starting the download first gives that case a head start.
+      unawaited(_prepareMeetingEndWarningSound());
       meetingManager = MeetingManager(
           endDate: viewModel?.getMeetingEndDate(),
           isAutoMeetingEnd: viewModel?.isAutoMeetingEndEnable(),
@@ -177,9 +181,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
               _meetingEndLogic(viewModel);
             } else if (event is MeetingExtends) {
               viewModel?.meetingTimeExtend();
+            } else if (event is MeetingEndingSoon) {
+              _handleMeetingEndingSoon(viewModel, event);
             }
-          },
-          context: context);
+          });
       meetingManager.startMeetingEndScheduler();
       _initializeWebViewController();
       viewModel?.getWhiteboardData();
@@ -400,6 +405,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     onWindowShouldClose = null;
     WakelockPlus.disable();
     player.stop();
+    _meetingEndWarningPlayer?.dispose();
+    _meetingEndWarningPlayer = null;
   }
 
   void _setUpListeners() => _listener
@@ -835,8 +842,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.extendMeetingEndTime:
-        showSnackBar(message: "Meeting has been extended by 10 minutes.");
-        meetingManager.extendMeetingBy10Minutes();
+        showSnackBar(
+            message:
+                "Meeting extended by ${Constant.meetingExtendTime} minutes");
+        _applyMeetingExtension();
+        // Somebody took the decision; nobody else needs the prompt any more.
+        _dismissExtendMeetingDialog();
+        break;
+
+      case MeetingActions.notificationSoundSetting:
+        _applyRemoteNotificationSoundSetting(viewModel, remoteData);
         break;
 
       case MeetingActions.whiteboardState:
@@ -2101,6 +2116,250 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void playAudio(String link) {
     player.play(UrlSource(link), mode: PlayerMode.lowLatency);
+  }
+
+  //===============================[End of meeting warning]===============================
+
+  /// Its own player, so a recording chime starting or stopping can't cut the
+  /// warning short (and vice versa).
+  AudioPlayer? _meetingEndWarningPlayer;
+
+  /// The in-flight preparation, shared by everyone who wants the chime.
+  ///
+  /// Joining a meeting that is already inside its final minutes fires the
+  /// warning on the scheduler's very first check — before the download has
+  /// finished. Routing every caller through this one future means a warning
+  /// that arrives early waits for the same player instead of racing ahead and
+  /// building a second one.
+  Future<AudioPlayer?>? _meetingEndWarningPreparation;
+
+  /// Whether the chime is still wanted. Cleared on dismiss, so a warning that
+  /// is dismissed while the clip is still downloading stays silent rather than
+  /// starting up seconds after the user waved it away.
+  bool _meetingEndWarningWanted = false;
+  bool _isExtendDialogOpen = false;
+  BuildContext? _extendDialogContext;
+
+  /// Tiers whose message and chime have already been delivered here.
+  final Set<int> _warnedTiers = {};
+
+  /// Tiers whose extend prompt this client has already been shown. Tracked
+  /// apart from [_warnedTiers] because a co-host who inherits the leadership
+  /// mid-window has not been prompted yet, even though the tier is old news.
+  final Set<int> _promptedTiers = {};
+
+  /// Starts, or joins, preparation of the chime. Runs at most once.
+  ///
+  /// Kicked off on join rather than when the warning fires: a cold fetch at the
+  /// five-minute mark can still be in flight when the twelve-second window
+  /// closes, leaving the chime to start after its message has gone.
+  Future<AudioPlayer?> _prepareMeetingEndWarningSound() =>
+      _meetingEndWarningPreparation ??= _createMeetingEndWarningPlayer();
+
+  Future<AudioPlayer?> _createMeetingEndWarningPlayer() async {
+    try {
+      final warningPlayer = AudioPlayer();
+      // Order matters. The Android backend is picked from the player mode, so
+      // setting the mode after the source throws away whatever the previous
+      // backend had prepared. lowLatency selects SoundPool, which downloads
+      // and decodes the clip into memory here, at join time — otherwise the
+      // mp3 decoder is allocated at the instant the warning fires and the
+      // chime lags the dialog by a couple of seconds.
+      await warningPlayer.setPlayerMode(PlayerMode.lowLatency);
+      // Default ReleaseMode.release unloads the clip the moment it finishes,
+      // which would make the second warning pay the whole load cost again.
+      await warningPlayer.setReleaseMode(ReleaseMode.stop);
+      await warningPlayer.setSourceUrl(Constant.meetingEndWarningUrl);
+      if (!mounted) {
+        await warningPlayer.dispose();
+        return null;
+      }
+      _meetingEndWarningPlayer = warningPlayer;
+      return warningPlayer;
+    } catch (e) {
+      // Offline at join, CDN hiccup. The warning message still shows; only the
+      // chime is lost, so this isn't worth surfacing to the user.
+      debugPrint("Could not prepare meeting-end warning sound: $e");
+      return null;
+    }
+  }
+
+  /// Plays the chime from the beginning, off the already-decoded clip.
+  ///
+  /// `stop()` rewinds to the start and `resume()` replays it. Deliberately not
+  /// `play()`, which re-applies the mode and re-sets the source and so rebuilds
+  /// the platform player — the very cost the preparation exists to avoid. And
+  /// deliberately not `seek(0)`, which on a source that was set but never
+  /// played hangs and throws `TimeoutException` out of `AudioPlayer.seek` 30s
+  /// later, as an unhandled async error.
+  Future<void> _playMeetingEndWarningSound() async {
+    _meetingEndWarningWanted = true;
+    try {
+      final warningPlayer = await _prepareMeetingEndWarningSound();
+      if (warningPlayer == null) return;
+      // Preparation can still be downloading on a late join. If the warning was
+      // dismissed while we waited, honour that instead of starting a sound the
+      // user has already cancelled.
+      if (!mounted || !_meetingEndWarningWanted) return;
+      await warningPlayer.stop();
+      await warningPlayer.resume();
+    } catch (e) {
+      // A silent warning is a nuisance; an unhandled async error is a crash.
+      debugPrint("Meeting-end warning sound failed to play: $e");
+    }
+  }
+
+  Future<void> _stopMeetingEndWarningSound() async {
+    _meetingEndWarningWanted = false;
+    try {
+      await _meetingEndWarningPlayer?.stop();
+    } catch (e) {
+      debugPrint("Meeting-end warning sound failed to stop: $e");
+    }
+  }
+
+  /// Delivers one warning tier, split the same three ways as the web client:
+  ///
+  ///  * the elected leader of an extendable meeting gets the extend dialog,
+  ///    which stands in for the message;
+  ///  * everyone else gets a twelve-second message — but only at the final
+  ///    tier, since the earlier one exists purely to offer the extension;
+  ///  * hosts and co-hosts additionally hear the chime, at the final tier only,
+  ///    and only while the setting is on.
+  ///
+  /// Called on every tick the tier's window is open, so the dedupe here is what
+  /// keeps the message from re-appearing every ten seconds — while still
+  /// letting a newly-elected leader be prompted partway through the window.
+  void _handleMeetingEndingSoon(
+      RtcViewmodel? viewModel, MeetingEndingSoon event) {
+    if (!mounted || viewModel == null) return;
+
+    final tier = event.minutesRemaining;
+    final isExtendLeader =
+        meetingManager.canExtendMeeting && viewModel.isMeetingExtendLeader();
+
+    if (isExtendLeader) {
+      if (!_promptedTiers.add(tier)) return;
+      // The prompt stands in for the message and carries the chime with it.
+      if (event.isFinalWarning &&
+          _warnedTiers.add(tier) &&
+          viewModel.shouldPlayMeetingEndSound()) {
+        unawaited(_playMeetingEndWarningSound());
+      }
+      _showExtendMeetingDialog(viewModel, tier);
+      return;
+    }
+
+    // The earlier tier exists purely to offer the extension; anyone who isn't
+    // being offered it hears nothing yet.
+    if (!event.isFinalWarning) return;
+    if (!_warnedTiers.add(tier)) return;
+
+    if (viewModel.shouldPlayMeetingEndSound()) {
+      unawaited(_playMeetingEndWarningSound());
+    }
+    // Message and chime are one unit: dismissing the message early has to stop
+    // the sound with it, so the sound is stopped from the notice's own dismiss.
+    showSnackBar(
+      message: "Meeting will end in $tier minutes.",
+      duration:
+          const Duration(milliseconds: Constant.meetingEndWarningDurationMs),
+      onDismiss: () => unawaited(_stopMeetingEndWarningSound()),
+    );
+  }
+
+  /// Moves the end time out and re-arms the warnings against it.
+  ///
+  /// The extend prompt does not come back — [MeetingManager.canExtendMeeting]
+  /// is false from here on — but the new end time gets its own final warning.
+  void _applyMeetingExtension() {
+    meetingManager.extendMeetingBy10Minutes();
+    _warnedTiers.clear();
+    _promptedTiers.clear();
+  }
+
+  void _showExtendMeetingDialog(RtcViewmodel viewModel, int minutesRemaining) {
+    if (!mounted || _isExtendDialogOpen) return;
+    _isExtendDialogOpen = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        _extendDialogContext = dialogContext;
+        return AlertDialog(
+          title: const Text("Meeting Ending Soon"),
+          content: Text(
+            "The meeting will end in $minutesRemaining minutes. "
+            "You can extend it by ${Constant.meetingExtendTime} minutes.",
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                // The local clock moves only once the backend agrees, so a
+                // rejected extend doesn't leave this client counting down to a
+                // different end time than everyone else.
+                viewModel.meetingTimeExtend(onExtended: () {
+                  if (!mounted) return;
+                  _applyMeetingExtension();
+                  showSnackBar(
+                      message:
+                          "Meeting extended by ${Constant.meetingExtendTime} minutes");
+                });
+              },
+              child: const Text("Extend"),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text("Dismiss"),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      _isExtendDialogOpen = false;
+      _extendDialogContext = null;
+      // Dismissing is personal and stops only this client's sound; the meeting
+      // still ends on schedule, and the next tier still fires.
+      unawaited(_stopMeetingEndWarningSound());
+    });
+  }
+
+  /// Adopts an end-meeting-sound toggle broadcast by another client.
+  ///
+  /// Everyone used to read this once on join, which went stale the moment a
+  /// host flipped it mid-meeting; the broadcast keeps every client honest.
+  /// Only moderators may change it, so a message from a regular participant is
+  /// dropped rather than trusted — otherwise anyone could silence the hosts.
+  void _applyRemoteNotificationSoundSetting(
+      RtcViewmodel? viewModel, RemoteActivityData remoteData) {
+    if (viewModel == null) return;
+
+    final sender = remoteData.identity;
+    final senderMetadata = sender?.metadata;
+    final isSenderHost = Utils.isHost(senderMetadata);
+    final isSenderCoHost = Utils.isCoHost(senderMetadata);
+    if (!isSenderHost && !isSenderCoHost) return;
+
+    viewModel.isNotificationSoundEnabled = remoteData.value;
+
+    // Who changed it is moderator business — participants have no toggle and
+    // no sound, so the notice would mean nothing to them.
+    if (!viewModel.isHost() && !viewModel.isCoHost()) return;
+
+    final name = sender?.name.isNotEmpty == true ? sender!.name : "Someone";
+    final role = isSenderHost ? "Host" : "Co-Host";
+    final change = remoteData.value ? "enabled" : "disabled";
+    showSnackBar(message: "$name ($role) $change the end meeting sound.");
+  }
+
+  /// Closes the prompt once somebody, anybody, has extended the meeting.
+  void _dismissExtendMeetingDialog() {
+    final dialogContext = _extendDialogContext;
+    if (!_isExtendDialogOpen || dialogContext == null) return;
+    if (!dialogContext.mounted) return;
+    Navigator.of(dialogContext).pop();
   }
 
   var isCheckedWhileJoining = false;

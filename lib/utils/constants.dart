@@ -12,6 +12,10 @@ class Constant {
   static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
   static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
 
+  /// Warning chime played to hosts/co-hosts as the meeting approaches its end.
+  /// Same asset the web client uses, so both platforms sound identical.
+  static const String meetingEndWarningUrl = "https://daakiastaticcontent.blob.core.windows.net/sounds/meeting-end-mechanical-chime.mp3";
+
   static const String meetingUid = "MEETING_UID";
   static const String sessionUid = "SESSION_UID";
   static const String attendanceId = "ATTENDANCE_ID";
@@ -26,7 +30,20 @@ class Constant {
   static const String captionAgentInterimTranscript = "interim_transcript";
 
   static const int meetingExtendTime = 10;
+
+  /// First warning, minutes before the end. Extendable (SaaS) meetings only,
+  /// and only the elected leader sees it — see [MeetingManager].
   static const int meetingEndSoonTime = 10;
+
+  /// Final warning, minutes before the end. Shown in every meeting, to everyone.
+  static const int meetingEndFinalWarningTime = 5;
+
+  /// How often remaining time is re-checked. Matches the web client so both
+  /// platforms fire their warnings within the same tick.
+  static const int meetingEndCheckIntervalMs = 10000;
+
+  /// How long the end-of-meeting warning message (and its sound) stays up.
+  static const int meetingEndWarningDurationMs = 12000;
 
   static const int maxMessageSize = 16384; // 16 KB limit
 

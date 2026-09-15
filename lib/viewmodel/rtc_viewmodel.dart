@@ -1569,7 +1569,13 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  void meetingTimeExtend() {
+  /// Adds [Constant.meetingExtendTime] minutes to the meeting, once.
+  ///
+  /// [onExtended] runs only after the backend accepts, so a rejected extend
+  /// (already used, expired token) leaves this client on the same clock as
+  /// everyone else instead of quietly running long. The backend owns the
+  /// "can only be extended once" rule; its message is surfaced as-is.
+  void meetingTimeExtend({VoidCallback? onExtended}) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
       "is_extend_time": true,
@@ -1577,17 +1583,59 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
         apiCall: () => apiClient.meetingTimeExtend(
             meetingDetails.authorizationToken, selfIdentity, body),
-        onSuccess: (_) => sendAction(
-            ActionModel(action: MeetingActions.extendMeetingEndTime)));
+        onSuccess: (_) {
+          sendAction(ActionModel(action: MeetingActions.extendMeetingEndTime));
+          onExtended?.call();
+        },
+        onError: (message) => sendMessageToUI(message));
   }
 
+  /// Whether this meeting can be extended past its scheduled end (a "SaaS"
+  /// meeting, in web's terms).
+  ///
+  /// A property of the meeting, not of the local user: every client needs the
+  /// same answer so they all run the same warning schedule. Which single
+  /// participant is offered the extend prompt is decided separately, by
+  /// [isMeetingExtendLeader].
   bool isAutoMeetingEndEnable() {
-    if (isHost() &&
-        meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
-            1) {
-      return true;
-    }
-    return false;
+    return meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
+        1;
+  }
+
+  /// Picks the one participant who gets the "extend meeting" prompt.
+  ///
+  /// Every client runs this against the same roster and reaches the same
+  /// answer, so no signalling is needed to agree — and only one person can
+  /// press Extend, so nobody double-extends or assumes someone else did it.
+  ///
+  ///   host present  -> the host
+  ///   no host       -> the earliest-joined co-host
+  ///
+  /// If that co-host leaves, the next tick elects the next earliest one.
+  ///
+  /// Caveat, same as web: there is no backend record of *when* someone became
+  /// a co-host, only their current role. A co-host who reconnects gets a fresh
+  /// join time and can hand the prompt to someone else mid-meeting.
+  bool isMeetingExtendLeader() {
+    final local = room.localParticipant;
+    if (local == null) return false;
+    if (!isHost() && !isCoHost()) return false;
+
+    final roster = <Participant>[local, ...room.remoteParticipants.values];
+    // A host anywhere in the room outranks every co-host.
+    final hosts = roster.where((p) => Utils.isHost(p.metadata)).toList();
+    final candidates = hosts.isNotEmpty
+        ? hosts
+        : roster.where((p) => Utils.isCoHost(p.metadata)).toList();
+    if (candidates.isEmpty) return false;
+
+    candidates.sort((a, b) {
+      final byJoin = a.joinedAt.compareTo(b.joinedAt);
+      // joinedAt has second granularity, so two moderators admitted together
+      // can tie; identity breaks it the same way on every client.
+      return byJoin != 0 ? byJoin : a.identity.compareTo(b.identity);
+    });
+    return candidates.first.identity == local.identity;
   }
 
   //===============================[End Meeting Warning Sound]===============================
