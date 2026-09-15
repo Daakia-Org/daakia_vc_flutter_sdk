@@ -48,6 +48,7 @@ import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
 import '../presentation/dialog/duplicate_identity_dialog.dart';
+import '../presentation/dialog/meeting_ending_dialog.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
 import '../utils/consent_status_enum.dart';
@@ -2270,7 +2271,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           viewModel.shouldPlayMeetingEndSound()) {
         unawaited(_playMeetingEndWarningSound());
       }
-      _showExtendMeetingDialog(viewModel, tier);
+      _showExtendMeetingDialog(viewModel);
       return;
     }
 
@@ -2302,45 +2303,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _promptedTiers.clear();
   }
 
-  void _showExtendMeetingDialog(RtcViewmodel viewModel, int minutesRemaining) {
+  void _showExtendMeetingDialog(RtcViewmodel viewModel) {
     if (!mounted || _isExtendDialogOpen) return;
     _isExtendDialogOpen = true;
 
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        _extendDialogContext = dialogContext;
-        return AlertDialog(
-          title: const Text("Meeting Ending Soon"),
-          content: Text(
-            "The meeting will end in $minutesRemaining minutes. "
-            "You can extend it by ${Constant.meetingExtendTime} minutes.",
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-                // The local clock moves only once the backend agrees, so a
-                // rejected extend doesn't leave this client counting down to a
-                // different end time than everyone else.
-                viewModel.meetingTimeExtend(onExtended: () {
-                  if (!mounted) return;
-                  _applyMeetingExtension();
-                  showSnackBar(
-                      message:
-                          "Meeting extended by ${Constant.meetingExtendTime} minutes");
-                });
-              },
-              child: const Text("Extend"),
-            ),
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text("Dismiss"),
-            ),
-          ],
-        );
-      },
+    showMeetingEndingDialog(
+      context,
+      // Read live, so a card left open keeps counting down to the real end.
+      endTime: () => meetingManager.endDateTime,
+      extendMinutes: Constant.meetingExtendTime,
+      onOpened: (dialogContext) => _extendDialogContext = dialogContext,
+      onExtend: () => _requestMeetingExtension(viewModel),
     ).then((_) {
       _isExtendDialogOpen = false;
       _extendDialogContext = null;
@@ -2348,6 +2321,31 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // still ends on schedule, and the next tier still fires.
       unawaited(_stopMeetingEndWarningSound());
     });
+  }
+
+  /// Asks the backend for the extension on the dialog's behalf.
+  ///
+  /// Resolves to null once it is accepted, or to the backend's reason when it
+  /// isn't, which the dialog shows in place so the host can retry. The local
+  /// clock moves only once the backend agrees, so a rejected extend doesn't
+  /// leave this client counting down to a different end than everyone else.
+  Future<String?> _requestMeetingExtension(RtcViewmodel viewModel) {
+    final result = Completer<String?>();
+    viewModel.meetingTimeExtend(
+      onExtended: () {
+        if (mounted) {
+          _applyMeetingExtension();
+          showSnackBar(
+              message:
+                  "Meeting extended by ${Constant.meetingExtendTime} minutes");
+        }
+        if (!result.isCompleted) result.complete(null);
+      },
+      onFailed: (message) {
+        if (!result.isCompleted) result.complete(message);
+      },
+    );
+    return result.future;
   }
 
   /// Adopts an end-meeting-sound toggle broadcast by another client.

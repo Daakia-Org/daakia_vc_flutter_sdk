@@ -22,6 +22,9 @@ import 'package:intl/intl.dart';
 class MeetingManager {
   DateTime? endDateTime;
   Timer? _checkTimer;
+
+  /// Fires at the scheduled end once it is closer than one poll interval.
+  Timer? _endTimer;
   Function(MeetingEndEvents event) endMeetingCallBack;
   bool? isAutoMeetingEnd = false;
 
@@ -54,6 +57,7 @@ class MeetingManager {
       return;
     }
     _checkTimer?.cancel();
+    _endTimer?.cancel();
     // Polled rather than one-shot timers: extending mid-meeting, a suspended
     // app catching up, and clock drift all resolve themselves on the next tick.
     _checkTimer = Timer.periodic(
@@ -72,6 +76,15 @@ class MeetingManager {
     if (remaining <= Duration.zero) {
       _endMeeting();
       return;
+    }
+
+    // The poll alone can leave the meeting open for up to a whole interval past
+    // its end — plainly visible when a live countdown has just reached zero.
+    // So the final stretch also gets a one-shot timer aimed at the end itself.
+    if (remaining <
+        const Duration(milliseconds: Constant.meetingEndCheckIntervalMs)) {
+      _endTimer?.cancel();
+      _endTimer = Timer(remaining, _checkRemainingTime);
     }
 
     // Reported on every tick the window is open, not once on entry, so that a
@@ -121,12 +134,15 @@ class MeetingManager {
     if (_hasEnded) return;
     _hasEnded = true;
     _checkTimer?.cancel();
+    _endTimer?.cancel();
     endMeetingCallBack.call(MeetingEnd());
   }
 
   void cancelMeetingEndScheduler() {
     _checkTimer?.cancel();
     _checkTimer = null;
+    _endTimer?.cancel();
+    _endTimer = null;
   }
 
   /// Parses whatever end-time string the backend hands over.

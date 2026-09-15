@@ -1574,8 +1574,13 @@ class RtcViewmodel extends ChangeNotifier {
   /// [onExtended] runs only after the backend accepts, so a rejected extend
   /// (already used, expired token) leaves this client on the same clock as
   /// everyone else instead of quietly running long. The backend owns the
-  /// "can only be extended once" rule; its message is surfaced as-is.
-  void meetingTimeExtend({VoidCallback? onExtended}) {
+  /// "can only be extended once" rule; its message is surfaced as-is — handed
+  /// to [onFailed] when the caller has somewhere of its own to show it, or as a
+  /// room notice otherwise.
+  void meetingTimeExtend({
+    VoidCallback? onExtended,
+    ValueChanged<String>? onFailed,
+  }) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
       "is_extend_time": true,
@@ -1587,7 +1592,13 @@ class RtcViewmodel extends ChangeNotifier {
           sendAction(ActionModel(action: MeetingActions.extendMeetingEndTime));
           onExtended?.call();
         },
-        onError: (message) => sendMessageToUI(message));
+        onError: (message) {
+          if (onFailed != null) {
+            onFailed(message);
+          } else {
+            sendMessageToUI(message);
+          }
+        });
   }
 
   /// Whether this meeting can be extended past its scheduled end (a "SaaS"
