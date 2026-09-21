@@ -212,6 +212,8 @@ class ParticipantTile extends StatelessWidget {
         context: context,
         builder: (BuildContext context) {
           return AlertDialog(
+            // Keyboard + landscape can leave less height than the dialog needs.
+            scrollable: true,
             title: const Text("Edit Name"),
             content: TextField(
               controller: nameController,

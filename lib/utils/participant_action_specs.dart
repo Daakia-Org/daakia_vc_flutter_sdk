@@ -400,6 +400,8 @@ void showParticipantRenameDialog(
   showDialog(
     context: context,
     builder: (dialogCtx) => AlertDialog(
+      // Keyboard + landscape can leave less height than the dialog needs.
+      scrollable: true,
       title: const Text('Rename'),
       content: TextField(
         controller: controller,
