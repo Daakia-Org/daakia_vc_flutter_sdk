@@ -66,7 +66,8 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   var _obscurePassword = true;
 
-  static const _defaultAlertMessage = 'Please check your audio/video settings';
+  static const _defaultAlertMessage =
+      'Check your camera and microphone before you join.';
 
   var alertMessage = _defaultAlertMessage;
   var isRejected = false;
@@ -1173,393 +1174,560 @@ class _PreJoinState extends State<PreJoinScreen> {
       return _buildSkipPreJoinLoader();
     }
 
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // A landscape phone with the keyboard up has ~150dp left; the app bar
+    // alone would take a third of it, so drop it while typing to keep the
+    // field and the Join button on screen together.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Prejoin Page",
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: themeColor,
-        elevation: 3,
-        shadowColor: Colors.grey,
-        iconTheme: const IconThemeData(
-          color:
-              Colors.white, // Set the color you want for the back button here
+      backgroundColor: Colors.white,
+      appBar: isLandscape && keyboardOpen ? null : _buildAppBar(),
+      body: SafeArea(
+        top: isLandscape && keyboardOpen,
+        child: isLandscape ? _buildLandscapeBody() : _buildPortraitBody(),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    final details = widget.basicMeetingDetails;
+    final title = details?.eventName?.trim();
+    final host = details?.host?.trim();
+    return AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.black87,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      titleSpacing: 0,
+      shape: const Border(bottom: BorderSide(color: Colors.black12)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            (title == null || title.isEmpty) ? 'Join meeting' : title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (host != null && host.isNotEmpty)
+            Text(
+              'Hosted by $host',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.black54, fontSize: 12.5),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitBody() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) => SizedBox(
+                  height: (constraints.maxWidth * 0.75).clamp(220.0, 380.0),
+                  child: _buildPreview(),
+                ),
+              ),
+              ..._buildStatusBanners(),
+              const SizedBox(height: 24),
+              _buildJoinForm(),
+            ],
+          ),
         ),
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Card(
-                    color: emptyVideoColor,
-                    elevation: 5,
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
-                    child: SizedBox(
-                      width: double.maxFinite,
-                      height: Utils.isMobileDevice() ? 250 : 350,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          _videoTrack != null && _enableVideo
-                              ? Visibility(
-                                  visible: _enableVideo,
-                                  child: VideoTrackRenderer(
-                                    renderMode: VideoRenderMode.auto,
-                                    _videoTrack!,
-                                  ),
-                                )
-                              : Visibility(
-                                  visible: !_enableVideo,
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(
-                                        Icons.videocam_off,
-                                        size: 55,
-                                        color: Colors.white,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        _isCameraDisabledByHost
-                                            ? 'Camera is disabled by the host'
-                                            : 'Your Camera is turned off',
-                                        style: const TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 15,
-                                            color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              color: transparentMaskColor,
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(
-                                        _enableVideo
-                                            ? Icons.videocam
-                                            : Icons.videocam_off,
-                                        color: _isCameraDisabledByHost
-                                            ? Colors.white38
-                                            : Colors.white),
-                                    iconSize: 30,
-                                    tooltip: _isCameraDisabledByHost
-                                        ? 'Camera disabled by host'
-                                        : null,
-                                    // Null rather than a snackbar: the notice
-                                    // below the preview already says why.
-                                    onPressed: _isCameraDisabledByHost
-                                        ? null
-                                        : () async {
-                                          if (!Platform.isIOS) {
-                                            bool permissionsGranted =
-                                                await checkAndRequestPermissions(
-                                                    context,
-                                                    checkForAudio: false);
-                                            if (!permissionsGranted) return;
-                                          }
-                                          setState(() {
-                                            _enableVideo = !_enableVideo;
-                                            _setEnableVideo(_enableVideo);
-                                          });
-                                        },
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                        _enableAudio
-                                            ? Icons.mic
-                                            : Icons.mic_off,
-                                        color: _isMicDisabledByHost
-                                            ? Colors.white38
-                                            : Colors.white),
-                                    iconSize: 30,
-                                    tooltip: _isMicDisabledByHost
-                                        ? 'Microphone disabled by host'
-                                        : null,
-                                    onPressed: _isMicDisabledByHost
-                                        ? null
-                                        : () async {
-                                          if (!Platform.isIOS) {
-                                            bool permissionsGranted =
-                                                await checkAndRequestPermissions(
-                                                    context,
-                                                    checkForCamera: false);
-                                            if (!permissionsGranted) return;
-                                          }
-                                          setState(() {
-                                            _enableAudio = !_enableAudio;
-                                            _setEnableAudio(_enableAudio);
-                                          });
-                                        },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  if (_hostMediaRestrictionMessage != null) ...[
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        const Icon(Icons.info_outline,
-                            size: 18, color: Colors.black54),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _hostMediaRestrictionMessage!,
-                            style: const TextStyle(
-                                fontSize: 13, color: Colors.black54),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  // "Please check your audio/video settings" is pointless advice
-                  // when the host is the one holding the mic/camera off — hide it
-                  // until the API replaces it with a real message.
-                  if (!_isDefaultAlertSuppressed) ...[
-                    Center(
-                      child: Text(
-                        alertMessage,
-                        textAlign:
-                            TextAlign.center, // Equivalent to gravity="center"
-                        style: const TextStyle(
-                          color: Colors
-                              .black, // Equivalent to textColor="@color/black"
-                          fontSize: 15, // Equivalent to textSize="15sp"
-                        ),
-                      ),
-                    ),
-                    const SizedBox(
-                      height: 10,
-                    ),
-                  ],
-                  Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
-                    // Equivalent to marginHorizontal="20dp" and marginTop="10dp"
-                    child: TextFormField(
-                      controller: _nameController ?? TextEditingController(),
-                      decoration: const InputDecoration(
-                        labelText: 'Name*',
-                        border: OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(color: Colors.black),
-                      enabled: _isNameEditable,
-                      textCapitalization: TextCapitalization.words,
-                      inputFormatters: [
-                        NameInputFormatter(),
-                        // Block digits
-                        FilteringTextInputFormatter.deny(RegExp(r'[0-9]')),
-                        // Block noisy punctuation (but allow . ' -)
-                        FilteringTextInputFormatter.deny(
-                            RegExp(r'[_\[\]{}<>@#$%^&*+=~`|\\/"^]')),
-                        LengthLimitingTextInputFormatter(50),
-                      ],
-                      onChanged: (value) => setState(() => name = value),
-                    ),
-                  ),
-                  Visibility(
-                    visible: !widget.isHost &&
-                        !_shouldBypassParticipantChecks &&
-                        !_joinAsGuest &&
-                        (widget.basicMeetingDetails?.isCommonPassword == true ||
-                            widget.basicMeetingDetails?.isStandardPassword ==
-                                true),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: TextFormField(
-                        decoration: InputDecoration(
-                          labelText: 'Password*',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              !_obscurePassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                        ),
-                        style: const TextStyle(
-                          color: Colors.black,
-                        ),
-                        enabled: true,
-                        obscureText: _obscurePassword,
-                        onChanged: (String? value) {
-                          setState(() {
-                            password = value ?? "";
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  Visibility(
-                    visible: !widget.isHost &&
-                        !_shouldBypassParticipantChecks &&
-                        _joinAsGuest &&
-                        _isGuestModeAvailable,
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: TextFormField(
-                        decoration: const InputDecoration(
-                          labelText: 'Email*',
-                          border: OutlineInputBorder(),
-                        ),
-                        style: const TextStyle(
-                          color: Colors.black,
-                        ),
-                        enabled: true,
-                        keyboardType: TextInputType.emailAddress,
-                        onChanged: (String? value) {
-                          setState(() {
-                            _guestEmail = (value ?? "").trim();
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  LoadingBtn(
-                    height: 50,
-                    borderRadius: 8,
-                    animate: true,
-                    color: themeColor,
-                    width: MediaQuery.of(context).size.width * 0.45,
-                    loader: Container(
-                      padding: const EdgeInsets.all(10),
-                      width: 40,
-                      height: 40,
-                      child: const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                    child: const Text(
-                      "Join Meeting",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: (startLoading, stopLoading, btnState) async {
-                      if (btnState == ButtonState.idle) {
-                        if (name.trim().isEmpty) {
-                          Utils.showSnackBar(context,
-                              message: "Please enter your name");
-                          return;
-                        }
-                        if (!widget.isHost &&
-                            !_shouldBypassParticipantChecks &&
-                            !await shouldAddAttendanceId()) {
-                          var event = widget.basicMeetingDetails;
-                          if (_joinAsGuest && _isGuestModeAvailable) {
-                            if (!Utils.isValidEmail(_guestEmail)) {
-                              if (!context.mounted) return;
-                              Utils.showSnackBar(context,
-                                  message: "Please enter a valid email");
-                              return;
-                            }
-                          } else {
-                            if (event?.isStandardPassword == true) {
-                              if (!checkValidity()) {
-                                return;
-                              }
-                            }
-                            if (event?.isCommonPassword == true) {
-                              if (password.isEmpty) {
-                                if (!context.mounted) return;
-                                Utils.showSnackBar(context,
-                                    message: "Please enter your password");
-                                return;
-                              }
-                            }
-                          }
-                        }
-                        // Check and request permissions
-                        startLoading();
-                        if (isLoading) {
-                          return;
-                        } else {
-                          isNeedToCancelApiCall = false;
-                          _checkDuplicateJoinAndProceed(stopLoading, () {
-                            if (widget.isHost && !isHostVerified) {
-                              if (!context.mounted) return;
-                              final token =
-                                  widget.configuration?.vcConfig?.hostToken;
+    );
+  }
 
-                              if (token != null && token.isNotEmpty) {
-                                hostToken = token;
-                                isHostVerified = true;
-                                isNeedToCancelApiCall = false;
-                                getFeaturesAndJoinMeeting(stopLoading);
-                                return;
-                              }
-                              if (widget.basicMeetingDetails
-                                      ?.hostPinVerificationRequired ==
-                                  1) {
-                                _showVerificationDialog(context, stopLoading);
-                              } else {
-                                _getHostToken(stopLoading);
-                              }
-                            } else {
-                              checkMeetingType(stopLoading);
-                            }
-                          });
-                        }
-                      }
-                    },
-                  ),
-                  Visibility(
-                    visible: !widget.isHost &&
-                        !_shouldBypassParticipantChecks &&
-                        _isGuestModeAvailable,
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: TextButton.icon(
-                        onPressed: _toggleGuestMode,
-                        icon: Icon(
-                          _joinAsGuest ? Icons.lock_outline : Icons.person_outline,
-                          size: 18,
-                          color: themeColor,
-                        ),
-                        label: Text(
-                          _joinAsGuest
-                              ? "Have a password? Join with password"
-                              : "Join as Guest instead",
-                          style: const TextStyle(
-                            color: themeColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+  /// Preview on the left, form on the right, so the Join button is on screen
+  /// without scrolling, which a stacked layout can't manage in ~360dp height.
+  Widget _buildLandscapeBody() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 11,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildPreview()),
+                ..._buildStatusBanners(),
+              ],
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 9,
+            child: Center(
+              child: SingleChildScrollView(child: _buildJoinForm()),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildPreview() {
+    final showVideo = _videoTrack != null && _enableVideo;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: ColoredBox(
+        color: emptyVideoColor,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (showVideo)
+              VideoTrackRenderer(
+                _videoTrack!,
+                renderMode: VideoRenderMode.auto,
+                fit: VideoViewFit.cover,
+              )
+            else
+              _buildCameraOffPlaceholder(),
+            // Scrim so the name and buttons stay readable over bright video.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 28, 12, 12),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black54],
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name.trim().isEmpty ? 'You' : name.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    _MediaToggleButton(
+                      isOn: _enableAudio,
+                      onIcon: Icons.mic_rounded,
+                      offIcon: Icons.mic_off_rounded,
+                      lockedByHost: _isMicDisabledByHost,
+                      tooltip: _isMicDisabledByHost
+                          ? 'Microphone disabled by host'
+                          : (_enableAudio
+                                ? 'Turn off microphone'
+                                : 'Turn on microphone'),
+                      onPressed: _toggleAudio,
+                    ),
+                    const SizedBox(width: 12),
+                    _MediaToggleButton(
+                      isOn: _enableVideo,
+                      onIcon: Icons.videocam_rounded,
+                      offIcon: Icons.videocam_off_rounded,
+                      lockedByHost: _isCameraDisabledByHost,
+                      tooltip: _isCameraDisabledByHost
+                          ? 'Camera disabled by host'
+                          : (_enableVideo
+                                ? 'Turn off camera'
+                                : 'Turn on camera'),
+                      onPressed: _toggleVideo,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCameraOffPlaceholder() {
+    final trimmed = name.trim();
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Shrinks with the preview (e.g. landscape with the keyboard up).
+        final avatar = (constraints.maxHeight * 0.34).clamp(40.0, 96.0);
+        final showCaption = constraints.maxHeight > 150;
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: avatar,
+              height: avatar,
+              alignment: Alignment.center,
+              decoration: const BoxDecoration(
+                color: themeColor,
+                shape: BoxShape.circle,
+              ),
+              child: trimmed.isEmpty
+                  ? Icon(
+                      Icons.person_rounded,
+                      color: Colors.white,
+                      size: avatar * 0.55,
+                    )
+                  : Text(
+                      Utils.getInitials(trimmed),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: avatar * 0.36,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+            ),
+            if (showCaption) ...[
+              const SizedBox(height: 12),
+              Text(
+                _isCameraDisabledByHost
+                    ? 'Camera is disabled by the host'
+                    : 'Camera is off',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+            // Keep the avatar clear of the bottom control row.
+            SizedBox(height: showCaption ? 40 : 28),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _toggleVideo() async {
+    if (!Platform.isIOS) {
+      final granted = await checkAndRequestPermissions(
+        context,
+        checkForAudio: false,
+      );
+      if (!granted) return;
+    }
+    setState(() {
+      _enableVideo = !_enableVideo;
+      _setEnableVideo(_enableVideo);
+    });
+  }
+
+  Future<void> _toggleAudio() async {
+    if (!Platform.isIOS) {
+      final granted = await checkAndRequestPermissions(
+        context,
+        checkForCamera: false,
+      );
+      if (!granted) return;
+    }
+    setState(() {
+      _enableAudio = !_enableAudio;
+      _setEnableAudio(_enableAudio);
+    });
+  }
+
+  List<Widget> _buildStatusBanners() {
+    return [
+      if (_hostMediaRestrictionMessage != null) ...[
+        const SizedBox(height: 12),
+        _StatusBanner(
+          icon: Icons.lock_outline_rounded,
+          message: _hostMediaRestrictionMessage!,
+        ),
+      ],
+      // "Check your camera and mic" is pointless advice when the host is the
+      // one holding them off, so it's hidden until the API sends a real message.
+      if (!_isDefaultAlertSuppressed && alertMessage.trim().isNotEmpty) ...[
+        const SizedBox(height: 12),
+        _StatusBanner(
+          icon: Icons.info_outline_rounded,
+          message: alertMessage,
+          // Server messages (meeting not started, waiting in the lobby, …)
+          // need the user's attention; the default hint doesn't.
+          emphasized: alertMessage != _defaultAlertMessage,
+        ),
+      ],
+    ];
+  }
+
+  Widget _buildJoinForm() {
+    final details = widget.basicMeetingDetails;
+    final showPassword =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        !_joinAsGuest &&
+        (details?.isCommonPassword == true ||
+            details?.isStandardPassword == true);
+    final showGuestEmail =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        _joinAsGuest &&
+        _isGuestModeAvailable;
+    final showGuestToggle =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        _isGuestModeAvailable;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Ready to join?',
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (widget.isHost) ...[
+          const SizedBox(height: 4),
+          const Text(
+            "You're joining as the host",
+            style: TextStyle(color: Colors.black54, fontSize: 14),
+          ),
+        ],
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _nameController ?? TextEditingController(),
+          decoration: _fieldDecoration(
+            label: 'Your name',
+            icon: Icons.person_outline_rounded,
+          ),
+          style: const TextStyle(color: Colors.black87),
+          enabled: _isNameEditable,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: showPassword || showGuestEmail
+              ? TextInputAction.next
+              : TextInputAction.done,
+          inputFormatters: [
+            NameInputFormatter(),
+            // Block digits
+            FilteringTextInputFormatter.deny(RegExp(r'[0-9]')),
+            // Block noisy punctuation (but allow . ' -)
+            FilteringTextInputFormatter.deny(
+              RegExp(r'[_\[\]{}<>@#$%^&*+=~`|\\/"^]'),
+            ),
+            LengthLimitingTextInputFormatter(50),
+          ],
+          onChanged: (value) => setState(() => name = value),
+        ),
+        if (showPassword) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            decoration: _fieldDecoration(
+              label: 'Meeting password',
+              icon: Icons.lock_outline_rounded,
+              suffix: IconButton(
+                tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
+            ),
+            style: const TextStyle(color: Colors.black87),
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onChanged: (String? value) {
+              setState(() {
+                password = value ?? "";
+              });
+            },
+          ),
+        ],
+        if (showGuestEmail) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            decoration: _fieldDecoration(
+              label: 'Email',
+              icon: Icons.mail_outline_rounded,
+            ),
+            style: const TextStyle(color: Colors.black87),
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            autocorrect: false,
+            textInputAction: TextInputAction.done,
+            onChanged: (String? value) {
+              setState(() {
+                _guestEmail = (value ?? "").trim();
+              });
+            },
+          ),
+        ],
+        const SizedBox(height: 20),
+        LayoutBuilder(
+          builder: (context, constraints) => LoadingBtn(
+            height: 52,
+            borderRadius: 12,
+            animate: true,
+            color: themeColor,
+            width: constraints.maxWidth,
+            loader: Container(
+              padding: const EdgeInsets.all(12),
+              width: 44,
+              height: 44,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            child: const Text(
+              "Join meeting",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            onTap: (startLoading, stopLoading, btnState) async {
+              if (btnState == ButtonState.idle) {
+                if (name.trim().isEmpty) {
+                  Utils.showSnackBar(
+                    context,
+                    message: "Please enter your name",
+                  );
+                  return;
+                }
+                if (!widget.isHost &&
+                    !_shouldBypassParticipantChecks &&
+                    !await shouldAddAttendanceId()) {
+                  var event = widget.basicMeetingDetails;
+                  if (_joinAsGuest && _isGuestModeAvailable) {
+                    if (!Utils.isValidEmail(_guestEmail)) {
+                      if (!context.mounted) return;
+                      Utils.showSnackBar(
+                        context,
+                        message: "Please enter a valid email",
+                      );
+                      return;
+                    }
+                  } else {
+                    if (event?.isStandardPassword == true) {
+                      if (!checkValidity()) {
+                        return;
+                      }
+                    }
+                    if (event?.isCommonPassword == true) {
+                      if (password.isEmpty) {
+                        if (!context.mounted) return;
+                        Utils.showSnackBar(
+                          context,
+                          message: "Please enter your password",
+                        );
+                        return;
+                      }
+                    }
+                  }
+                }
+                // Check and request permissions
+                startLoading();
+                if (isLoading) {
+                  return;
+                } else {
+                  isNeedToCancelApiCall = false;
+                  _checkDuplicateJoinAndProceed(stopLoading, () {
+                    if (widget.isHost && !isHostVerified) {
+                      if (!context.mounted) return;
+                      final token = widget.configuration?.vcConfig?.hostToken;
+
+                      if (token != null && token.isNotEmpty) {
+                        hostToken = token;
+                        isHostVerified = true;
+                        isNeedToCancelApiCall = false;
+                        getFeaturesAndJoinMeeting(stopLoading);
+                        return;
+                      }
+                      if (widget
+                              .basicMeetingDetails
+                              ?.hostPinVerificationRequired ==
+                          1) {
+                        _showVerificationDialog(context, stopLoading);
+                      } else {
+                        _getHostToken(stopLoading);
+                      }
+                    } else {
+                      checkMeetingType(stopLoading);
+                    }
+                  });
+                }
+              }
+            },
+          ),
+        ),
+        if (showGuestToggle) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _toggleGuestMode,
+              icon: Icon(
+                _joinAsGuest
+                    ? Icons.lock_outline_rounded
+                    : Icons.person_outline_rounded,
+                size: 18,
+                color: themeColor,
+              ),
+              label: Text(
+                _joinAsGuest
+                    ? "Have a password? Join with password"
+                    : "Join as guest instead",
+                style: const TextStyle(
+                  color: themeColor,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFFF6F6F9),
+      prefixIcon: Icon(icon, size: 20),
+      suffixIcon: suffix,
+      labelStyle: const TextStyle(color: Colors.black54),
+      floatingLabelStyle: const TextStyle(color: themeColor),
+      border: border(Colors.black12),
+      enabledBorder: border(Colors.black12),
+      disabledBorder: border(Colors.black12),
+      focusedBorder: border(themeColor, 1.5),
     );
   }
 
@@ -2005,5 +2173,133 @@ class _PreJoinState extends State<PreJoinScreen> {
       return configFeature?.features;
     }
     return features;
+  }
+}
+
+/// Round mic/camera toggle on the pre-join preview: translucent when on, red
+/// when off (so "off" reads at a glance), dimmed with a lock when the host
+/// has disabled it.
+class _MediaToggleButton extends StatelessWidget {
+  const _MediaToggleButton({
+    required this.isOn,
+    required this.onIcon,
+    required this.offIcon,
+    required this.lockedByHost,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool isOn;
+  final IconData onIcon;
+  final IconData offIcon;
+  final bool lockedByHost;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color background;
+    final Color foreground;
+    if (lockedByHost) {
+      background = Colors.white.withValues(alpha: 0.12);
+      foreground = Colors.white38;
+    } else if (isOn) {
+      background = Colors.white.withValues(alpha: 0.22);
+      foreground = Colors.white;
+    } else {
+      background = const Color(0xFFE5484D);
+      foreground = Colors.white;
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Material(
+            color: background,
+            shape: CircleBorder(
+              side: isOn && !lockedByHost
+                  ? const BorderSide(color: Colors.white38)
+                  : BorderSide.none,
+            ),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              // Null rather than a snackbar: the banner below the preview
+              // already says why it's locked.
+              onTap: lockedByHost ? null : onPressed,
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Icon(
+                  isOn ? onIcon : offIcon,
+                  color: foreground,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+          if (lockedByHost)
+            const Positioned(
+              right: -2,
+              bottom: -2,
+              child: CircleAvatar(
+                radius: 9,
+                backgroundColor: Colors.white,
+                child: Icon(
+                  Icons.lock_rounded,
+                  size: 11,
+                  color: Colors.black54,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A one-line-or-more notice under the pre-join preview.
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.icon,
+    required this.message,
+    this.emphasized = false,
+  });
+
+  final IconData icon;
+  final String message;
+  final bool emphasized;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = emphasized ? themeColor : Colors.black54;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: emphasized
+            ? themeColor.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: TextStyle(
+                color: emphasized ? themeColor : Colors.black87,
+                fontSize: 13.5,
+                height: 1.35,
+                fontWeight: emphasized ? FontWeight.w500 : FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
