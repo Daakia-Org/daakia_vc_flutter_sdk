@@ -235,6 +235,7 @@ class _HostVerificationDialogState extends State<HostVerificationDialog> {
     return TextField(
       controller: _emailController,
       focusNode: _emailFocus,
+      onTapOutside: Utils.dismissKeyboardOnTapOutside,
       autofocus: true,
       enabled: !_verifying,
       keyboardType: TextInputType.emailAddress,
@@ -261,6 +262,7 @@ class _HostVerificationDialogState extends State<HostVerificationDialog> {
     return TextField(
       controller: _pinController,
       focusNode: _pinFocus,
+      onTapOutside: Utils.dismissKeyboardOnTapOutside,
       enabled: !_verifying,
       keyboardType: _pinUsesLetters
           ? TextInputType.visiblePassword
