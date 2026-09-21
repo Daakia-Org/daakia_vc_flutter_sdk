@@ -56,6 +56,8 @@ class _JoinedParticipantWidgetState extends State<JoinedParticipantWidget> {
         Padding(
           padding: const EdgeInsets.symmetric(vertical: 10),
           child: TextField(
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
+            textInputAction: TextInputAction.search,
             style: const TextStyle(color: Colors.white),
             decoration: InputDecoration(
               hintText: 'Search participant...',

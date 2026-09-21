@@ -2,6 +2,7 @@ import 'package:daakia_vc_flutter_sdk/model/remote_activity_data.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/pariticipant_dialog_controls.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/initials_circle.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/role_pill.dart';
+import 'package:daakia_vc_flutter_sdk/utils/participant_action_specs.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -205,43 +206,10 @@ class ParticipantTile extends StatelessWidget {
   }
 
   void _showEditNameDialog(BuildContext context, RtcViewmodel viewModel) {
-    final TextEditingController nameController =
-        TextEditingController(text: participant?.name ?? "");
-
-    showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            // Keyboard + landscape can leave less height than the dialog needs.
-            scrollable: true,
-            title: const Text("Edit Name"),
-            content: TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: "Enter new name",
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop(); // Close dialog
-                },
-                child: const Text("Cancel"),
-              ),
-              TextButton(
-                onPressed: () {
-                  final newName = nameController.text.trim();
-                  if (newName.isNotEmpty) {
-                    viewModel.updateParticipantName(
-                        participant: participant?.identity, newName: newName);
-                  }
-                  Navigator.of(context).pop(); // Close dialog
-                },
-                child: const Text("Save"),
-              ),
-            ],
-          );
-        });
+    final participant = this.participant;
+    if (participant == null) return;
+    showParticipantRenameDialog(context, participant, viewModel,
+        title: 'Edit Name');
   }
 
   bool _canEditProfile(
