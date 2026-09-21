@@ -12,6 +12,9 @@ class Constant {
   static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
   static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
 
+  static const String meetingEndWarningSoundDir = "packages/daakia_vc_flutter_sdk/assets/sounds/";
+  static const String meetingEndWarningSound = "meeting_end_warning.m4a";
+
   static const String meetingUid = "MEETING_UID";
   static const String sessionUid = "SESSION_UID";
   static const String attendanceId = "ATTENDANCE_ID";
@@ -26,7 +29,25 @@ class Constant {
   static const String captionAgentInterimTranscript = "interim_transcript";
 
   static const int meetingExtendTime = 10;
+
+  /// Early warning, minutes before the end. Hosts and co-hosts only; in an
+  /// extendable meeting the elected leader gets the extend prompt instead —
+  /// see [MeetingManager].
   static const int meetingEndSoonTime = 10;
+
+  /// Final warning, minutes before the end. Shown in every meeting, to everyone.
+  static const int meetingEndFinalWarningTime = 5;
+
+  /// How often remaining time is re-checked. Matches the web client so both
+  /// platforms fire their warnings within the same tick.
+  static const int meetingEndCheckIntervalMs = 10000;
+
+  /// How long the end-of-meeting warning message stays up.
+  static const int meetingEndWarningDurationMs = 12000;
+
+  /// How long the end-of-meeting chime keeps looping. Closing the countdown
+  /// card stops it sooner; the short message never does.
+  static const int meetingEndWarningSoundDurationMs = 60000;
 
   static const int maxMessageSize = 16384; // 16 KB limit
 

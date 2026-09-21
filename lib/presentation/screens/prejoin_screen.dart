@@ -23,6 +23,7 @@ import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
 import '../../service/daakia_vc_logger.dart';
 import '../../utils/join_failure.dart';
+import '../../utils/meeting_end_time.dart';
 import '../../utils/name_input_formatter.dart';
 import '../../utils/utils.dart';
 
@@ -114,10 +115,10 @@ class _PreJoinState extends State<PreJoinScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await verifyCoHost();
       if (!mounted) return;
+      // Prejoin only asks isMeetingEnded(); the warning schedule belongs to the
+      // meeting screen, so no scheduler is started here.
       meetingManager = MeetingManager(
-          endDate: getMeetingEndDate(),
-          endMeetingCallBack: (event) {},
-          context: context);
+          endDate: getMeetingEndDate(), endMeetingCallBack: (event) {});
       // Awaited: skip-prejoin joins straight away, and joining with the mic on
       // is exactly what the host controls are supposed to prevent.
       await _fetchHostMediaRestrictions();
@@ -359,9 +360,13 @@ class _PreJoinState extends State<PreJoinScreen> {
     return resolvedName;
   }
 
+  /// See `RtcViewmodel.getMeetingEndDate`. The extension must be included:
+  /// reading only `end_date`, which the extend API never moves, told anyone
+  /// rejoining an extended meeting that it had already ended.
   String? getMeetingEndDate() {
-    return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        widget.basicMeetingDetails?.endDate;
+    return MeetingEndTime.from(widget.basicMeetingDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void _loadDevices(List<MediaDevice> devices,

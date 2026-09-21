@@ -112,6 +112,10 @@ class MeetingActions {
 
   static const String refreshInvitedParticipants = "refresh_invited_participants";
 
+  /// Broadcast when a host/co-host flips the end-of-meeting warning sound so
+  /// every client picks up the new value without re-reading the API.
+  static const String notificationSoundSetting = "notification_sound_setting";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -184,6 +188,7 @@ class MeetingActions {
     allowAnnotationPermission,
     revokeAnnotationPermission,
     refreshInvitedParticipants,
+    notificationSoundSetting,
     // ✅ Add new fields here
   };
 }
