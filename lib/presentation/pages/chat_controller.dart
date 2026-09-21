@@ -53,6 +53,9 @@ class _ChatControllerState extends State<ChatController>
 
 
   void _onTabChanged() {
+    // A focused TextField keeps its page alive, so after switching tabs the
+    // keyboard stayed up and typed into the chat you had just left.
+    FocusManager.instance.primaryFocus?.unfocus();
     if (!_tabController.indexIsChanging) {
       _updateTabStates(_tabController.index);
     }
@@ -152,25 +155,44 @@ class _ChatControllerState extends State<ChatController>
       );
     }
 
+    // Landscape leaves ~150dp above the keyboard, less than the title and tab
+    // bars alone: hide them while typing so the messages and input stay
+    // visible. Tapping outside the input closes the keyboard and brings them
+    // back.
+    final media = MediaQuery.of(context);
+    final isTypingInLandscape = media.orientation == Orientation.landscape &&
+        media.viewInsets.bottom > 0;
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
-      appBar: AppBar(
-        title: const Text("Chats", style: TextStyle(color: Colors.white)),
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.grey,
-          tabs: tabs,
+      appBar: isTypingInLandscape
+          ? null
+          : AppBar(
+              title:
+                  const Text("Chats", style: TextStyle(color: Colors.white)),
+              backgroundColor: Colors.black,
+              iconTheme: const IconThemeData(color: Colors.white),
+              bottom: TabBar(
+                controller: _tabController,
+                indicatorColor: Colors.white,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.grey,
+                tabs: tabs,
+              ),
+            ),
+      // Keeps the chat clear of the status bar while the app bar is hidden.
+      // Always in the tree so the focused input is not rebuilt, which would
+      // drop focus and close the keyboard.
+      body: SafeArea(
+        left: false,
+        right: false,
+        bottom: false,
+        child: Stack(
+          children: [
+            TabBarView(controller: _tabController, children: views),
+            if (_isLoading) const CustomLoader(),
+          ],
         ),
-      ),
-      body: Stack(
-        children: [
-          TabBarView(controller: _tabController, children: views),
-          if (_isLoading) const CustomLoader(),
-        ],
       ),
     );
   }

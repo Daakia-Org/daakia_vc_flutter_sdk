@@ -542,6 +542,15 @@ class Utils {
     FocusScope.of(context).unfocus();
   }
 
+  /// Pass as a text field's `onTapOutside`. On Android and iOS Flutter keeps
+  /// focus when you tap outside a field, so the keyboard stays up until Back.
+  /// Some third-party keyboards have no hide key, which left the user stuck.
+  /// Dropping focus also stops the field from grabbing focus again, and
+  /// reopening the keyboard, when a sheet or dialog opened over it closes.
+  static void dismissKeyboardOnTapOutside(PointerDownEvent _) {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   static String? extractUserAvatar(String? metadata) {
     if (metadata == null || metadata.trim().isEmpty) return null;
 

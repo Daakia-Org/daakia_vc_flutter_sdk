@@ -27,7 +27,13 @@ class PrivateChatPage extends StatefulWidget {
   }
 }
 
-class PrivateChantState extends State<PrivateChatPage> {
+class PrivateChantState extends State<PrivateChatPage>
+    with AutomaticKeepAliveClientMixin {
+  // Keep the tab alive so switching chats, which now closes the keyboard,
+  // does not throw away a half-typed message.
+  @override
+  bool get wantKeepAlive => true;
+
   StreamSubscription? _privateChatSubscription;
 
   @override
@@ -68,7 +74,13 @@ class PrivateChantState extends State<PrivateChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     collectLobbyEvents(widget.viewModel, context);
+    // Typing in landscape leaves ~150dp above the keyboard: trim padding so
+    // the input and some messages stay visible.
+    final media = MediaQuery.of(context);
+    final isCompact = media.orientation == Orientation.landscape &&
+        media.viewInsets.bottom > 0;
     return PopScope(
       onPopInvokedWithResult: (isPoped, dynamic) async {
         widget.viewModel.isPrivateChatOpen = false;
@@ -77,7 +89,7 @@ class PrivateChantState extends State<PrivateChatPage> {
         backgroundColor: const Color(0xFF000000),
         // Use a specific color for no_video_background
         body: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          padding: EdgeInsets.symmetric(vertical: isCompact ? 4.0 : 20.0),
           child: Column(children: [
             Visibility(
                 visible: (widget.viewModel.getPrivateMessage().isEmpty),
@@ -95,6 +107,9 @@ class PrivateChantState extends State<PrivateChatPage> {
               child: Expanded(
                 child: Column(
                   children: [
+                    // The person picker and the banner don't fit above the
+                    // keyboard in landscape; the input stays on the same chat.
+                    if (!isCompact)
                     SizedBox(
                       height: 80.0, // Set a fixed height for the ListView
                       child: ListView.builder(
@@ -154,6 +169,7 @@ class PrivateChantState extends State<PrivateChatPage> {
                         },
                       ),
                     ),
+                    if (!isCompact)
                     Text(
                       "ℹ️ You are in ${widget.viewModel.getPrivateChatUserName()}'s private chat window.",
                       // Using Unicode info symbol
@@ -182,6 +198,8 @@ class PrivateChantState extends State<PrivateChatPage> {
                     Expanded(
                       child: ListView.builder(
                         controller: _scrollController,
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
                         reverse: true,
                         itemCount: widget.viewModel
                             .getPrivateChatForParticipant(
@@ -243,8 +261,8 @@ class PrivateChantState extends State<PrivateChatPage> {
                       ),
                     // Message Input Section
                     Padding(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10.0, vertical: 10.0),
+                      padding: EdgeInsets.symmetric(
+                          horizontal: 10.0, vertical: isCompact ? 4.0 : 10.0),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10.0, vertical: 5.0),
@@ -285,6 +303,8 @@ class PrivateChantState extends State<PrivateChatPage> {
                               child: TextField(
                                 controller: messageController,
                                 focusNode: _messageFocusNode,
+                                onTapOutside:
+                                    Utils.dismissKeyboardOnTapOutside,
                                 maxLength: Constant.maxMessageCharLimit,
                                 decoration: const InputDecoration(
                                   hintText: "Type here...",

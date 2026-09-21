@@ -1362,6 +1362,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                     // Equivalent to marginHorizontal="20dp" and marginTop="10dp"
                     child: TextFormField(
                       controller: _nameController ?? TextEditingController(),
+                      onTapOutside: Utils.dismissKeyboardOnTapOutside,
                       decoration: const InputDecoration(
                         labelText: 'Name*',
                         border: OutlineInputBorder(),
@@ -1413,6 +1414,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                         ),
                         enabled: true,
                         obscureText: _obscurePassword,
+                        onTapOutside: Utils.dismissKeyboardOnTapOutside,
                         onChanged: (String? value) {
                           setState(() {
                             password = value ?? "";
@@ -1439,6 +1441,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                         ),
                         enabled: true,
                         keyboardType: TextInputType.emailAddress,
+                        onTapOutside: Utils.dismissKeyboardOnTapOutside,
                         onChanged: (String? value) {
                           setState(() {
                             _guestEmail = (value ?? "").trim();

@@ -47,7 +47,7 @@ class _LanguageSelectionBottomSheetState
     final picked = await Utils.showAdaptiveSheet<LanguageModel>(
       context,
       backgroundColor: const Color(0xFF1A1A2E),
-      // A DraggableScrollableSheet sizes itself and scrolls its own list.
+      // The picker sizes itself around the keyboard and scrolls its own list.
       forceFullHeight: true,
       scrollable: false,
       builder: (_) => _LanguagePickerSheet(
@@ -220,13 +220,35 @@ class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.65,
-      maxChildSize: 0.92,
-      minChildSize: 0.4,
-      expand: false,
-      builder: (_, scrollController) => Column(
-        children: [
+    final media = MediaQuery.of(context);
+    final keyboardHeight = media.viewInsets.bottom;
+    final isKeyboardOpen = keyboardHeight > 0;
+    final isLandscape = media.orientation == Orientation.landscape;
+    // A landscape phone has ~150dp above the keyboard: drop the handle and
+    // title so the search field and some results still fit.
+    final isCompact = isKeyboardOpen && isLandscape;
+
+    // The modal sheet does not avoid the keyboard by itself, so without this
+    // padding the keyboard covered the whole sheet, search field included.
+    return Padding(
+      padding: EdgeInsets.only(bottom: keyboardHeight),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final double heightFactor =
+              isKeyboardOpen ? 1.0 : (isLandscape ? 0.9 : 0.65);
+          return SizedBox(
+            height: constraints.maxHeight * heightFactor,
+            child: _buildContent(isCompact),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildContent(bool isCompact) {
+    return Column(
+      children: [
+        if (!isCompact) ...[
           // Handle bar
           Padding(
             padding: const EdgeInsets.only(top: 12, bottom: 8),
@@ -252,72 +274,79 @@ class _LanguagePickerSheetState extends State<_LanguagePickerSheet> {
               ),
             ),
           ),
-          // Search field
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: TextField(
-              controller: _searchController,
-              autofocus: false,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                hintText: 'Search languages…',
-                hintStyle: const TextStyle(color: Colors.white38),
-                prefixIcon:
-                    const Icon(Icons.search, color: Colors.white54, size: 20),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.close,
-                            color: Colors.white54, size: 18),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-                filled: true,
-                fillColor: const Color(0xFF252540),
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
+        ] else
+          const SizedBox(height: 8),
+        // Search field
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: TextField(
+            controller: _searchController,
+            autofocus: false,
+            // Enter closes the keyboard, so a keyboard with no hide key
+            // still has a way out.
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => FocusManager.instance.primaryFocus?.unfocus(),
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: 'Search languages…',
+              hintStyle: const TextStyle(color: Colors.white38),
+              prefixIcon:
+                  const Icon(Icons.search, color: Colors.white54, size: 20),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.close,
+                          color: Colors.white54, size: 18),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
+              filled: true,
+              fillColor: const Color(0xFF252540),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
               ),
             ),
           ),
-          const Divider(color: Colors.white12, height: 1),
-          Expanded(
-            child: _filtered.isEmpty
-                ? const Center(
-                    child: Text(
-                      'No languages found',
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                  )
-                : ListView.builder(
-                    controller: scrollController,
-                    itemCount: _filtered.length,
-                    itemBuilder: (context, index) {
-                      final lang = _filtered[index];
-                      final isSelected =
-                          lang.code == widget.selectedLanguage?.code;
-                      return ListTile(
-                        leading: _FlagAvatar(iconUrl: lang.icon),
-                        title: Text(
-                          lang.displayName,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: isSelected
-                                ? FontWeight.w600
-                                : FontWeight.normal,
-                          ),
-                        ),
-                        trailing: isSelected
-                            ? const Icon(Icons.check, color: Colors.blue)
-                            : null,
-                        onTap: () => Navigator.pop(context, lang),
-                      );
-                    },
+        ),
+        const Divider(color: Colors.white12, height: 1),
+        Expanded(
+          child: _filtered.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No languages found',
+                    style: TextStyle(color: Colors.white54),
                   ),
-          ),
-        ],
-      ),
+                )
+              : ListView.builder(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  itemCount: _filtered.length,
+                  itemBuilder: (context, index) {
+                    final lang = _filtered[index];
+                    final isSelected =
+                        lang.code == widget.selectedLanguage?.code;
+                    return ListTile(
+                      leading: _FlagAvatar(iconUrl: lang.icon),
+                      title: Text(
+                        lang.displayName,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check, color: Colors.blue)
+                          : null,
+                      onTap: () => Navigator.pop(context, lang),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
