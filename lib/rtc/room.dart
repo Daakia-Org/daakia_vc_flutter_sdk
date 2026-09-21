@@ -1325,6 +1325,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
+        // System Back reaches the host app's navigator first and never the
+        // meeting's own one below, so a sheet or page opened inside the
+        // meeting (attach sheet, chat, participants...) got "Exit Meeting"
+        // instead of closing. Close the topmost of those first.
+        if (!didPop) {
+          final innerNavigator = _innerNavigatorKey.currentState;
+          if (innerNavigator != null && innerNavigator.canPop()) {
+            innerNavigator.maybePop();
+            return;
+          }
+        }
         WidgetsBinding.instance.addPostFrameCallback(
           (_) async {
             if (_isProgrammaticPop) {
@@ -1353,6 +1364,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         sdkConfiguration: widget.sdkConfiguration,
         child: MaterialApp(
           navigatorKey: _innerNavigatorKey,
+          // The meeting always handles Back: it closes its own sheet/page or
+          // asks to exit. By default this nested app told Android the
+          // framework can't handle Back once its own stack emptied (e.g.
+          // after closing chat), and the host app never corrected it, so
+          // Back skipped Flutter, closed the activity and dropped the call.
+          onNavigationNotification: (_) {
+            SystemNavigator.setFrameworkHandlesBack(true);
+            return true;
+          },
           debugShowCheckedModeBanner: false,
           theme: DaakiaSdkTheme.meeting,
           home: AnnotatedRegion<SystemUiOverlayStyle>(
