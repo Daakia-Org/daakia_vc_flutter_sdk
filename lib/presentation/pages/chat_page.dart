@@ -21,7 +21,13 @@ class ChatPage extends StatefulWidget {
   }
 }
 
-class _ChatState extends State<ChatPage> {
+class _ChatState extends State<ChatPage>
+    with AutomaticKeepAliveClientMixin {
+  // Keep the tab alive so switching chats, which now closes the keyboard,
+  // does not throw away a half-typed message.
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
@@ -43,7 +49,13 @@ class _ChatState extends State<ChatPage> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     collectLobbyEvents(widget.viewModel, context);
+    // Typing in landscape leaves ~150dp above the keyboard: trim padding so
+    // the input and some messages stay visible.
+    final media = MediaQuery.of(context);
+    final isCompact = media.orientation == Orientation.landscape &&
+        media.viewInsets.bottom > 0;
     return PopScope(
       onPopInvokedWithResult: (isPoped, dynamic) async {
         widget.viewModel.isChatOpen = false;
@@ -52,7 +64,7 @@ class _ChatState extends State<ChatPage> {
         backgroundColor: const Color(0xFF000000),
         // Use a specific color for no_video_background
         body: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          padding: EdgeInsets.symmetric(vertical: isCompact ? 4.0 : 20.0),
           child: Column(
             children: [
               if (widget.viewModel.pinnedPublicChat != null)
@@ -71,6 +83,8 @@ class _ChatState extends State<ChatPage> {
               Expanded(
                 child: ListView.builder(
                   controller: _scrollController,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   reverse: true,
                   itemCount: widget.viewModel.getMessageList().length,
                   itemBuilder: (context, index) {
@@ -123,8 +137,8 @@ class _ChatState extends State<ChatPage> {
 
               // Message Input Section
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10.0, vertical: 10.0),
+                padding: EdgeInsets.symmetric(
+                    horizontal: 10.0, vertical: isCompact ? 4.0 : 10.0),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10.0, vertical: 5.0),
@@ -160,6 +174,7 @@ class _ChatState extends State<ChatPage> {
                         child: TextField(
                           controller: messageController,
                           focusNode: _messageFocusNode,
+                          onTapOutside: Utils.dismissKeyboardOnTapOutside,
                           maxLength: Constant.maxMessageCharLimit,
                           decoration: const InputDecoration(
                             hintText: "Type here...",
