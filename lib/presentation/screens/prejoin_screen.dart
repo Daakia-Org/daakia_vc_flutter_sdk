@@ -18,6 +18,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../api/injection.dart';
 import '../../model/daakia_meeting_configuration.dart';
 import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
+import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
@@ -668,7 +669,10 @@ class _PreJoinState extends State<PreJoinScreen> {
         });
   }
 
-  void verifyHost(String email, String pin, Function stopLoading) async {
+  /// [onResult] gets null on success or the error message on failure; when
+  /// given, the error is left to the caller to show instead of a snackbar.
+  void verifyHost(String email, String pin, Function stopLoading,
+      {void Function(String? error)? onResult}) async {
     isLoading = true;
 
     Map<String, dynamic> body = {
@@ -680,6 +684,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     networkRequestHandlerWithMessage(
         apiCall: () => apiClient.verifyHostToken(body),
         onSuccess: (response) {
+          onResult?.call(null);
           if (mounted) {
             Utils.showSnackBar(context, message: response?.message ?? "");
           }
@@ -700,7 +705,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           if (_shouldSkipPreJoin) {
             _skipJoinErrorMessage = message;
           }
-          if (mounted) {
+          if (onResult != null) {
+            onResult(message);
+          } else if (mounted) {
             Utils.showSnackBar(context, message: message);
           }
           setState(() {
@@ -774,75 +781,20 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   void _showVerificationDialog(BuildContext context, Function stopLoading) {
-    final emailController = TextEditingController();
-    final pinController = TextEditingController();
-
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing by tapping outside
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Verify Email and PIN'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'Enter your email',
-                ),
-                keyboardType: TextInputType.emailAddress, // Email input only
-                textInputAction: TextInputAction.next, // Move to next field
-              ),
-              TextField(
-                controller: pinController,
-                decoration: const InputDecoration(
-                  labelText: 'PIN',
-                  hintText: 'Enter your PIN',
-                ),
-                keyboardType: TextInputType.number,
-                obscureText: true, // Hide the PIN input
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Close the dialog
-                isNeedToCancelApiCall = true;
-                stopLoading.call();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                });
-              },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                String email = emailController.text;
-                String pin = pinController.text;
-                if (!Utils.isValidEmail(email)) {
-                  Utils.showSnackBar(context,
-                      message: "Please enter your valid email");
-                  return;
-                }
-                if (pin.isEmpty) {
-                  Utils.showSnackBar(context, message: "Please enter your pin");
-                  return;
-                }
-                verifyHost(email, pin, stopLoading);
-
-                // Close the dialog
-                // Navigator.of(context).pop();
-              },
-              child: const Text('Verify'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => HostVerificationDialog(
+        onVerify: (email, pin) {
+          final result = Completer<String?>();
+          verifyHost(email, pin, stopLoading, onResult: result.complete);
+          return result.future;
+        },
+        onCancel: () {
+          isNeedToCancelApiCall = true;
+          stopLoading.call();
+        },
+      ),
     );
   }
 
