@@ -20,6 +20,7 @@ import '../../model/daakia_meeting_configuration.dart';
 import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
 import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
+import '../../presentation/dialog/media_permission_dialog.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
 import '../../service/daakia_vc_logger.dart';
@@ -1823,93 +1824,34 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<bool> checkAndRequestPermissions(BuildContext context,
       {bool checkForCamera = true, bool checkForAudio = true}) async {
-    // Check and request microphone permission
-    if (checkForAudio) {
-      if (await Permission.microphone.isDenied) {
-        // Request permission
-        PermissionStatus micStatus = await Permission.microphone.request();
-        if (micStatus.isDenied) {
-          if (context.mounted) {
-            _showPermissionDialog(context, "Microphone");
-            return false;
-          }
-        } else if (micStatus.isPermanentlyDenied) {
-          if (context.mounted) {
-            _showSettingsDialog(context, "Microphone");
-            return false;
-          }
-        }
-      }
+    if (checkForAudio &&
+        !await _ensureMediaPermission(context, MediaPermission.microphone)) {
+      return false;
     }
-
     if (checkForCamera) {
-      // Check and request camera permission
-      if (await Permission.camera.isDenied) {
-        // Request permission
-        PermissionStatus cameraStatus = await Permission.camera.request();
-        if (cameraStatus.isDenied) {
-          if (context.mounted) {
-            _showPermissionDialog(context, "Camera");
-            return false;
-          }
-        } else if (cameraStatus.isPermanentlyDenied) {
-          if (context.mounted) {
-            _showSettingsDialog(context, "Camera");
-            return false;
-          }
-        }
+      if (!context.mounted) return false;
+      if (!await _ensureMediaPermission(context, MediaPermission.camera)) {
+        return false;
       }
     }
-
-    // Return true if both permissions are granted
     return true;
   }
 
-// Show dialog if permission is temporarily denied
-  void _showPermissionDialog(BuildContext context, String permissionType) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("$permissionType Permission Required"),
-          content: Text(
-              "Please allow $permissionType permission to join the meeting."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-// Show dialog with a link to app settings if permission is permanently denied
-  void _showSettingsDialog(BuildContext context, String permissionType) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("$permissionType Permission Required"),
-          content: Text(
-              "$permissionType permission is permanently denied. Please enable it from the app settings."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                openAppSettings(); // Open the app settings
-                Navigator.of(context).pop();
-              },
-              child: const Text("Settings"),
-            ),
-          ],
-        );
-      },
-    );
+  /// Asks for [media] if needed; if it's refused, explains why it's needed and
+  /// offers to ask again or, once the system has stopped asking, to open
+  /// Settings. Resolves to whether the permission is granted in the end.
+  Future<bool> _ensureMediaPermission(
+      BuildContext context, MediaPermission media) async {
+    var status = await media.permission.status;
+    // Permanently denied reports isDenied == false, so check it explicitly:
+    // otherwise the toggle would switch on without the permission.
+    if (!status.isPermanentlyDenied && !status.isGranted && !status.isLimited) {
+      status = await media.permission.request();
+    }
+    if (status.isGranted || status.isLimited) return true;
+    if (!context.mounted) return false;
+    return showMediaPermissionDialog(context, media,
+        permanentlyDenied: status.isPermanentlyDenied);
   }
 
   Future<void> checkMeetingType(Function stopLoading) async {
