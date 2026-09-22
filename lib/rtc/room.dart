@@ -25,6 +25,7 @@ import 'package:daakia_vc_flutter_sdk/theme/daakia_sdk_theme.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_disconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_reconnect_logger.dart';
+import 'package:daakia_vc_flutter_sdk/service/daakia_vc_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_provider.dart';
@@ -262,6 +263,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // window (~44s across 10 attempts) plus per-attempt connection timeouts.
   Timer? _reconnectFallbackTimer;
 
+  // When the last reconnect attempt started. A DUPLICATE_IDENTITY disconnect
+  // that lands during or shortly after a reconnect is almost always this
+  // device kicking itself, not a join from another device: a reconnect
+  // attempt that timed out on our side can still complete on the server, and
+  // the server's kick for that stale session reaches this client and ends the
+  // healthy one. See _onDuplicateIdentity.
+  DateTime? _lastReconnectAttemptAt;
+  static const _selfKickWindow = Duration(seconds: 60);
+
   // Set by the first RoomDisconnectedEvent; later ones are only logged.
   bool _disconnectHandled = false;
 
@@ -269,6 +279,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   double _zoomScale = 1.0;
 
   void onReconnectStart() {
+    _lastReconnectAttemptAt = DateTime.now();
     // Already showing (or about to show) the banner for this outage.
     if (_isReconnecting || _reconnectShowDelayTimer != null) return;
 
@@ -465,10 +476,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             break;
           }
         case DisconnectReason.duplicateIdentity:
-          {
-            _showDuplicateIdentityDialog();
-            break;
-          }
+          _onDuplicateIdentity();
+          break;
         case DisconnectReason.roomDeleted:
           {
             showSnackBar(message: "Meeting ended");
@@ -1930,16 +1939,45 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  void _showDuplicateIdentityDialog() {
+  /// Tells a real second-device join apart from this device kicking itself
+  /// during a reconnect (see [_lastReconnectAttemptAt]). The meeting has ended
+  /// here either way; only the explanation differs.
+  void _onDuplicateIdentity() {
+    final lastAttempt = _lastReconnectAttemptAt;
+    final sinceReconnect =
+        lastAttempt == null ? null : DateTime.now().difference(lastAttempt);
+    if (sinceReconnect == null || sinceReconnect > _selfKickWindow) {
+      debugPrint('[Livekit] - DUPLICATE_IDENTITY: another device '
+          '(last reconnect attempt: '
+          '${sinceReconnect == null ? 'none' : '${sinceReconnect.inSeconds}s ago'})');
+      _showDuplicateIdentityDialog();
+      return;
+    }
+    debugPrint('[Livekit] - DUPLICATE_IDENTITY: connection drop '
+        '(last reconnect attempt: ${sinceReconnect.inSeconds}s ago)');
+    DaakiaVcLogger.logInfo(
+      'DUPLICATE_IDENTITY during reconnect, treated as a connection drop',
+      attributes: {
+        'meetingId': widget.meetingDetails.meetingUid,
+        'secondsSinceReconnectAttempt': sinceReconnect.inSeconds,
+      },
+    );
+    _showDuplicateIdentityDialog(connectionDropped: true);
+  }
+
+  void _showDuplicateIdentityDialog({bool connectionDropped = false}) {
+    void onLeave(BuildContext dialogCtx) {
+      Navigator.of(dialogCtx).pop();
+      closeMeetingProgrammatically(context);
+    }
+
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogCtx) => DuplicateIdentityDialog(
-        onLeave: () {
-          Navigator.of(dialogCtx).pop();
-          closeMeetingProgrammatically(context);
-        },
-      ),
+      builder: (dialogCtx) => connectionDropped
+          ? DuplicateIdentityDialog.connectionDropped(
+              onLeave: () => onLeave(dialogCtx))
+          : DuplicateIdentityDialog(onLeave: () => onLeave(dialogCtx)),
     );
   }
 
