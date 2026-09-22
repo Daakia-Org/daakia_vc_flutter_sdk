@@ -262,6 +262,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // window (~44s across 10 attempts) plus per-attempt connection timeouts.
   Timer? _reconnectFallbackTimer;
 
+  // Set by the first RoomDisconnectedEvent; later ones are only logged.
+  bool _disconnectHandled = false;
+
   late final TransformationController _zoomController;
   double _zoomScale = 1.0;
 
@@ -439,6 +442,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           meetingId: widget.meetingDetails.meetingUid,
           room: widget.room,
           reason: event.reason?.name);
+      // LiveKit can report more than one disconnect for the same ending: a
+      // kick during a reconnect is followed by joinFailure from the rejoin
+      // still in flight. Handling it again would replace the message the user
+      // just got and schedule a second pop, which can close the host app's
+      // screen underneath the meeting.
+      if (_disconnectHandled) return;
+      _disconnectHandled = true;
       _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
       clearMemory(_livekitProviderKey.currentState?.viewModel);
       switch (event.reason) {
