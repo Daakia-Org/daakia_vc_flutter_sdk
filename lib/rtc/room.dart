@@ -426,6 +426,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // unreachable — any unexpected disconnect (network drop, server kill
       // without a reason) would leave the page open and the service running.
       _resetReconnectUiState();
+      // The "Reconnecting…" banner is drawn over the notification overlay, so
+      // leaving it up would hide the disconnect message shown below.
+      if (mounted && (_isReconnecting || _isConnected)) {
+        setState(() {
+          _isReconnecting = false;
+          _isConnected = false;
+        });
+      }
       _isProgrammaticPop = true;
       DatadogDisconnectLogger.logDisconnectEvent(
           meetingId: widget.meetingDetails.meetingUid,
