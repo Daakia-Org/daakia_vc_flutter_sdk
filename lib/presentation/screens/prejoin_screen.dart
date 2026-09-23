@@ -67,7 +67,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   var _obscurePassword = true;
 
   static const _defaultAlertMessage =
-      'Check your camera and microphone before you join.';
+      'Check your camera and mic before you join.';
 
   var alertMessage = _defaultAlertMessage;
   var isRejected = false;
@@ -80,6 +80,11 @@ class _PreJoinState extends State<PreJoinScreen> {
   var _isCoHostVerified = false;
 
   TextEditingController? _nameController;
+  // Rotation swaps the portrait/landscape trees and remounts the fields, so
+  // they need controllers to keep what was typed in sync with [password] /
+  // [_guestEmail].
+  final _passwordController = TextEditingController();
+  final _guestEmailController = TextEditingController();
   bool _isNameEditable = true;
   bool _autoJoinStarted = false;
   String _skipJoinErrorMessage = "";
@@ -1231,7 +1236,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Widget _buildPortraitBody() {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 560),
@@ -1245,7 +1250,7 @@ class _PreJoinState extends State<PreJoinScreen> {
                 ),
               ),
               ..._buildStatusBanners(),
-              const SizedBox(height: 24),
+              const SizedBox(height: 32),
               _buildJoinForm(),
             ],
           ),
@@ -1258,7 +1263,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   /// without scrolling, which a stacked layout can't manage in ~360dp height.
   Widget _buildLandscapeBody() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1268,7 +1273,10 @@ class _PreJoinState extends State<PreJoinScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Expanded(child: _buildPreview()),
-                ..._buildStatusBanners(),
+                // With the keyboard up there's no room for both: the banner
+                // squeezes the preview until its placeholder overflows.
+                if (MediaQuery.viewInsetsOf(context).bottom == 0)
+                  ..._buildStatusBanners(),
               ],
             ),
           ),
@@ -1445,7 +1453,7 @@ class _PreJoinState extends State<PreJoinScreen> {
   List<Widget> _buildStatusBanners() {
     return [
       if (_hostMediaRestrictionMessage != null) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         _StatusBanner(
           icon: Icons.lock_outline_rounded,
           message: _hostMediaRestrictionMessage!,
@@ -1454,7 +1462,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       // "Check your camera and mic" is pointless advice when the host is the
       // one holding them off, so it's hidden until the API sends a real message.
       if (!_isDefaultAlertSuppressed && alertMessage.trim().isNotEmpty) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 16),
         _StatusBanner(
           icon: Icons.info_outline_rounded,
           message: alertMessage,
@@ -1490,6 +1498,7 @@ class _PreJoinState extends State<PreJoinScreen> {
       children: [
         const Text(
           'Ready to join?',
+          textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.black87,
             fontSize: 22,
@@ -1497,13 +1506,14 @@ class _PreJoinState extends State<PreJoinScreen> {
           ),
         ),
         if (widget.isHost) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           const Text(
             "You're joining as the host",
+            textAlign: TextAlign.center,
             style: TextStyle(color: Colors.black54, fontSize: 14),
           ),
         ],
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
         TextFormField(
           controller: _nameController ?? TextEditingController(),
           decoration: _fieldDecoration(
@@ -1531,6 +1541,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         if (showPassword) ...[
           const SizedBox(height: 12),
           TextFormField(
+            controller: _passwordController,
             decoration: _fieldDecoration(
               label: 'Meeting password',
               icon: Icons.lock_outline_rounded,
@@ -1562,6 +1573,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         if (showGuestEmail) ...[
           const SizedBox(height: 12),
           TextFormField(
+            controller: _guestEmailController,
             decoration: _fieldDecoration(
               label: 'Email',
               icon: Icons.mail_outline_rounded,
@@ -1740,8 +1752,10 @@ class _PreJoinState extends State<PreJoinScreen> {
       lobbyRequestId = "";
       if (_joinAsGuest) {
         password = "";
+        _passwordController.clear();
       } else {
         _guestEmail = "";
+        _guestEmailController.clear();
         _participantEmail = null;
       }
     });
@@ -1833,6 +1847,8 @@ class _PreJoinState extends State<PreJoinScreen> {
     _subscription?.cancel();
     _participantTimer?.cancel();
     _nameController?.dispose();
+    _passwordController.dispose();
+    _guestEmailController.dispose();
     // Leaving this screen without joining must release the camera and mic —
     // otherwise the device's in-use indicator stays lit after the user backs
     // out, which reads as the SDK spying on them. On the join path these were
@@ -2282,23 +2298,28 @@ class _StatusBanner extends StatelessWidget {
             : Colors.black.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: color),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              message,
-              style: TextStyle(
-                color: emphasized ? themeColor : Colors.black87,
-                fontSize: 13.5,
-                height: 1.35,
-                fontWeight: emphasized ? FontWeight.w500 : FontWeight.normal,
+      // Icon rides inline with the text so a wrapped message stays centred
+      // as one block instead of leaving the icon stranded top-left.
+      child: Text.rich(
+        TextSpan(
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(icon, size: 18, color: color),
               ),
             ),
-          ),
-        ],
+            TextSpan(text: message),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: emphasized ? themeColor : Colors.black87,
+          fontSize: 13.5,
+          height: 1.35,
+          fontWeight: emphasized ? FontWeight.w500 : FontWeight.normal,
+        ),
       ),
     );
   }
