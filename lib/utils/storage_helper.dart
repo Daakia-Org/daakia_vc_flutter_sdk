@@ -1,6 +1,7 @@
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class StorageHelper {
   static const _prefix = "daakia_vc_flutter_sdk."; // Unique prefix for SDK keys
@@ -15,9 +16,15 @@ class StorageHelper {
     return prefs.getString("$_prefix$key");
   }
 
+  /// Wipes the SDK's stored state, except [Constant.deviceId]: that one
+  /// identifies the install, not the meeting, and rotating it would make this
+  /// device look like a new one to the duplicate-device checks.
   Future<void> clearSdkData() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix)).toList();
+    final keys = prefs
+        .getKeys()
+        .where((k) => k.startsWith(_prefix) && k != "$_prefix${Constant.deviceId}")
+        .toList();
     for (final key in keys) {
       await prefs.remove(key);
     }
@@ -50,4 +57,16 @@ class StorageHelper {
 
   Future<void> setGuestUserName(String? value) async => await saveData(Constant.guestUserName, value ?? "");
   Future<String?> getGuestUserName() async => await getData(Constant.guestUserName);
+
+  /// Fallback device id for platforms where DeviceIdProvider can't get one
+  /// (an emulator with no ANDROID_ID, a simulator). A random id for this
+  /// install, created on first use and kept until the app is reinstalled or
+  /// its data cleared.
+  Future<String> getOrCreateDeviceId() async {
+    final existing = await getData(Constant.deviceId);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final id = const Uuid().v4();
+    await saveData(Constant.deviceId, id);
+    return id;
+  }
 }
