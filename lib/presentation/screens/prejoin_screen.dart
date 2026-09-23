@@ -1372,13 +1372,36 @@ class _PreJoinState extends State<PreJoinScreen> {
     );
   }
 
+  /// The same `user_avatar` the meeting tiles read back out of participant
+  /// metadata (see [Utils.extractUserAvatar]); the host app supplies it via
+  /// [DaakiaMeetingConfiguration.metadata].
+  String? get _userAvatarUrl {
+    final value = widget.configuration?.metadata?['user_avatar'];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
+
   Widget _buildCameraOffPlaceholder() {
     final trimmed = name.trim();
+    final avatarUrl = _userAvatarUrl;
     return LayoutBuilder(
       builder: (context, constraints) {
         // Shrinks with the preview (e.g. landscape with the keyboard up).
         final avatar = (constraints.maxHeight * 0.34).clamp(40.0, 96.0);
         final showCaption = constraints.maxHeight > 150;
+        final Widget fallback = trimmed.isEmpty
+            ? Icon(
+                Icons.person_rounded,
+                color: Colors.white,
+                size: avatar * 0.55,
+              )
+            : Text(
+                Utils.getInitials(trimmed),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: avatar * 0.36,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
         return Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -1386,23 +1409,23 @@ class _PreJoinState extends State<PreJoinScreen> {
               width: avatar,
               height: avatar,
               alignment: Alignment.center,
+              clipBehavior: Clip.antiAlias,
               decoration: const BoxDecoration(
                 color: themeColor,
                 shape: BoxShape.circle,
               ),
-              child: trimmed.isEmpty
-                  ? Icon(
-                      Icons.person_rounded,
-                      color: Colors.white,
-                      size: avatar * 0.55,
-                    )
-                  : Text(
-                      Utils.getInitials(trimmed),
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: avatar * 0.36,
-                        fontWeight: FontWeight.w600,
-                      ),
+              child: avatarUrl == null
+                  ? fallback
+                  : Image.network(
+                      avatarUrl,
+                      width: avatar,
+                      height: avatar,
+                      fit: BoxFit.cover,
+                      // Initials until the image arrives, and for good if it
+                      // fails, so the circle is never blank.
+                      frameBuilder: (_, child, frame, wasSync) =>
+                          wasSync || frame != null ? child : fallback,
+                      errorBuilder: (_, _, _) => fallback,
                     ),
             ),
             if (showCaption) ...[
