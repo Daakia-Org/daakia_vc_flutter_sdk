@@ -41,6 +41,7 @@ import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
+import '../utils/meeting_end_time.dart';
 
 class RtcViewmodel extends ChangeNotifier {
   final List<RemoteActivityData> _messageList = [];
@@ -1569,7 +1570,18 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  void meetingTimeExtend() {
+  /// Adds [Constant.meetingExtendTime] minutes to the meeting, once.
+  ///
+  /// [onExtended] runs only after the backend accepts, so a rejected extend
+  /// (already used, expired token) leaves this client on the same clock as
+  /// everyone else instead of quietly running long. The backend owns the
+  /// "can only be extended once" rule; its message is surfaced as-is — handed
+  /// to [onFailed] when the caller has somewhere of its own to show it, or as a
+  /// room notice otherwise.
+  void meetingTimeExtend({
+    VoidCallback? onExtended,
+    ValueChanged<String>? onFailed,
+  }) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
       "is_extend_time": true,
@@ -1577,23 +1589,135 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
         apiCall: () => apiClient.meetingTimeExtend(
             meetingDetails.authorizationToken, selfIdentity, body),
-        onSuccess: (_) => sendAction(
-            ActionModel(action: MeetingActions.extendMeetingEndTime)));
+        onSuccess: (_) {
+          sendAction(ActionModel(action: MeetingActions.extendMeetingEndTime));
+          onExtended?.call();
+        },
+        onError: (message) {
+          if (onFailed != null) {
+            onFailed(message);
+          } else {
+            sendMessageToUI(message);
+          }
+        });
   }
 
+  /// Whether this meeting can be extended past its scheduled end (a "SaaS"
+  /// meeting, in web's terms).
+  ///
+  /// A property of the meeting, not of the local user: every client needs the
+  /// same answer so they all run the same warning schedule. Which single
+  /// participant is offered the extend prompt is decided separately, by
+  /// [isMeetingExtendLeader].
   bool isAutoMeetingEndEnable() {
-    if (isHost() &&
-        meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
-            1) {
-      return true;
-    }
-    return false;
+    return meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
+        1;
   }
 
+  /// Whether the meeting is actually closed when its scheduled time runs out:
+  /// extendable (SaaS) meetings and basic-plan meetings. Every other meeting
+  /// stays open past its end, so it must not be shown a countdown to zero.
+  bool meetingClosesAtScheduledEnd() {
+    return isAutoMeetingEndEnable() ||
+        meetingDetails.features?.isBasicPlan() == true;
+  }
+
+  /// Picks the one participant who gets the "extend meeting" prompt.
+  ///
+  /// Every client runs this against the same roster and reaches the same
+  /// answer, so no signalling is needed to agree — and only one person can
+  /// press Extend, so nobody double-extends or assumes someone else did it.
+  ///
+  ///   host present  -> the host
+  ///   no host       -> the earliest-joined co-host
+  ///
+  /// If that co-host leaves, the next tick elects the next earliest one.
+  ///
+  /// Caveat, same as web: there is no backend record of *when* someone became
+  /// a co-host, only their current role. A co-host who reconnects gets a fresh
+  /// join time and can hand the prompt to someone else mid-meeting.
+  bool isMeetingExtendLeader() {
+    final local = room.localParticipant;
+    if (local == null) return false;
+    if (!isHost() && !isCoHost()) return false;
+
+    final roster = <Participant>[local, ...room.remoteParticipants.values];
+    // A host anywhere in the room outranks every co-host.
+    final hosts = roster.where((p) => Utils.isHost(p.metadata)).toList();
+    final candidates = hosts.isNotEmpty
+        ? hosts
+        : roster.where((p) => Utils.isCoHost(p.metadata)).toList();
+    if (candidates.isEmpty) return false;
+
+    candidates.sort((a, b) {
+      final byJoin = a.joinedAt.compareTo(b.joinedAt);
+      // joinedAt has second granularity, so two moderators admitted together
+      // can tie; identity breaks it the same way on every client.
+      return byJoin != 0 ? byJoin : a.identity.compareTo(b.identity);
+    });
+    return candidates.first.identity == local.identity;
+  }
+
+  //===============================[End Meeting Warning Sound]===============================
+
+  // Defaults on so the warning is audible if the host-control fetch fails.
+  bool _isNotificationSoundEnabled = true;
+
+  /// Whether the end-of-meeting warning chime is switched on for this meeting.
+  /// Read from `getHostControls()` on join, then kept live by
+  /// [MeetingActions.notificationSoundSetting] broadcasts.
+  bool get isNotificationSoundEnabled => _isNotificationSoundEnabled;
+
+  set isNotificationSoundEnabled(bool value) {
+    if (_isNotificationSoundEnabled == value) return;
+    _isNotificationSoundEnabled = value;
+    notifyListeners();
+  }
+
+  /// Only moderators hear the warning chime — participants get the on-screen
+  /// message but no sound.
+  bool shouldPlayMeetingEndSound() =>
+      _isNotificationSoundEnabled && (isHost() || isCoHost());
+
+  /// Persists the toggle, then tells the room so nobody is left acting on a
+  /// value they read at join time.
+  void updateNotificationSoundConsent(bool value) {
+    final previous = _isNotificationSoundEnabled;
+    isNotificationSoundEnabled = value;
+
+    Map<String, dynamic> body = {
+      "meeting_id": meetingDetails.meetingUid,
+      "permission_granted": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.updateNotificationSoundConsent(
+          meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (_) {
+        // The accepted value is the one we sent; the response body carries no
+        // echo of it, so don't try to read one back.
+        sendAction(ActionModel(
+          action: MeetingActions.notificationSoundSetting,
+          value: value,
+        ));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isNotificationSoundEnabled = previous;
+      },
+    );
+  }
+
+  /// When the meeting really ends, extension included, as a UTC ISO string.
+  ///
+  /// Neither backend field works alone: `end_date` is honest UTC but ignores
+  /// extensions, while `auto_meeting_end_schedule` includes them but is local
+  /// wall-clock time mislabelled with a `Z`. [MeetingEndTime] reconciles the
+  /// two.
   String? getMeetingEndDate() {
-    return meetingDetails
-            .meetingBasicDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        meetingDetails.meetingBasicDetails?.endDate;
+    return MeetingEndTime.from(meetingDetails.meetingBasicDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void getWhiteboardData() {
@@ -2367,6 +2491,7 @@ class RtcViewmodel extends ChangeNotifier {
         isAudioModeEnable = data.audioPermission;
         isAudioPermissionEnable = !data.audioPermission;
         isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isNotificationSoundEnabled = data.notificationSoundEnabled;
         isParticipantDrawerHidden = !data.participantDrawer;
         isScreenShareEnable = data.screenSharePermissionGranted;
         isVideoModeEnable = data.videoPermission;

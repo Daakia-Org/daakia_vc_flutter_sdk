@@ -5,7 +5,6 @@ import 'package:example/screen/configuration_screen.dart';
 import 'package:example/utils/animate_logo.dart';
 import 'package:example/utils/theme_color.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 void main() {
   runApp(const MyApp());

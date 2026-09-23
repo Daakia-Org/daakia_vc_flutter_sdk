@@ -148,6 +148,34 @@ class WebinarControls extends StatelessWidget {
 
               const Divider(color: Colors.white),
 
+              // Notification Settings
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                child: Text(
+                  'Notification Settings',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+
+              // End Meeting Sound
+              HostControlSwitch(
+                title: 'End meeting sound',
+                subtitle:
+                    'If turned ON, hosts and co-hosts hear a chime when the meeting is about to end. Everyone still sees the on-screen warning.',
+                value: viewModel.isNotificationSoundEnabled,
+                onChanged: (value) {
+                  viewModel.updateNotificationSoundConsent(value);
+                },
+                isDividerRequired: false,
+              ),
+
+              const Divider(color: Colors.white),
+
               // Screen Share Annotation
               HostControlSwitch(
                 title: 'Allow Annotation',

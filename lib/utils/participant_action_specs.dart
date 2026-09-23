@@ -394,40 +394,96 @@ List<ParticipantActionSpec> buildRaisedHandBulkActionSpecs({
 void showParticipantRenameDialog(
   BuildContext context,
   Participant participant,
-  RtcViewmodel viewModel,
-) {
-  final controller = TextEditingController(text: participant.name);
+  RtcViewmodel viewModel, {
+  String title = 'Rename',
+}) {
   showDialog(
     context: context,
-    builder: (dialogCtx) => AlertDialog(
-      // Keyboard + landscape can leave less height than the dialog needs.
+    builder: (_) => _RenameDialog(
+      title: title,
+      initialName: participant.name,
+      onSave: (newName) => viewModel.updateParticipantName(
+          participant: participant.identity, newName: newName),
+    ),
+  );
+}
+
+class _RenameDialog extends StatefulWidget {
+  final String title;
+  final String initialName;
+  final ValueChanged<String> onSave;
+
+  const _RenameDialog({
+    required this.title,
+    required this.initialName,
+    required this.onSave,
+  });
+
+  @override
+  State<_RenameDialog> createState() => _RenameDialogState();
+}
+
+class _RenameDialogState extends State<_RenameDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialName);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    final newName = _controller.text.trim();
+    if (newName.isNotEmpty) widget.onSave(newName);
+    Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Landscape leaves ~150dp above the keyboard, and the dialog scrolled the
+    // field out of view, so you typed blind. Tighten it to field + buttons.
+    // Only paddings change and the title is hidden rather than removed: a
+    // changed tree would rebuild the field, drop focus and close the keyboard.
+    final media = MediaQuery.of(context);
+    final isCompact = media.orientation == Orientation.landscape &&
+        media.viewInsets.bottom > 0;
+
+    return AlertDialog(
       scrollable: true,
-      title: const Text('Rename'),
+      insetPadding: isCompact
+          ? const EdgeInsets.symmetric(horizontal: 40, vertical: 8)
+          : null,
+      titlePadding: isCompact ? EdgeInsets.zero : null,
+      contentPadding:
+          isCompact ? const EdgeInsets.fromLTRB(24, 8, 24, 0) : null,
+      actionsPadding:
+          isCompact ? const EdgeInsets.fromLTRB(16, 0, 16, 4) : null,
+      title: Visibility(visible: !isCompact, child: Text(widget.title)),
       content: TextField(
-        controller: controller,
+        controller: _controller,
         autofocus: true,
+        onTapOutside: Utils.dismissKeyboardOnTapOutside,
         textCapitalization: TextCapitalization.words,
-        decoration: const InputDecoration(labelText: 'Enter new name'),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (_) => _save(),
+        decoration: InputDecoration(
+          labelText: 'Enter new name',
+          isDense: isCompact,
+        ),
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(dialogCtx),
+          onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
         TextButton(
-          onPressed: () {
-            final newName = controller.text.trim();
-            if (newName.isNotEmpty) {
-              viewModel.updateParticipantName(
-                  participant: participant.identity, newName: newName);
-            }
-            Navigator.pop(dialogCtx);
-          },
+          onPressed: _save,
           child: const Text('Save'),
         ),
       ],
-    ),
-  );
+    );
+  }
 }
 
 /// Shared "Remove from call" confirmation, used by every surface that

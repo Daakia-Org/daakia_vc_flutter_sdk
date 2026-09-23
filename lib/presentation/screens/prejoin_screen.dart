@@ -7,6 +7,7 @@ import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
+import 'package:daakia_vc_flutter_sdk/utils/device_id_provider.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +26,7 @@ import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
 import '../../service/daakia_vc_logger.dart';
 import '../../utils/join_failure.dart';
+import '../../utils/meeting_end_time.dart';
 import '../../utils/name_input_formatter.dart';
 import '../../utils/utils.dart';
 
@@ -122,10 +124,10 @@ class _PreJoinState extends State<PreJoinScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await verifyCoHost();
       if (!mounted) return;
+      // Prejoin only asks isMeetingEnded(); the warning schedule belongs to the
+      // meeting screen, so no scheduler is started here.
       meetingManager = MeetingManager(
-          endDate: getMeetingEndDate(),
-          endMeetingCallBack: (event) {},
-          context: context);
+          endDate: getMeetingEndDate(), endMeetingCallBack: (event) {});
       // Awaited: skip-prejoin joins straight away, and joining with the mic on
       // is exactly what the host controls are supposed to prevent.
       await _fetchHostMediaRestrictions();
@@ -367,9 +369,13 @@ class _PreJoinState extends State<PreJoinScreen> {
     return resolvedName;
   }
 
+  /// See `RtcViewmodel.getMeetingEndDate`. The extension must be included:
+  /// reading only `end_date`, which the extend API never moves, told anyone
+  /// rejoining an extended meeting that it had already ended.
   String? getMeetingEndDate() {
-    return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        widget.basicMeetingDetails?.endDate;
+    return MeetingEndTime.from(widget.basicMeetingDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void _loadDevices(List<MediaDevice> devices,
@@ -477,6 +483,16 @@ class _PreJoinState extends State<PreJoinScreen> {
     final Map<String, dynamic> customMetadata =
         Map<String, dynamic>.from(widget.configuration?.metadata ?? {});
     customMetadata["client_platform"] = Utils.getClientPlatform();
+    // Identifies the device, so the backend can tell this device's own
+    // leftover session apart from a real second device (the duplicate-device
+    // checks). Hashed, never the raw platform id: this metadata becomes the
+    // LiveKit participant metadata, which every participant in the room can
+    // read. A host app that already has its own device id can pass it in
+    // metadata and keep it.
+    final metadataDeviceId = customMetadata["device_id"];
+    if (metadataDeviceId == null || "$metadataDeviceId".trim().isEmpty) {
+      customMetadata["device_id"] = await DeviceIdProvider.get();
+    }
     if (_joinAsGuest && _isGuestModeAvailable) {
       body["email"] = _participantEmail;
       body["is_guest"] = true;
@@ -1539,6 +1555,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         const SizedBox(height: 24),
         TextFormField(
           controller: _nameController ?? TextEditingController(),
+          onTapOutside: Utils.dismissKeyboardOnTapOutside,
           decoration: _fieldDecoration(
             label: 'Your name',
             icon: Icons.person_outline_rounded,
@@ -1565,6 +1582,7 @@ class _PreJoinState extends State<PreJoinScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _passwordController,
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
             decoration: _fieldDecoration(
               label: 'Meeting password',
               icon: Icons.lock_outline_rounded,
@@ -1597,6 +1615,7 @@ class _PreJoinState extends State<PreJoinScreen> {
           const SizedBox(height: 12),
           TextFormField(
             controller: _guestEmailController,
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
             decoration: _fieldDecoration(
               label: 'Email',
               icon: Icons.mail_outline_rounded,
