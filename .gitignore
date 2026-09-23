@@ -95,3 +95,6 @@ CLAUDE.md
 graphify-out
 
 sentry.properties
+
+# Local test harness (not part of the SDK)
+scripts/test_duplicate_identity.sh

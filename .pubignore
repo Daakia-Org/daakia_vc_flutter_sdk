@@ -12,3 +12,6 @@ example/linux/flutter/generated_plugins.cmake
 example/windows/flutter/generated_plugin_registrant.cc
 example/windows/flutter/generated_plugin_registrant.h
 example/windows/flutter/generated_plugins.cmake
+
+# Local test harness (not part of the SDK)
+scripts/test_duplicate_identity.sh
