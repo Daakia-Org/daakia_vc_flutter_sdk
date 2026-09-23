@@ -7,6 +7,7 @@ import android.os.Environment
 import android.os.Handler
 import android.os.Looper
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.annotation.RequiresApi
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
@@ -69,6 +70,21 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 val showMuteButton = call.argument<Boolean>("showMuteButton") ?: false
                 DaakiaMeetingService.update(context, isMuted, showMuteButton)
                 result.success(null)
+            }
+            "getDeviceId" -> {
+                // ANDROID_ID: unique per device + app signing key + user, and it
+                // survives a reinstall. Used only to tell this device's own
+                // session apart from another device's; the Dart side hashes it
+                // before it ever leaves the app.
+                val androidId = try {
+                    Settings.Secure.getString(
+                        context.contentResolver,
+                        Settings.Secure.ANDROID_ID
+                    )
+                } catch (e: Exception) {
+                    null
+                }
+                result.success(androidId)
             }
             "saveFileToDownloads" -> {
                 val sourcePath = call.argument<String>("sourcePath")
