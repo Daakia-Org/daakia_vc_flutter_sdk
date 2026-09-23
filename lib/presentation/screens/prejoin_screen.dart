@@ -7,6 +7,7 @@ import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
+import 'package:daakia_vc_flutter_sdk/utils/device_id_provider.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -476,6 +477,16 @@ class _PreJoinState extends State<PreJoinScreen> {
     final Map<String, dynamic> customMetadata =
         Map<String, dynamic>.from(widget.configuration?.metadata ?? {});
     customMetadata["client_platform"] = Utils.getClientPlatform();
+    // Identifies the device, so the backend can tell this device's own
+    // leftover session apart from a real second device (the duplicate-device
+    // checks). Hashed, never the raw platform id: this metadata becomes the
+    // LiveKit participant metadata, which every participant in the room can
+    // read. A host app that already has its own device id can pass it in
+    // metadata and keep it.
+    final metadataDeviceId = customMetadata["device_id"];
+    if (metadataDeviceId == null || "$metadataDeviceId".trim().isEmpty) {
+      customMetadata["device_id"] = await DeviceIdProvider.get();
+    }
     if (_joinAsGuest && _isGuestModeAvailable) {
       body["email"] = _participantEmail;
       body["is_guest"] = true;
