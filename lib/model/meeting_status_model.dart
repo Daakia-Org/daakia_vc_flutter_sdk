@@ -19,11 +19,17 @@ class ActiveMeetingItem {
   String? name;
   String? platform;
 
-  ActiveMeetingItem({this.meetingUid, this.name, this.platform});
+  /// The `device_id` the session joined with (from its join metadata). Null
+  /// for sessions that joined before the SDK started sending one.
+  String? deviceId;
+
+  ActiveMeetingItem(
+      {this.meetingUid, this.name, this.platform, this.deviceId});
 
   ActiveMeetingItem.fromJson(Map<String, dynamic> json) {
     meetingUid = json['meeting_uid'];
     name = json['name'];
     platform = json['platform'];
+    deviceId = json['device_id'];
   }
 }
