@@ -18,6 +18,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../api/injection.dart';
 import '../../model/daakia_meeting_configuration.dart';
+import '../../model/meeting_status_model.dart';
 import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
 import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
@@ -489,10 +490,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     // LiveKit participant metadata, which every participant in the room can
     // read. A host app that already has its own device id can pass it in
     // metadata and keep it.
-    final metadataDeviceId = customMetadata["device_id"];
-    if (metadataDeviceId == null || "$metadataDeviceId".trim().isEmpty) {
-      customMetadata["device_id"] = await DeviceIdProvider.get();
-    }
+    customMetadata["device_id"] = await _resolveDeviceId();
     if (_joinAsGuest && _isGuestModeAvailable) {
       body["email"] = _participantEmail;
       body["is_guest"] = true;
@@ -1923,19 +1921,42 @@ class _PreJoinState extends State<PreJoinScreen> {
     }
     networkRequestHandler(
       apiCall: () => apiClient.getMeetingStatus(token, widget.meetingId),
-      onSuccess: (data) {
-        if (data?.inMeeting == true) {
-          final otherPlatform = data?.meetings?.isNotEmpty == true
-              ? data!.meetings!.first.platform
-              : null;
-          _showDuplicateDeviceSheet(stopLoading, onProceed,
-              otherPlatform: otherPlatform);
-        } else {
+      onSuccess: (data) async {
+        if (data?.inMeeting != true) {
           onProceed();
+          return;
         }
+        // A session carrying this device's own id is this device's leftover
+        // one (e.g. after a crash or a dropped connection) that the server
+        // hasn't cleared yet, not a second device, so don't ask. Joining again
+        // replaces it. Sessions without a device_id (older SDKs, web) still
+        // count as another device.
+        final deviceId = await _resolveDeviceId();
+        final otherDevices = (data?.meetings ?? const <ActiveMeetingItem>[])
+            .where((m) => m.deviceId != deviceId)
+            .toList();
+        if (!mounted) return;
+        if (data?.meetings?.isNotEmpty == true && otherDevices.isEmpty) {
+          onProceed();
+          return;
+        }
+        _showDuplicateDeviceSheet(stopLoading, onProceed,
+            otherPlatform:
+                otherDevices.isNotEmpty ? otherDevices.first.platform : null);
       },
       onError: (_) => onProceed(),
     );
+  }
+
+  /// The device id sent as `device_id` in the join metadata, and compared
+  /// against meetingStatus: the host app's own one from configuration
+  /// metadata when it passes one, otherwise [DeviceIdProvider]'s.
+  Future<String> _resolveDeviceId() async {
+    final configured = widget.configuration?.metadata?["device_id"];
+    if (configured != null && "$configured".trim().isNotEmpty) {
+      return "$configured";
+    }
+    return DeviceIdProvider.get();
   }
 
   void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed,
