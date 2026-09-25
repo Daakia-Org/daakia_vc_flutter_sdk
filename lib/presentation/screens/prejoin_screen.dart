@@ -489,10 +489,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     // LiveKit participant metadata, which every participant in the room can
     // read. A host app that already has its own device id can pass it in
     // metadata and keep it.
-    final metadataDeviceId = customMetadata["device_id"];
-    if (metadataDeviceId == null || "$metadataDeviceId".trim().isEmpty) {
-      customMetadata["device_id"] = await DeviceIdProvider.get();
-    }
+    customMetadata["device_id"] = await _resolveDeviceId();
     if (_joinAsGuest && _isGuestModeAvailable) {
       body["email"] = _participantEmail;
       body["is_guest"] = true;
@@ -1936,6 +1933,17 @@ class _PreJoinState extends State<PreJoinScreen> {
       },
       onError: (_) => onProceed(),
     );
+  }
+
+  /// The device id sent as `device_id` in the join metadata, and compared
+  /// against meetingStatus: the host app's own one from configuration
+  /// metadata when it passes one, otherwise [DeviceIdProvider]'s.
+  Future<String> _resolveDeviceId() async {
+    final configured = widget.configuration?.metadata?["device_id"];
+    if (configured != null && "$configured".trim().isNotEmpty) {
+      return "$configured";
+    }
+    return DeviceIdProvider.get();
   }
 
   void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed,
