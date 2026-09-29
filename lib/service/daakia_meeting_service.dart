@@ -12,6 +12,13 @@ class DaakiaMeetingService {
   static bool _showMuteButton = false;
   static bool _isMuted = false;
 
+  // Bumped by every start() and stop(). start() awaits the notification
+  // permission check before reaching native code; if the meeting closes in
+  // that window, stop() runs first and finds nothing to stop — so start()
+  // re-checks this afterwards and bails instead of launching an orphaned
+  // service for a meeting that no longer exists.
+  static int _session = 0;
+
   // Callbacks wired up by RoomPage to handle Android notification button presses.
   static VoidCallback? onMuteToggle;
   static VoidCallback? onEndCall;
@@ -60,6 +67,7 @@ class DaakiaMeetingService {
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
+    final session = ++_session;
     _title = title;
     _isMuted = isMuted;
     _showMuteButton = showMuteButton;
@@ -71,6 +79,7 @@ class DaakiaMeetingService {
         await Permission.notification.request();
       }
     }
+    if (session != _session) return; // stop() ran while we were waiting.
 
     try {
       await _channel.invokeMethod('startMeetingService', {
@@ -166,6 +175,7 @@ class DaakiaMeetingService {
 
   static Future<void> stop() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    _session++;
     _title = null;
     _isMuted = false;
     _showMuteButton = false;
