@@ -35,7 +35,14 @@ class DaakiaMeetingService : Service() {
         // main thread without going through an intent round-trip.
         var instance: DaakiaMeetingService? = null
 
+        // True between startForegroundService() and the service's startForeground()
+        // call. Stopping the service inside that window makes Android throw
+        // ForegroundServiceDidNotStartInTimeException and kill the app.
+        @Volatile
+        private var startPending = false
+
         fun start(context: Context, title: String, text: String, isMuted: Boolean, showMuteButton: Boolean) {
+            startPending = true
             val intent = Intent(context, DaakiaMeetingService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
@@ -60,6 +67,19 @@ class DaakiaMeetingService : Service() {
         }
 
         fun stop(context: Context) {
+            if (startPending) {
+                // A meeting that closes right after joining (instant kick, fast
+                // leave) can stop us before ACTION_START has been handled. Queue
+                // the stop behind it instead, so startForeground() still runs first.
+                try {
+                    context.startService(
+                        Intent(context, DaakiaMeetingService::class.java).apply { action = ACTION_STOP }
+                    )
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "Queued stop failed, stopping directly: $e")
+                }
+            }
             context.stopService(Intent(context, DaakiaMeetingService::class.java))
         }
     }
@@ -76,6 +96,7 @@ class DaakiaMeetingService : Service() {
 
     override fun onDestroy() {
         instance = null
+        startPending = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -188,6 +209,8 @@ class DaakiaMeetingService : Service() {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, baseFgsType)
         } catch (e: Exception) {
             Log.w(TAG, "startForeground failed, running without foreground promotion: $e")
+        } finally {
+            startPending = false
         }
     }
 
