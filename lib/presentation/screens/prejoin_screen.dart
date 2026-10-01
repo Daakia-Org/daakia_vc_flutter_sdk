@@ -457,6 +457,20 @@ class _PreJoinState extends State<PreJoinScreen> {
   String lobbyRequestId = "";
   bool isUserCanJoin = false;
 
+  /// Email to send in the join payload for a non-guest join, or null when none
+  /// is known. Priority: an email verified during the password step
+  /// ([_participantEmail], set by [verifyPasswordProtectedMeeting]), then the
+  /// signed-in user's email supplied by the host app
+  /// ([DaakiaMeetingConfiguration.userEmail]). The guest flow sets its own
+  /// email separately, so this is only consulted for non-guest joins.
+  String? _resolveCandidateJoinEmail() {
+    final verified = _participantEmail?.trim();
+    if (verified != null && verified.isNotEmpty) return verified;
+    final configured = widget.configuration?.userEmail?.trim();
+    if (configured != null && configured.isNotEmpty) return configured;
+    return null;
+  }
+
   void joinMeeting(Function stopLoading, {bool isParticipant = false}) async {
     if (isNeedToCancelApiCall) {
       stopLoading.call();
@@ -497,6 +511,16 @@ class _PreJoinState extends State<PreJoinScreen> {
       customMetadata["identifier"] = _participantEmail;
       customMetadata["participant_email"] = _participantEmail;
       customMetadata["participant_type"] = "guest";
+    } else if (!_joinAsGuest) {
+      // Non-guest joins: forward a candidate user email when we know one, so the
+      // backend can match pre-invited cohosts even when the auth token alone
+      // isn't enough (invite email differs from the account email, or no token).
+      // Top-level only — never in custom_metadata, which becomes LiveKit
+      // participant metadata that every participant in the room can read.
+      final candidateEmail = _resolveCandidateJoinEmail();
+      if (candidateEmail != null && candidateEmail.isNotEmpty) {
+        body["email"] = candidateEmail;
+      }
     }
     body["custom_metadata"] = customMetadata;
     final cacheData = StorageHelper();
