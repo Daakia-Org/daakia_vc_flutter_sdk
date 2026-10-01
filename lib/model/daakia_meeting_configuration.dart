@@ -14,6 +14,20 @@ class DaakiaMeetingConfiguration {
   /// This field is experimental and may change in future versions.
   final Map<String, dynamic>? metadata;
 
+  /// The signed-in user's email, when the host app knows it.
+  ///
+  /// When provided, the SDK forwards it as a top-level `email` field in the
+  /// meeting join payload so the backend can reliably match pre-invited
+  /// cohosts (and the correct participant identity) even when the auth token
+  /// alone is not enough — e.g. the invite email differs from the account's
+  /// profile email, or the user joins without a dashboard token.
+  ///
+  /// Unlike [metadata], this is **not** placed in the LiveKit participant
+  /// metadata, so it is not readable by other participants in the room. Leave
+  /// it null for guest / anonymous joins; the SDK resolves the guest or
+  /// password-verified email on its own.
+  final String? userEmail;
+
   /// Optional configuration for participant name behavior.
   ///
   /// If `name` is provided inside [ParticipantNameConfig] and is non-empty,
@@ -92,6 +106,7 @@ class DaakiaMeetingConfiguration {
 
   const DaakiaMeetingConfiguration({
     this.metadata,
+    this.userEmail,
     this.participantNameConfig,
     this.skipPreJoinPage,
     this.enableMicrophoneByDefault,
