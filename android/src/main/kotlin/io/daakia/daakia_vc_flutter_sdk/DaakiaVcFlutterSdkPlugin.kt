@@ -20,13 +20,21 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
     private var channel: MethodChannel? = null
 
     companion object {
-        private var pluginChannel: MethodChannel? = null
+        // Channel of the engine that started the meeting service. Notification
+        // actions are routed here only — a host app can attach this plugin to
+        // several engines (e.g. an FCM background isolate), and the last one to
+        // attach isn't necessarily the one running the meeting.
+        private var serviceOwnerChannel: MethodChannel? = null
         private val mainHandler = Handler(Looper.getMainLooper())
+
+        /** True while the engine that started the meeting service is still attached. */
+        val hasServiceOwner: Boolean
+            get() = serviceOwnerChannel != null
 
         /** Called from the service (background thread safe) to invoke a Dart method. */
         fun invokeOnFlutter(method: String, args: Any?) {
             mainHandler.post {
-                pluginChannel?.invokeMethod(method, args)
+                serviceOwnerChannel?.invokeMethod(method, args)
             }
         }
     }
@@ -35,7 +43,6 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         context = binding.applicationContext
         channel = MethodChannel(binding.binaryMessenger, "io.daakia/meeting_service")
         channel!!.setMethodCallHandler(this)
-        pluginChannel = channel
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
@@ -45,10 +52,12 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 val text = call.argument<String>("text") ?: "Tap to return to the meeting"
                 val isMuted = call.argument<Boolean>("isMuted") ?: false
                 val showMuteButton = call.argument<Boolean>("showMuteButton") ?: false
+                serviceOwnerChannel = channel
                 DaakiaMeetingService.start(context, title, text, isMuted, showMuteButton)
                 result.success(null)
             }
             "stopMeetingService" -> {
+                if (serviceOwnerChannel === channel) serviceOwnerChannel = null
                 DaakiaMeetingService.stop(context)
                 result.success(null)
             }
@@ -136,7 +145,13 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel?.setMethodCallHandler(null)
-        pluginChannel = null
+        // The engine that owns the meeting is going away (activity destroyed,
+        // app swiped from recents). Its Dart side can never call stop now, so
+        // stop the service here instead of leaving an orphaned notification.
+        if (channel != null && serviceOwnerChannel === channel) {
+            serviceOwnerChannel = null
+            DaakiaMeetingService.stop(context)
+        }
         channel = null
     }
 }

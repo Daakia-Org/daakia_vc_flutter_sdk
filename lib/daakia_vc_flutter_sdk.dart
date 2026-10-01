@@ -13,6 +13,7 @@ import 'model/daakia_meeting_configuration.dart';
 import 'model/meeting_details_model.dart';
 import 'model/observability_config.dart';
 import 'model/observability_payload_model.dart';
+import 'service/daakia_meeting_service.dart';
 import 'service/daakia_vc_datadog_service.dart';
 import 'service/daakia_vc_sentry_service.dart';
 import 'theme/daakia_sdk_theme.dart';
@@ -109,6 +110,13 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
   @override
   void initState() {
     super.initState();
+    // Register the notification-action handler before any meeting exists.
+    // Flutter buffers channel messages that arrive with no handler set (e.g.
+    // End Call tapped on a notification left over from a hot restart) and
+    // replays them the moment one is registered — if that happened in
+    // RoomPage, the stale End Call would close the freshly joined meeting.
+    // Replayed here, it finds no onEndCall callback and is dropped.
+    DaakiaMeetingService.initialize();
     _secret = widget.secretKey ?? DaakiaSdk._secret;
     if (widget.secretKey != null) {
       debugPrint(
