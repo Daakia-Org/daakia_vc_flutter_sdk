@@ -28,6 +28,7 @@ class ActionModel {
   final bool? isScreenShareAllowed;
   final List<Map<String, dynamic>>? messages;
   final List<RaisedHand>? raisedHands;
+  final int? whiteboardId;
 
   // ✅ ADD NEW FIELD
 
@@ -55,6 +56,7 @@ class ActionModel {
     this.isScreenShareAllowed,
     this.messages,
     this.raisedHands,
+    this.whiteboardId,
     // ✅ ADD NEW FIELD
   });
 
@@ -129,6 +131,9 @@ class ActionModel {
     if (raisedHands != null) {
       data['raisedHands'] = raisedHands!.map((p) => p.toJson()).toList();
     }
+    if (whiteboardId != null) {
+      data['whiteboardId'] = whiteboardId;
+    }
     // ✅ ADD NEW FIELD
     return data;
   }
@@ -165,6 +170,7 @@ class ActionModel {
       raisedHands: (json['raisedHands'] as List<dynamic>?)
           ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
           .toList(),
+      whiteboardId: json['whiteboardId'] as int?,
       // ✅ ADD NEW FIELD
     );
   }

@@ -146,6 +146,20 @@ class WebinarControls extends StatelessWidget {
                 },
               ),
 
+              // Whiteboard Collaboration
+              HostControlSwitch(
+                title: 'Whiteboard collaboration',
+                subtitle:
+                    'If turned ON, all participants will be able to draw on the whiteboard.',
+                value: viewModel.isWhiteboardCollabEnabled,
+                isEnable:
+                    viewModel.meetingDetails.features?.isWhiteboardAllowed() ==
+                        true,
+                onChanged: (value) {
+                  viewModel.updateWhiteboardCollabConsent(value);
+                },
+              ),
+
               const Divider(color: Colors.white),
 
               // Notification Settings

@@ -231,6 +231,22 @@ abstract class RestClient {
     @Query("meeting_id") String meetingId,
   );
 
+  /// Creates the meeting's whiteboard. Returns `{whiteboardId}` in `data`.
+  @POST("v2.0/rtc/meeting/whiteboard/save")
+  Future<BaseResponse<dynamic>> saveWhiteboard(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  /// Opens (`status: true`) or closes (`status: false`) a whiteboard.
+  @PUT("v2.0/rtc/meeting/whiteboard/updateStatus")
+  Future<BaseResponse<dynamic>> updateWhiteboardStatus(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
   @GET("v2.0/rtc/meeting/invitee/participantsList")
   Future<BaseListResponse<ParticipantAttendanceData>>
       getAttendanceListForParticipant(
@@ -294,6 +310,15 @@ abstract class RestClient {
 
   @PUT("v2.0/rtc/chatAttachmentDownloadConsent")
   Future<BaseResponse<ChatAttachmentConsentModel>> updateChatAttachmentConsent(
+    @Header("Authorization") String token,
+    @Header("x-self-identity") String selfIdentity,
+    @Body() Map<String, dynamic> body,
+  );
+
+  // The read side lives in getHostControls() as
+  // `whiteboard_collaboration_enabled`; only the write needs its own endpoint.
+  @PUT("v2.0/rtc/whiteboardCollaborationConsent")
+  Future<BaseResponse<dynamic>> updateWhiteboardCollaborationConsent(
     @Header("Authorization") String token,
     @Header("x-self-identity") String selfIdentity,
     @Body() Map<String, dynamic> body,

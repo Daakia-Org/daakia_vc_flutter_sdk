@@ -114,6 +114,18 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 Navigator.pop(context);
                 showWebinarControls();
               }),
+              // Whiteboard
+              buildOption(context,
+                  icon: Icons.draw,
+                  text: viewModel.isWhiteboardOpen
+                      ? 'Close Whiteboard'
+                      : 'Open Whiteboard',
+                  isVisible: viewModel.canManageWhiteboard(),
+                  isEnabled: !viewModel.isWhiteboardActionInProgress,
+                  onTap: () {
+                Navigator.pop(context);
+                viewModel.toggleWhiteboard();
+              }),
               // Screen Share
               buildOption(context,
                   icon: Icons.screen_share,

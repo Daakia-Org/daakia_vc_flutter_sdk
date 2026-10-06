@@ -625,7 +625,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<ParticipantNameUpdatedEvent>((event) {
       _sortParticipants();
     })
-    ..on<ParticipantMetadataUpdatedEvent>((event) {})
+    ..on<ParticipantMetadataUpdatedEvent>((event) {
+      // Our role lives in our metadata, so a co-host change from any client
+      // lands here even when we miss the makeCoHost/removeCoHost message.
+      if (event.participant is LocalParticipant) {
+        _notifyWhiteboardPermissionChanged();
+      }
+    })
     ..on<RoomMetadataChangedEvent>((event) {})
     ..on<DataReceivedEvent>((event) {
       _handleDataChannel(event);
@@ -802,6 +808,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.getAttendanceListForParticipant();
         viewModel?.fetchInvitedParticipants(silent: true);
         showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
+        _notifyWhiteboardPermissionChanged();
         break;
 
       case MeetingActions.removeCoHost:
@@ -810,6 +817,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         StorageHelper().setHostToken("");
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
+        _notifyWhiteboardPermissionChanged();
+        break;
+
+      case MeetingActions.allowLiveCollabWhiteboard:
+        viewModel?.isWhiteboardCollabEnabled = remoteData.value;
+        _notifyWhiteboardPermissionChanged();
         break;
 
       case MeetingActions.forceMuteAll:
@@ -884,20 +897,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.whiteboardState:
-        if (remoteData.value) {
-          showSnackBar(message: "Whiteboard Opened");
-          setState(() {
-            _isWhiteBoardEnabled = true;
-            loadWhiteboardUrl(Utils.generateWhiteboardUrl(
-                meetingId: widget.meetingDetails.meetingUid,
-                livekitToken: widget.meetingDetails.livekitToken));
-          });
-        } else {
-          showSnackBar(message: "Whiteboard Closed");
-          setState(() {
-            _isWhiteBoardEnabled = false;
-          });
-        }
+        showSnackBar(
+            message: remoteData.value ? "Whiteboard Opened" : "Whiteboard Closed");
+        // Shown/hidden via the WhiteboardStatus event this raises.
+        viewModel?.setWhiteboardState(remoteData.value,
+            whiteboardId: remoteData.whiteboardId);
         break;
 
       case MeetingActions.recordingConsentModal:
@@ -1328,6 +1332,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _webViewInitialized = true;
       _webViewController.loadRequest(Uri.parse(url));
     }
+  }
+
+  /// Tells the whiteboard page that our role or the collaboration setting
+  /// changed so it re-fetches its edit permission from the backend straight
+  /// away instead of waiting for its 20 s poll. The page debounces bursts, so
+  /// calling this for several overlapping events is fine.
+  void _notifyWhiteboardPermissionChanged() {
+    if (!_webViewInitialized) return;
+    _webViewController
+        .runJavaScript('window.dispatchEvent(new CustomEvent('
+            '"${Constant.whiteboardPermissionChangedEvent}"));')
+        .catchError((Object e) {
+      DaakiaVcLogger.logWarning('Whiteboard permission signal failed: $e',
+          reportToSentry: false);
+    });
   }
 
   @override

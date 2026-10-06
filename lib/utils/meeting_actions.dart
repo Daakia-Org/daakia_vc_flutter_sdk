@@ -116,6 +116,10 @@ class MeetingActions {
   /// every client picks up the new value without re-reading the API.
   static const String notificationSoundSetting = "notification_sound_setting";
 
+  /// Broadcast by the host/co-host when whiteboard collaboration is switched
+  /// on or off. `value` carries the new state.
+  static const String allowLiveCollabWhiteboard = "allow-live-collab-whiteboard";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -189,6 +193,7 @@ class MeetingActions {
     revokeAnnotationPermission,
     refreshInvitedParticipants,
     notificationSoundSetting,
+    allowLiveCollabWhiteboard,
     // ✅ Add new fields here
   };
 }
