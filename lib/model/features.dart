@@ -171,6 +171,8 @@ class Features {
   // Getter methods to check feature flags
   bool isChatAllowed() => conferenceChat == 1;
 
+  bool isWhiteboardAllowed() => whiteboard == 1;
+
   bool isRecordingAllowed() => recordMeeting == 1;
 
   bool isRaiseHandAllowed() => raiseHand == 1;

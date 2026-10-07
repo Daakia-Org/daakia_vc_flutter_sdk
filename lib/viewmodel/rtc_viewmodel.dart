@@ -32,6 +32,7 @@ import '../model/caption_data.dart';
 import '../model/emoji_message.dart';
 import '../model/language_model.dart';
 import '../model/meeting_details.dart';
+import '../model/white_board_data.dart';
 import '../model/private_chat_model.dart';
 import '../model/raised_hand.dart';
 import '../model/send_message_model.dart';
@@ -1720,15 +1721,155 @@ class RtcViewmodel extends ChangeNotifier {
         ?.toIso8601String();
   }
 
-  void getWhiteboardData() {
+  //===============================[Whiteboard]===============================
+
+  /// The meeting's whiteboard, once one exists. It is created on first open
+  /// and reused for every later open/close, same as web.
+  int? _whiteboardId;
+
+  bool _isWhiteboardOpen = false;
+
+  bool get isWhiteboardOpen => _isWhiteboardOpen;
+
+  bool _isWhiteboardActionInProgress = false;
+
+  bool get isWhiteboardActionInProgress => _isWhiteboardActionInProgress;
+
+  set isWhiteboardActionInProgress(bool value) {
+    _isWhiteboardActionInProgress = value;
+    notifyListeners();
+  }
+
+  bool _isWhiteboardCollabEnabled = false;
+
+  bool get isWhiteboardCollabEnabled => _isWhiteboardCollabEnabled;
+
+  set isWhiteboardCollabEnabled(bool value) {
+    _isWhiteboardCollabEnabled = value;
+    notifyListeners();
+  }
+
+  bool canManageWhiteboard() =>
+      (isHost() || isCoHost()) &&
+      meetingDetails.features?.isWhiteboardAllowed() == true;
+
+  Future<void> getWhiteboardData() async {
+    final whiteboard = await _fetchWhiteboard();
+    if (whiteboard == null) return;
+    setWhiteboardState(whiteboard.status == 'open', whiteboardId: whiteboard.id);
+  }
+
+  /// The meeting's whiteboard, or null when nobody has opened one yet.
+  Future<WhiteboardData?> _fetchWhiteboard() {
+    final completer = Completer<WhiteboardData?>();
     networkListRequestHandler(
-        apiCall: () => apiClient.getWhiteBoardData(
-            selfIdentity,
-            meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
-        onSuccess: (data) {
-          final whiteboard = data!.first;
-          sendEvent(WhiteboardStatus(status: whiteboard.status == 'open'));
-        });
+      apiCall: () => apiClient.getWhiteBoardData(
+          selfIdentity,
+          meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
+      onSuccess: (data) => completer.complete(data?.firstOrNull),
+      onError: (_) => completer.complete(null),
+    );
+    return completer.future;
+  }
+
+  /// Applies an open/close, whoever made it (join-time fetch, a remote
+  /// moderator, or us), and lets the room show or hide the board.
+  void setWhiteboardState(bool open, {int? whiteboardId}) {
+    if (whiteboardId != null) _whiteboardId = whiteboardId;
+    _isWhiteboardOpen = open;
+    notifyListeners();
+    sendEvent(WhiteboardStatus(status: open));
+  }
+
+  /// Opens or closes the whiteboard for everyone, following web: create the
+  /// board on first use, persist the new status, then broadcast it. Stops at
+  /// the first failure so the room never disagrees with the backend, which
+  /// late joiners read from.
+  Future<void> toggleWhiteboard() async {
+    if (_isWhiteboardActionInProgress) return;
+    isWhiteboardActionInProgress = true;
+    final open = !_isWhiteboardOpen;
+    try {
+      // Reuse the meeting's board if one exists (another moderator may have
+      // created it since we joined); only create one for the first open.
+      final id = _whiteboardId ??
+          (await _fetchWhiteboard())?.id ??
+          await _createWhiteboard();
+      if (id == null) return;
+      if (!await _updateWhiteboardStatus(id, open)) return;
+      await sendAction(ActionModel(
+        action: MeetingActions.whiteboardState,
+        value: open,
+        whiteboardId: id,
+      ));
+      setWhiteboardState(open, whiteboardId: id);
+      sendMessageToUI(open ? "Whiteboard opened" : "Whiteboard closed");
+    } finally {
+      isWhiteboardActionInProgress = false;
+    }
+  }
+
+  Future<int?> _createWhiteboard() {
+    final completer = Completer<int?>();
+    networkRequestHandler(
+      apiCall: () => apiClient.saveWhiteboard(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "meeting_uid": meetingDetails.meetingUid,
+        "whiteboard_json": [],
+      }),
+      onSuccess: (data) {
+        final id = data is Map ? int.tryParse('${data['whiteboardId']}') : null;
+        if (id == null) sendMessageToUI("Could not open the whiteboard.");
+        completer.complete(id);
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        completer.complete(null);
+      },
+    );
+    return completer.future;
+  }
+
+  Future<bool> _updateWhiteboardStatus(int whiteboardId, bool open) {
+    final completer = Completer<bool>();
+    networkRequestHandler(
+      apiCall: () => apiClient.updateWhiteboardStatus(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "whiteboard_id": whiteboardId,
+        "status": open,
+      }),
+      onSuccess: (_) => completer.complete(true),
+      onError: (message) {
+        sendMessageToUI(message);
+        completer.complete(false);
+      },
+    );
+    return completer.future;
+  }
+
+  /// Lets every participant draw (on) or only moderators (off). Each
+  /// whiteboard page re-checks its own permission when it hears the action.
+  void updateWhiteboardCollabConsent(bool value) {
+    final previous = _isWhiteboardCollabEnabled;
+    isWhiteboardCollabEnabled = value;
+
+    networkRequestHandler(
+      apiCall: () => apiClient.updateWhiteboardCollaborationConsent(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "meeting_id": meetingDetails.meetingUid,
+        "permission_granted": value,
+      }),
+      onSuccess: (_) {
+        sendAction(ActionModel(
+          action: MeetingActions.allowLiveCollabWhiteboard,
+          value: value,
+        ));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isWhiteboardCollabEnabled = previous;
+      },
+    );
   }
 
   List<ParticipantAttendanceData> _pendingParticipantList = [];
@@ -2491,6 +2632,7 @@ class RtcViewmodel extends ChangeNotifier {
         isAudioModeEnable = data.audioPermission;
         isAudioPermissionEnable = !data.audioPermission;
         isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isWhiteboardCollabEnabled = data.whiteboardCollaborationEnabled;
         isNotificationSoundEnabled = data.notificationSoundEnabled;
         isParticipantDrawerHidden = !data.participantDrawer;
         isScreenShareEnable = data.screenSharePermissionGranted;

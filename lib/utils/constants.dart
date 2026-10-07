@@ -9,6 +9,11 @@ class Constant {
   static String baseUrl = "https://api.daakia.co.in/";
   static String whiteboardDomain = "https://www.daakia.co.in/";
 
+  /// DOM event the whiteboard page listens for to re-fetch its edit
+  /// permission. It only triggers a re-check; the backend decides the result.
+  static const String whiteboardPermissionChangedEvent =
+      "daakia:whiteboard-permission-changed";
+
   static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
   static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
 
