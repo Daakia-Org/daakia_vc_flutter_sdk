@@ -34,6 +34,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../service/daakia_meeting_service.dart';
+import 'audio_routing.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
@@ -132,6 +133,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           statusBarBrightness: Brightness.dark,      // white icons on iOS
         ));
     WakelockPlus.enable();
+    DaakiaAudioRouting.attach();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
         setState(() {
@@ -219,7 +221,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
 
     if (lkPlatformIs(PlatformType.android)) {
-      Hardware.instance.setSpeakerphoneOn(true);
+      DaakiaAudioRouting.setSpeakerphoneOn(true);
     }
 
     if (lkPlatformIsDesktop()) {
@@ -356,6 +358,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    unawaited(DaakiaAudioRouting.detach());
     _resetReconnectUiState();
     _zoomController.removeListener(_onZoomChanged);
     _zoomController.dispose();
@@ -1104,6 +1107,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (vm != null && mounted) {
       vm.setAudioInterrupted(false);
       setState(() => _isPhoneCallActive = false);
+      // The native recovery re-activates the session as playAndRecord/videoChat,
+      // which drops an earpiece choice or a forced speaker. Put it back.
+      unawaited(DaakiaAudioRouting.reapply());
       showSnackBar(message: "Phone call ended");
     }
   }

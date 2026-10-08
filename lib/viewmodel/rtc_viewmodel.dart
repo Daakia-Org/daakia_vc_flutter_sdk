@@ -43,6 +43,7 @@ import '../utils/constants.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 import '../utils/meeting_end_time.dart';
+import '../rtc/audio_routing.dart';
 
 class RtcViewmodel extends ChangeNotifier {
   final List<RemoteActivityData> _messageList = [];
@@ -418,13 +419,44 @@ class RtcViewmodel extends ChangeNotifier {
   String get selfIdentity => room.localParticipant?.identity ?? "";
 
   void disableAudio() async {
-    await participant.setMicrophoneEnabled(false);
+    await _setMicrophoneLogged(false);
     notifyListeners();
   }
 
   Future<void> enableAudio() async {
-    await participant.setMicrophoneEnabled(true);
+    await _setMicrophoneLogged(true);
     notifyListeners();
+  }
+
+  // Diagnostics: records each mic toggle and the resulting publication state,
+  // so a "mic button on but nobody hears me" report can be traced in Datadog.
+  // Errors are logged and re-thrown, keeping the existing behaviour.
+  Future<void> _setMicrophoneLogged(bool enabled) async {
+    DaakiaAudioRouting.diag('mic', {'requested': enabled});
+    try {
+      await participant.setMicrophoneEnabled(enabled);
+    } catch (e) {
+      DaakiaAudioRouting.diag('micError', {
+        'requested': enabled,
+        'error': e.toString(),
+      });
+      rethrow;
+    }
+    // LiveKit settles the mute state asynchronously; read it a moment later so
+    // the record shows the real outcome, without delaying the caller.
+    unawaited(Future.delayed(const Duration(milliseconds: 500), () {
+      final pub =
+          participant.getTrackPublicationBySource(TrackSource.microphone);
+      DaakiaAudioRouting.diag('micResult', {
+        'requested': enabled,
+        'isMicrophoneEnabled': participant.isMicrophoneEnabled(),
+        'published': pub != null,
+        'muted': pub?.muted,
+        'engineRecording':
+            // ignore: experimental_member_use
+            AudioManager.instance.audioEngineState.isRecordingEnabled,
+      });
+    }));
   }
 
   void disableVideo() async {

@@ -14,6 +14,7 @@ import '../../resources/colors/color.dart';
 import '../../presentation/bottom_sheets/audio_output_bottomsheet.dart';
 import '../../presentation/bottom_sheets/more_option_bottomsheet.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
+import '../audio_routing.dart';
 
 class RtcControls extends StatefulWidget {
   final Room room;
@@ -40,13 +41,19 @@ class RtcControls extends StatefulWidget {
 class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   CameraPosition position = CameraPosition.front;
 
-  bool _speakerphoneOn = true;
-  bool _userExplicitlySelectedEarpiece = false;
+  // Backed by DaakiaAudioRouting so the choice survives this widget being
+  // rebuilt on a portrait/landscape layout switch.
+  bool get _speakerphoneOn => DaakiaAudioRouting.uiSpeakerphoneOn;
+  set _speakerphoneOn(bool v) => DaakiaAudioRouting.uiSpeakerphoneOn = v;
+  bool get _userExplicitlySelectedEarpiece => DaakiaAudioRouting.uiEarpieceChoice;
+  set _userExplicitlySelectedEarpiece(bool v) =>
+      DaakiaAudioRouting.uiEarpieceChoice = v;
 
   PermissionStatus _micOsStatus = PermissionStatus.granted;
   PermissionStatus _cameraOsStatus = PermissionStatus.granted;
 
-  List<MediaDevice> _audioOutputDevices = [];
+  List<MediaDevice> get _audioOutputDevices => DaakiaAudioRouting.uiOutputs;
+  set _audioOutputDevices(List<MediaDevice> v) => DaakiaAudioRouting.uiOutputs = v;
   MediaDevice? _selectedOutputDevice;
   StreamSubscription<List<MediaDevice>>? _deviceSubscription;
 
@@ -57,9 +64,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     super.initState();
     participant.addListener(_onChange);
     // Set speaker immediately so audio is loud even before device list loads.
-    Hardware.instance.setSpeakerphoneOn(true);
-    Hardware.instance.enumerateDevices().then(_loadDevices);
-    _deviceSubscription = Hardware.instance.onDeviceChange.stream.listen(
+    // Only once per meeting: a layout switch rebuilds this widget and must not
+    // override the user's current output choice.
+    if (!DaakiaAudioRouting.uiInitialRouteApplied) {
+      DaakiaAudioRouting.uiInitialRouteApplied = true;
+      DaakiaAudioRouting.setSpeakerphoneOn(true);
+    }
+    DaakiaAudioRouting.enumerateDevices().then(_loadDevices);
+    _deviceSubscription = DaakiaAudioRouting.onDeviceChange.listen(
       _loadDevices,
     );
     WidgetsBinding.instance.addObserver(this);
@@ -72,7 +84,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       _checkOsPermissions();
       // Re-enumerate on resume to catch BT/headset changes while backgrounded
       // (onDeviceChange stream doesn't fire when the app isn't in foreground).
-      Hardware.instance.enumerateDevices().then(_loadDevices);
+      DaakiaAudioRouting.enumerateDevices().then(_loadDevices);
     }
   }
 
@@ -96,17 +108,29 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     // On iOS, also check audioinput for BT devices: when overrideOutputAudioPort(.speaker)
     // is active the current route shows only Speaker, but BT HFP still appears in
     // availableInputs (audioinput kind) with portType containing "bluetooth".
+    // Same for wired/USB headsets (e.g. USB-C EarPods): their mic stays in
+    // availableInputs while the forced speaker hides their output.
     final hasBtInput =
         defaultTargetPlatform == TargetPlatform.iOS &&
         devices.any(
-          (d) =>
-              d.kind == 'audioinput' &&
-              (d.groupId ?? '').toLowerCase().contains('bluetooth'),
+          (d) => d.kind == 'audioinput' && isExternalInputPort(d.groupId),
         );
     final hasExternal =
         rawOutputs.any((d) => isExternalAudioDevice(d.label)) || hasBtInput;
 
     final outputs = augmentOutputsForIos(devices);
+    DaakiaAudioRouting.diag('loadDevices', {
+      'raw': devices
+          .where((d) => d.kind != 'videoinput')
+          .map((d) => '${d.kind}|${d.label}|${d.groupId}')
+          .toList(),
+      'shown': outputs.map((d) => d.label).toList(),
+      'hadExternal': hadExternal,
+      'hasExternal': hasExternal,
+      'hasBtInput': hasBtInput,
+      'earpieceChoice': _userExplicitlySelectedEarpiece,
+    });
+    unawaited(DaakiaAudioRouting.diagRoute('loadDevices.route'));
 
     if (!mounted) return;
     setState(() => _audioOutputDevices = outputs);
@@ -114,7 +138,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     if (!hadExternal && hasExternal) {
       // External device just connected (or was already there at first load).
       // Always route to it regardless of any prior earpiece preference.
-      Hardware.instance.setSpeakerphoneOn(false);
+      DaakiaAudioRouting.setSpeakerphoneOn(false);
       setState(() {
         _speakerphoneOn = false;
         _selectedOutputDevice = null;
@@ -124,7 +148,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       // External device disconnected.
       if (!_userExplicitlySelectedEarpiece) {
         // User was not on earpiece by choice → restore speaker.
-        Hardware.instance.setSpeakerphoneOn(true);
+        DaakiaAudioRouting.setSpeakerphoneOn(true);
         setState(() {
           _speakerphoneOn = true;
           _selectedOutputDevice = null;
@@ -191,7 +215,9 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         l.contains('wireless')) {
       return Icons.bluetooth_audio;
     }
-    if (l.contains('headphone') || l.contains('headset')) {
+    if (l.contains('headphone') ||
+        l.contains('headset') ||
+        isWiredHeadsetPort(groupId)) {
       return Icons.headset;
     }
     return Icons.volume_up;
@@ -227,16 +253,20 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         selectedDevice: _selectedOutputDevice,
         onDeviceSelected: (device) async {
           Navigator.pop(ctx);
+          DaakiaAudioRouting.diag('sheetTap', {
+            'label': device.label,
+            'groupId': device.groupId,
+          });
           final label = device.label.toLowerCase();
           if (label.contains('speakerphone') || label.contains('speaker')) {
-            Hardware.instance.setSpeakerphoneOn(true, forceSpeakerOutput: true);
+            DaakiaAudioRouting.setSpeakerphoneOn(true, forceSpeakerOutput: true);
             setState(() {
               _speakerphoneOn = true;
               _selectedOutputDevice = null;
               _userExplicitlySelectedEarpiece = false;
             });
           } else if (label.contains('earpiece') || label.contains('receiver')) {
-            Hardware.instance.setSpeakerphoneOn(false);
+            DaakiaAudioRouting.setSpeakerphoneOn(false);
             setState(() {
               _speakerphoneOn = false;
               _selectedOutputDevice = null;
@@ -247,7 +277,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
             // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
             // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
             // auto-route to the connected BT/wired device by OS priority.
-            Hardware.instance.setSpeakerphoneOn(false);
+            DaakiaAudioRouting.setSpeakerphoneOn(false);
             setState(() {
               _speakerphoneOn = false;
               _selectedOutputDevice = null;

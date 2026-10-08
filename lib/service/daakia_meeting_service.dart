@@ -28,6 +28,22 @@ class DaakiaMeetingService {
   static VoidCallback? onAudioInterruptionBegan;
   static VoidCallback? onAudioInterruptionEnded;
 
+  // Diagnostics only: iOS reports every audio route change with the live
+  // AVAudioSession state (category, mode, current outputs/inputs).
+  static void Function(Map<String, dynamic> route)? onAudioRouteChanged;
+
+  /// Current audio route, for diagnostics: the AVAudioSession state on iOS,
+  /// the audio mode and communication device on Android. Null elsewhere.
+  static Future<Map<String, dynamic>?> getAudioRoute() async {
+    if (!Platform.isIOS && !Platform.isAndroid) return null;
+    try {
+      final route = await _channel.invokeMapMethod<String, dynamic>('getAudioRoute');
+      return route;
+    } catch (e) {
+      return null;
+    }
+  }
+
   /// Must be called once (e.g. in RoomPage.initState) before any [start] call
   /// so that notification button presses from Android are dispatched back here.
   static void initialize() {
@@ -47,6 +63,10 @@ class DaakiaMeetingService {
         break;
       case 'audioInterruptionEnded':
         onAudioInterruptionEnded?.call();
+        break;
+      case 'audioRouteChanged':
+        final args = call.arguments;
+        if (args is Map) onAudioRouteChanged?.call(Map<String, dynamic>.from(args));
         break;
     }
   }
