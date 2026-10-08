@@ -418,7 +418,7 @@ class RtcViewmodel extends ChangeNotifier {
 
   String get selfIdentity => room.localParticipant?.identity ?? "";
 
-  void disableAudio() async {
+  Future<void> disableAudio() async {
     await _setMicrophoneLogged(false);
     notifyListeners();
   }
