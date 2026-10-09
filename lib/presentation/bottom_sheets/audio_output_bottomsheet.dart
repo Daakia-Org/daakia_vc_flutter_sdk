@@ -42,7 +42,15 @@ bool isWiredHeadsetPort(String? groupId) {
 // We also always inject virtual Speaker + Earpiece entries.
 List<MediaDevice> augmentOutputsForIos(List<MediaDevice> allDevices) {
   final audioOutputs = allDevices.where((d) => d.kind == 'audiooutput').toList();
-  if (defaultTargetPlatform != TargetPlatform.iOS) return audioOutputs;
+  if (defaultTargetPlatform != TargetPlatform.iOS) {
+    // Android sends a non-speaker call to the connected headset or Bluetooth
+    // device, so Earpiece can't be reached while one is connected; hide it as
+    // on iOS below.
+    if (audioOutputs.any((d) => isExternalAudioDevice(d.label))) {
+      audioOutputs.removeWhere((d) => d.deviceId == 'earpiece');
+    }
+    return audioOutputs;
+  }
 
   bool isBluetooth(MediaDevice d) =>
       (d.groupId ?? '').toLowerCase().contains('bluetooth');

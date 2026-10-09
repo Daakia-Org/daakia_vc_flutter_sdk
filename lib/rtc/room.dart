@@ -1120,7 +1120,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (participant == null || vm == null) return;
 
     if (participant.isMicrophoneEnabled()) {
-      vm.disableAudio(); // void async — fire and don't await (return type is void)
+      unawaited(vm.disableAudio()); // fire and don't await
     } else {
       await vm.enableAudio();
     }

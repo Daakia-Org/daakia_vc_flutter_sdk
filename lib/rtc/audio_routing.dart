@@ -7,6 +7,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_webrtc/flutter_webrtc.dart' as rtc;
 import 'package:livekit_client/livekit_client.dart';
 // ignore: implementation_imports
 import 'package:livekit_client/src/support/native.dart' show Native;
@@ -97,6 +98,7 @@ class DaakiaAudioRouting {
         enable,
         force: enable,
       );
+      await _syncAndroidMic();
       unawaited(Future.delayed(
         const Duration(milliseconds: 500),
         () => diagRoute('setSpeakerphoneOn.route'),
@@ -136,6 +138,61 @@ class DaakiaAudioRouting {
       force: manager.isSpeakerOutputForced,
     );
     if (_isIos) await _applyIosPolicy();
+    if (_isAndroid) await _syncAndroidMic();
+  }
+
+  // Input id last handed to flutter_webrtc, so repeated syncs are no-ops.
+  static String? _androidMicId;
+
+  /// Android keeps capturing from a connected headset's mic even after the
+  /// call is moved to the loudspeaker, so the far end hears the headset mic
+  /// instead of the phone. Point capture at the mic that belongs to the
+  /// current output: the built-in mic for a forced speaker, the headset's own
+  /// mic otherwise. With no headset or Bluetooth mic connected nothing is
+  /// changed, so Android's default choice stands.
+  static Future<void> _syncAndroidMic() async {
+    if (!_isAndroid) return;
+    try {
+      final raw = await _channel.invokeListMethod<Map>('getAudioInputs') ??
+          const <Map>[];
+      final inputs = raw
+          .map((m) => (id: m['deviceId'] as String, kind: m['kind'] as String))
+          .toList();
+      if (!inputs.any((i) => i.kind != 'builtin')) {
+        _androidMicId = null;
+        return;
+      }
+
+      final String? target;
+      if (AudioManager.instance.isSpeakerOutputForced) {
+        final builtin = inputs.where((i) => i.kind == 'builtin');
+        // The bottom mic is the one Android uses for calls by default.
+        target = (builtin.where((i) => i.id == 'microphone-bottom').firstOrNull ??
+                builtin.firstOrNull)
+            ?.id;
+      } else {
+        // Android routes a non-speaker call to Bluetooth ahead of a wired
+        // headset (audioswitch priority); follow the same order. A Bluetooth
+        // mic only appears once its SCO link is up, which raises another
+        // device change and another sync.
+        final outputs = await _androidAudioOutputs();
+        final kind = outputs.any((o) => o.deviceId == 'bluetooth')
+            ? 'bluetooth'
+            : 'wired-headset';
+        target = inputs.where((i) => i.kind == kind).firstOrNull?.id;
+      }
+
+      diag('micInput', {
+        'inputs': inputs.map((i) => '${i.kind}|${i.id}').toList(),
+        'target': target,
+        'previous': _androidMicId,
+      });
+      if (target == null || target == _androidMicId) return;
+      await rtc.Helper.selectAudioInput(target);
+      _androidMicId = target;
+    } catch (e) {
+      diag('micInputError', {'error': '$e'});
+    }
   }
 
   /// Starts enforcing the meeting's iOS routing policy. Call when the meeting
@@ -158,6 +215,7 @@ class DaakiaAudioRouting {
 
   static void attach() {
     _resetUiState();
+    _androidMicId = null;
     if (_isAndroid) unawaited(diagRoute('attach'));
     if (!_isIos) return;
     _iosPolicyActive = true;
@@ -282,6 +340,9 @@ class DaakiaAudioRouting {
     if (controller == null || !controller.hasListener) return;
     final devices = await enumerateDevices();
     if (!controller.isClosed) controller.add(devices);
+    // A headset or Bluetooth mic came or went (a Bluetooth mic also appears
+    // only once its SCO link is up, without any output change).
+    await _syncAndroidMic();
   }
 
   // Same shape as flutter_webrtc's old audiooutput entries: deviceId/groupId

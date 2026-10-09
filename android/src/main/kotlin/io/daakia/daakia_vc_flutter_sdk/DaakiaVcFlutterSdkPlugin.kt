@@ -56,8 +56,11 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         // stand in for it (see lib/rtc/audio_routing.dart).
         audioDevicesChannel = MethodChannel(binding.binaryMessenger, "io.daakia/audio_devices").also {
             it.setMethodCallHandler { call, result ->
-                if (call.method == "getAudioOutputs") result.success(audioOutputs())
-                else result.notImplemented()
+                when (call.method) {
+                    "getAudioOutputs" -> result.success(audioOutputs())
+                    "getAudioInputs" -> result.success(audioInputs())
+                    else -> result.notImplemented()
+                }
             }
         }
         audioDeviceEvents = EventChannel(binding.binaryMessenger, "io.daakia/audio_devices/events").also {
@@ -142,6 +145,37 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
             }
         }
         return outputs.map { (id, label) -> mapOf("deviceId" to id, "label" to label) }
+    }
+
+    // Microphones, keyed by the id flutter_webrtc's selectAudioInput matches
+    // on (AudioUtils.getAudioDeviceId): "microphone-<address>" for built-in
+    // mics, "wired-headset", "bluetooth", otherwise AudioDeviceInfo.id.
+    // flutter_webrtc's own enumerateDevices() leaves out USB headset mics.
+    private fun audioInputs(): List<Map<String, String>> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return emptyList()
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        return audioManager.getDevices(AudioManager.GET_DEVICES_INPUTS).mapNotNull { device ->
+            val address = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) device.address else ""
+            when {
+                device.type == AudioDeviceInfo.TYPE_BUILTIN_MIC ->
+                    mapOf("deviceId" to "microphone-$address", "kind" to "builtin")
+
+                device.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ->
+                    mapOf("deviceId" to "wired-headset", "kind" to "wired-headset")
+
+                device.type == AudioDeviceInfo.TYPE_USB_HEADSET ->
+                    mapOf("deviceId" to "${device.id}", "kind" to "wired-headset")
+
+                device.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ->
+                    mapOf("deviceId" to "bluetooth", "kind" to "bluetooth")
+
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                    device.type == AudioDeviceInfo.TYPE_BLE_HEADSET ->
+                    mapOf("deviceId" to "${device.id}", "kind" to "bluetooth")
+
+                else -> null
+            }
+        }
     }
 
     private fun startAudioDeviceWatch(events: EventChannel.EventSink) {

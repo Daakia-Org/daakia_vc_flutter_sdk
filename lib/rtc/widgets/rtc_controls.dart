@@ -5,7 +5,7 @@ import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bot
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -57,12 +57,24 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   MediaDevice? _selectedOutputDevice;
   StreamSubscription<List<MediaDevice>>? _deviceSubscription;
 
+  // Mic toggle UX: a tap while the room is reconnecting can't publish, and a
+  // first publish can take a moment, so show that instead of a dead button.
+  late final EventsListener<RoomEvent> _roomListener;
+  bool _isReconnecting = false;
+  bool _micBusy = false;
+
   LocalParticipant get participant => widget.participant;
 
   @override
   void initState() {
     super.initState();
     participant.addListener(_onChange);
+    _isReconnecting = widget.room.connectionState == ConnectionState.reconnecting;
+    _roomListener = widget.room.createListener()
+      ..on<RoomReconnectingEvent>((_) => _setReconnecting(true))
+      ..on<RoomAttemptReconnectEvent>((_) => _setReconnecting(true))
+      ..on<RoomReconnectedEvent>((_) => _setReconnecting(false))
+      ..on<RoomDisconnectedEvent>((_) => _setReconnecting(false));
     // Set speaker immediately so audio is loud even before device list loads.
     // Only once per meeting: a layout switch rebuilds this widget and must not
     // override the user's current output choice.
@@ -76,6 +88,21 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     );
     WidgetsBinding.instance.addObserver(this);
     _checkOsPermissions();
+  }
+
+  void _setReconnecting(bool value) {
+    if (mounted && _isReconnecting != value) {
+      setState(() => _isReconnecting = value);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      );
   }
 
   @override
@@ -258,32 +285,44 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
             'groupId': device.groupId,
           });
           final label = device.label.toLowerCase();
+          final bool speaker;
+          final bool earpiece;
           if (label.contains('speakerphone') || label.contains('speaker')) {
-            DaakiaAudioRouting.setSpeakerphoneOn(true, forceSpeakerOutput: true);
-            setState(() {
-              _speakerphoneOn = true;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = false;
-            });
+            speaker = true;
+            earpiece = false;
           } else if (label.contains('earpiece') || label.contains('receiver')) {
-            DaakiaAudioRouting.setSpeakerphoneOn(false);
-            setState(() {
-              _speakerphoneOn = false;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = true;
-            });
+            speaker = false;
+            earpiece = true;
           } else {
             // BT / wired headset.
             // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
             // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
             // auto-route to the connected BT/wired device by OS priority.
-            DaakiaAudioRouting.setSpeakerphoneOn(false);
-            setState(() {
-              _speakerphoneOn = false;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = false;
-            });
+            speaker = false;
+            earpiece = false;
           }
+
+          // Already on this output: switching again would only reconfigure
+          // the audio session for nothing.
+          final alreadySelected = speaker
+              ? _speakerphoneOn
+              : !_speakerphoneOn && _userExplicitlySelectedEarpiece == earpiece;
+          if (alreadySelected) return;
+
+          // Update the tick and button icon right away. The switch itself
+          // blocks the platform thread while iOS reconfigures audio (up to ~1s),
+          // so start it after the sheet has finished closing; otherwise the
+          // close animation is what freezes.
+          setState(() {
+            _speakerphoneOn = speaker;
+            _selectedOutputDevice = null;
+            _userExplicitlySelectedEarpiece = earpiece;
+          });
+          await Future.delayed(const Duration(milliseconds: 300));
+          DaakiaAudioRouting.setSpeakerphoneOn(
+            speaker,
+            forceSpeakerOutput: speaker,
+          );
         },
       ),
     );
@@ -291,6 +330,11 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   Future<void> _onMicPressed(RtcViewmodel viewModel) async {
     if (viewModel.isAudioInterrupted) return;
+    if (_micBusy) return;
+    if (_isReconnecting) {
+      _showMessage('Reconnecting… try again in a moment');
+      return;
+    }
 
     // Check OS-level permission first — this is the most actionable issue.
     final status = await Permission.microphone.status;
@@ -325,9 +369,21 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
 
-    participant.isMicrophoneEnabled()
-        ? viewModel.disableAudio()
-        : viewModel.enableAudio();
+    final enabling = !participant.isMicrophoneEnabled();
+    setState(() => _micBusy = true);
+    try {
+      if (enabling) {
+        await viewModel.enableAudio();
+      } else {
+        await viewModel.disableAudio();
+      }
+    } catch (_) {
+      _showMessage(enabling
+          ? "Couldn't turn on your microphone. Try again."
+          : "Couldn't turn off your microphone. Try again.");
+    } finally {
+      if (mounted) setState(() => _micBusy = false);
+    }
   }
 
   Future<void> _onCameraPressed(RtcViewmodel viewModel) async {
@@ -400,8 +456,11 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       icon: participant.isMicrophoneEnabled() ? Icons.mic : Icons.mic_off,
       iconColor: _isMicOsDenied
           ? Colors.orange
-          : Colors.white.withValues(alpha: viewModel.getMicAlpha()),
+          : Colors.white.withValues(
+              alpha: _isReconnecting ? 0.4 : viewModel.getMicAlpha(),
+            ),
       showWarning: _isMicOsDenied,
+      busy: _micBusy,
       onPressed: () => _onMicPressed(viewModel),
     );
   }
@@ -556,6 +615,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   @override
   void dispose() {
     participant.removeListener(_onChange);
+    _roomListener.dispose();
     _deviceSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -568,11 +628,15 @@ class _ControlButton extends StatelessWidget {
   final bool showWarning;
   final VoidCallback onPressed;
 
+  /// Shows a small spinner in place of the icon while an action is running.
+  final bool busy;
+
   const _ControlButton({
     required this.icon,
     required this.iconColor,
     required this.showWarning,
     required this.onPressed,
+    this.busy = false,
   });
 
   @override
@@ -583,7 +647,19 @@ class _ControlButton extends StatelessWidget {
       children: [
         IconButton(
           onPressed: onPressed,
-          icon: Icon(icon, color: iconColor),
+          icon: busy
+              ? const SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: Padding(
+                    padding: EdgeInsets.all(5),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+              : Icon(icon, color: iconColor),
           iconSize: 30,
         ),
         if (showWarning)
