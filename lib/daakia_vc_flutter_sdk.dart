@@ -45,7 +45,10 @@ class DaakiaSdk {
     String? whiteboardDomain,
   }) {
     if (secret != null) _secret = secret;
-    if (baseUrl != null) Constant.baseUrl = baseUrl;
+    if (baseUrl != null && baseUrl != Constant.baseUrl) {
+      Constant.baseUrl = baseUrl;
+      resetApiClient();
+    }
     if (whiteboardDomain != null) Constant.whiteboardDomain = whiteboardDomain;
   }
 }

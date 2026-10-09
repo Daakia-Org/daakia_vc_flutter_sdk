@@ -18,6 +18,10 @@ RestClient? _apiClientInstance;
 RestClient get apiClient => _apiClientInstance ??=
     RestClient(setDio(), errorLogger: const ApiParseErrorLogger());
 
+/// Drops the cached client so the next [apiClient] access rebuilds Dio against
+/// the current [Constant.baseUrl]. Needed when the base URL changes at runtime.
+void resetApiClient() => _apiClientInstance = null;
+
 Dio setDio() {
   final dio = Dio();
   dio.options.baseUrl = Constant.baseUrl;
