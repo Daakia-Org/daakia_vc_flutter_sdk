@@ -1,5 +1,71 @@
 # CHANGELOG
 
+## v4.6.0-SNAPSHOT – Unreleased
+
+> **Snapshot, not released yet.** The final version number and date are set when this is published.
+> Requires **Flutter 3.38+ (Dart SDK ^3.10.0)**. After upgrading, run `flutter clean && flutter pub get`.
+
+### ⚠️ Migration
+- **LiveKit upgraded from 2.7 to 2.13.** LiveKit 2.7 no longer builds on current Flutter / Xcode, and LiveKit
+  2.12+ needs Flutter 3.38+ and Dart 3.10+. Speaker, earpiece and headset behaviour is kept the same as before.
+- **`DaakiaSdk.initialize(baseUrl:)` now takes the unversioned API root**, e.g. `https://api.daakia.co.in/`.
+  Each endpoint now adds its own API version, so drop any `/v2.0/` suffix from a custom base URL.
+
+### 🚀 New Features
+- **Live Whiteboard Collaboration** — Collaborate on the whiteboard live from mobile, with host controls.
+- **Landscape Meeting Layout** — The meeting screen now supports landscape.
+- **New Pre-Join Page** — Redesigned pre-join page with a two-column landscape layout, the user's avatar in the
+  camera-off preview, and a styled mic/camera permission dialog with "ask again" and Settings options.
+- **Guest Join** — Guest mode for password-protected meetings, guest user identification, and role-wise colours.
+- **Meeting-Ending Warnings** — Two-tier warnings with a live countdown, inline extend, a 10-minute heads-up for
+  moderators, and an end-of-meeting chime that hosts can turn off.
+- **Workshop Mode** — Everyone is alerted when workshop mode changes; raised hands get a workshop actions menu.
+- **Join Diagnostics** — Network diagnostics and clear messages when joining fails; a failed join is retried
+  without media.
+- **`DaakiaMeetingConfiguration.userEmail`** — Pass the signed-in user's email so the backend can match
+  pre-invited co-hosts. It is not shared with other participants.
+- **Same-Device Sessions** — A stable, hashed device id is sent when joining, so rejoining from the same device
+  no longer shows the duplicate-device sheet.
+- **Mic and Audio Output Feedback** — The mic button shows a spinner while switching, is dimmed with a
+  "Reconnecting…" message during reconnects, and shows a message if the switch fails.
+- **Remove Participant Confirmation** — Hosts confirm before removing a participant.
+
+### 🧩 Improvements
+- **Audio routing:** Wired and USB-C headsets are detected like Bluetooth ones, Earpiece is hidden while a
+  headset is connected, and the chosen output is restored after a phone call.
+- **Android mic:** The mic follows the selected output: the phone's mic on Speaker, the headset's own mic on
+  the headset.
+- **Audio output picker:** Updates at once and ignores taps on the current output.
+- **Diagnostics:** Added audio diagnostics logging (`audio_diag`). Sentry noise is reduced (no info logs or
+  reconnect attempts, only bad-response API errors), and backend type changes are reported.
+- **Resilience:** Type changes in the meeting details payload are tolerated, and API connection errors name the
+  likely cause.
+- **Chat:** The unread badge is anchored to the chat tab label.
+- **Dependencies:** `dio` ^5.10.0, `timezone` ^0.9.0.
+
+### 🐞 Bug Fixes
+- **Android meeting service:**
+  - Fixed an orphaned meeting service and notification.
+  - The service now waits for a pending foreground start before stopping.
+  - It doesn't start if the meeting was stopped during the permission check.
+  - Notification actions now go only to the app instance that started the meeting.
+- **Reconnects:** "Connection Lost" is now shown when a reconnect replaces the user's own session. Only the
+  first disconnect event is handled, and the reconnecting banner is cleared when the meeting ends.
+- **Back button:** Now closes the open sheet or page instead of leaving the meeting.
+- **Keyboard:**
+  - Pre-join: tapping outside the fields closes the keyboard.
+  - Participants: search and rename stay above the keyboard.
+  - Chat: the keyboard no longer carries across tabs or hides the input.
+  - Captions: the language search stays above the keyboard in landscape.
+- **Pre-join:**
+  - Host email/PIN verification works in landscape and with the keyboard open.
+  - Host mic/camera locks are respected.
+  - The password is kept on rotation.
+- **Meeting end:** Participants can rejoin after a meeting is extended, and `end_date` is used for the meeting
+  end time.
+- **Layout:** The screen-share request dialog and bottom sheets stay within short screens. All participant roles
+  are shown, and the duplicate Rename option is removed.
+
 ## v4.5.2 – (2026-07)
 
 ### ⚠️ Migration
