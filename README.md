@@ -11,6 +11,9 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ## Latest Release
 **v4.5.2** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
 
+**Next: v4.6.0-SNAPSHOT (unreleased)** - Upgrades LiveKit to 2.13 and needs Flutter 3.38+ / Dart 3.10+. See the
+[CHANGELOG](CHANGELOG.md) for what's coming.
+
 # How to use
 
 
@@ -23,6 +26,15 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
   dependencies:
     daakia_vc_flutter_sdk: ^4.5.2
 ```
+
+### Requirements
+
+| | Minimum |
+|---|---|
+| Flutter | 3.22+ (v4.5.x), **3.38+ from v4.6.0** |
+| Dart SDK | ^3.8.0 (v4.5.x), **^3.10.0 from v4.6.0** |
+| Android | API 21 |
+| iOS | 14.0 |
 
 
 
