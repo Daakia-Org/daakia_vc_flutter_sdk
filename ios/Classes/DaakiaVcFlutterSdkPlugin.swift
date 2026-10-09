@@ -6,6 +6,11 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
     private var channel: FlutterMethodChannel?
     private var isInterrupted = false
 
+    // `.allowBluetooth` (Bluetooth HFP). Xcode 26+ deprecates the name in favour
+    // of `.allowBluetoothHFP`, which older SDKs don't have; the raw value is the
+    // same flag in both, so it builds warning-free on every Xcode.
+    private static let allowBluetoothHFP = AVAudioSession.CategoryOptions(rawValue: 0x4)
+
     public static func register(with registrar: FlutterPluginRegistrar) {
         let ch = FlutterMethodChannel(
             name: "io.daakia/meeting_service",
@@ -27,6 +32,8 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
             // because WebRTC's internal ref-counting will handle it on disconnect.
             unregisterInterruptionObserver()
             result(nil)
+        case "getAudioRoute":
+            result(DaakiaVcFlutterSdkPlugin.audioRouteSnapshot())
         case "updateMuteState":
             // iOS keeps the audio session alive regardless of mute state — no-op.
             result(nil)
@@ -83,7 +90,7 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
             try session.setCategory(
                 .playAndRecord,
                 mode: .videoChat,
-                options: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay]
+                options: [DaakiaVcFlutterSdkPlugin.allowBluetoothHFP, .allowBluetoothA2DP, .allowAirPlay]
             )
             try session.setActive(true)
             return true
@@ -167,9 +174,53 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
     // Fires when the audio route changes — the only reliable signal when a Dynamic
     // Island call ends while the app stays in the foreground.
     @objc private func handleRouteChange(_ notification: Notification) {
+        // Diagnostics: report every route change with the live session state so
+        // the Dart side can log what iOS actually routed to (see audio_routing.dart).
+        let reason = (notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt) ?? 0
+        var snapshot = DaakiaVcFlutterSdkPlugin.audioRouteSnapshot()
+        snapshot["reason"] = DaakiaVcFlutterSdkPlugin.routeChangeReasonName(reason)
+        DispatchQueue.main.async { [weak self] in
+            self?.channel?.invokeMethod("audioRouteChanged", arguments: snapshot)
+        }
         guard isInterrupted else { return }
         guard notification.userInfo?[AVAudioSessionRouteChangeReasonKey] is UInt else { return }
         recoverAudioSession()
+    }
+
+    static func audioRouteSnapshot() -> [String: Any] {
+        let session = AVAudioSession.sharedInstance()
+        let ports: ([AVAudioSessionPortDescription]) -> [String] = { list in
+            list.map { "\($0.portType.rawValue):\($0.portName)" }
+        }
+        var options: [String] = []
+        let o = session.categoryOptions
+        if o.contains(.mixWithOthers) { options.append("mixWithOthers") }
+        if o.contains(.duckOthers) { options.append("duckOthers") }
+        if o.contains(allowBluetoothHFP) { options.append("allowBluetooth") }
+        if o.contains(.allowBluetoothA2DP) { options.append("allowBluetoothA2DP") }
+        if o.contains(.allowAirPlay) { options.append("allowAirPlay") }
+        if o.contains(.defaultToSpeaker) { options.append("defaultToSpeaker") }
+        return [
+            "category": session.category.rawValue,
+            "mode": session.mode.rawValue,
+            "options": options,
+            "outputs": ports(session.currentRoute.outputs),
+            "inputs": ports(session.currentRoute.inputs),
+            "availableInputs": ports(session.availableInputs ?? []),
+        ]
+    }
+
+    static func routeChangeReasonName(_ raw: UInt) -> String {
+        switch AVAudioSession.RouteChangeReason(rawValue: raw) {
+        case .newDeviceAvailable: return "newDeviceAvailable"
+        case .oldDeviceUnavailable: return "oldDeviceUnavailable"
+        case .categoryChange: return "categoryChange"
+        case .override: return "override"
+        case .wakeFromSleep: return "wakeFromSleep"
+        case .noSuitableRouteForCategory: return "noSuitableRouteForCategory"
+        case .routeConfigurationChange: return "routeConfigurationChange"
+        default: return "unknown(\(raw))"
+        }
     }
 
     private func recoverAudioSession() {

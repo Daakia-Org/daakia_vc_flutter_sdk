@@ -4,12 +4,35 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
+import '../../rtc/audio_routing.dart';
+
 bool isExternalAudioDevice(String label) {
   final l = label.toLowerCase();
   return !l.contains('earpiece') &&
       !l.contains('receiver') && // iOS earpiece label
       !l.contains('speakerphone') &&
       !l.contains('speaker');
+}
+
+// iOS port types (MediaDevice.groupId) of headset microphones that stay in
+// availableInputs while overrideOutputAudioPort(.speaker) hides the headset's
+// output from the current route: Bluetooth HFP/LE, 3.5mm/Lightning headset mic
+// ("MicrophoneWired") and USB-C headsets ("USBAudio").
+bool isExternalInputPort(String? groupId) {
+  final g = (groupId ?? '').toLowerCase();
+  return g.contains('bluetooth') ||
+      g.contains('microphonewired') ||
+      g.contains('usbaudio');
+}
+
+// Wired/USB headset port types, used to pick the headset icon when the device
+// name ("EarPods") doesn't say "headphone" or "headset".
+bool isWiredHeadsetPort(String? groupId) {
+  final g = (groupId ?? '').toLowerCase();
+  return g.contains('headphones') ||
+      g.contains('microphonewired') ||
+      g.contains('usbaudio') ||
+      g.contains('headsetmic');
 }
 
 // On iOS, enumerateDevices only returns currentRoute.outputs for audiooutput.
@@ -21,16 +44,39 @@ List<MediaDevice> augmentOutputsForIos(List<MediaDevice> allDevices) {
   final audioOutputs = allDevices.where((d) => d.kind == 'audiooutput').toList();
   if (defaultTargetPlatform != TargetPlatform.iOS) return audioOutputs;
 
-  final result = List<MediaDevice>.from(audioOutputs);
+  bool isBluetooth(MediaDevice d) =>
+      (d.groupId ?? '').toLowerCase().contains('bluetooth');
+  bool isEarpiece(MediaDevice d) {
+    final l = d.label.toLowerCase();
+    return l.contains('receiver') || l.contains('earpiece');
+  }
 
-  // Promote BT devices found in audioinput (availableInputs) to the output list.
-  // portType "BluetoothHFP/A2DP/LE" appears in availableInputs even when speaker is forced.
+  // iOS names the earpiece "Receiver" when it's the current route; show the
+  // same "Earpiece" label the virtual entry below uses.
+  final result = audioOutputs
+      .map((d) => isEarpiece(d)
+          ? MediaDevice(d.deviceId, 'Earpiece', d.kind, d.groupId)
+          : d)
+      .toList();
+
+  // Promote headsets found in audioinput (availableInputs) to the output list.
+  // Their mic stays in availableInputs even when speaker is forced and the
+  // headset's output is missing from the current route.
   for (final input in allDevices.where((d) => d.kind == 'audioinput')) {
-    final g = (input.groupId ?? '').toLowerCase();
-    if (g.contains('bluetooth') &&
-        !result.any((o) => o.deviceId == input.deviceId)) {
-      result.add(MediaDevice(input.deviceId, input.label, 'audiooutput', input.groupId));
-    }
+    if (!isExternalInputPort(input.groupId)) continue;
+    if (result.any((o) => o.deviceId == input.deviceId)) continue;
+    final isWired = !isBluetooth(input);
+    // The same buds show up as an A2DP output and an HFP input with different
+    // ids; one Bluetooth row is enough.
+    if (!isWired && result.any(isBluetooth)) continue;
+    // A wired headset's output is already listed when it's the current route.
+    if (isWired && result.any((o) => isWiredHeadsetPort(o.groupId))) continue;
+    // "EarPods Microphone" -> "EarPods".
+    final label = isWired
+        ? input.label.replaceFirst(RegExp(r'\s*microphone$', caseSensitive: false), '')
+        : input.label;
+    result.add(MediaDevice(input.deviceId, label.isEmpty ? input.label : label,
+        'audiooutput', input.groupId));
   }
 
   final hasExternal = result.any((d) => isExternalAudioDevice(d.label));
@@ -43,11 +89,12 @@ List<MediaDevice> augmentOutputsForIos(List<MediaDevice> allDevices) {
     if (idx > 0) result.insert(0, result.removeAt(idx));
   }
 
-  // Show Earpiece only when no BT/wired is connected (iOS can't force earpiece over BT).
-  if (!hasExternal &&
-      !result.any((d) =>
-          d.label.toLowerCase().contains('receiver') ||
-          d.label.toLowerCase().contains('earpiece'))) {
+  // Show Earpiece only when no BT/wired is connected (iOS can't force earpiece
+  // over BT). iOS can briefly report the earpiece as the current route while a
+  // headset connects, so drop that entry too rather than listing both.
+  if (hasExternal) {
+    result.removeWhere(isEarpiece);
+  } else if (!result.any(isEarpiece)) {
     result.add(const MediaDevice('Earpiece', 'Earpiece', 'audiooutput', 'Receiver'));
   }
 
@@ -80,8 +127,7 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
   void initState() {
     super.initState();
     _devices = widget.initialDevices;
-    _subscription =
-        Hardware.instance.onDeviceChange.stream.listen(_onDeviceChange);
+    _subscription = DaakiaAudioRouting.onDeviceChange.listen(_onDeviceChange);
   }
 
   void _onDeviceChange(List<MediaDevice> devices) {
@@ -121,7 +167,11 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
         l.contains('wireless')) {
       return Icons.bluetooth_audio;
     }
-    if (l.contains('headphone') || l.contains('headset')) return Icons.headset;
+    if (l.contains('headphone') ||
+        l.contains('headset') ||
+        isWiredHeadsetPort(device.groupId)) {
+      return Icons.headset;
+    }
     if (l.contains('speakerphone') || l.contains('speaker')) {
       return Icons.volume_up;
     }
