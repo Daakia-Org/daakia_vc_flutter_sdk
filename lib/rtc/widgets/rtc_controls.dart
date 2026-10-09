@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
+import 'package:daakia_vc_flutter_sdk/utils/permission_request.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
@@ -62,6 +63,9 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   late final EventsListener<RoomEvent> _roomListener;
   bool _isReconnecting = false;
   bool _micBusy = false;
+  // A second tap while the OS permission dialog is up would queue another
+  // request and, once granted, toggle the device a second time.
+  bool _awaitingOsPermission = false;
 
   LocalParticipant get participant => widget.participant;
 
@@ -343,7 +347,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
     if (status.isDenied) {
-      final result = await Permission.microphone.request();
+      if (_awaitingOsPermission) return;
+      _awaitingOsPermission = true;
+      final PermissionStatus result;
+      try {
+        result = await Permission.microphone.requestSerially();
+      } finally {
+        _awaitingOsPermission = false;
+      }
       await _checkOsPermissions();
       if (!result.isGranted) return;
     } else {
@@ -394,7 +405,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
     if (status.isDenied) {
-      final result = await Permission.camera.request();
+      if (_awaitingOsPermission) return;
+      _awaitingOsPermission = true;
+      final PermissionStatus result;
+      try {
+        result = await Permission.camera.requestSerially();
+      } finally {
+        _awaitingOsPermission = false;
+      }
       await _checkOsPermissions();
       if (!result.isGranted) return;
     } else {

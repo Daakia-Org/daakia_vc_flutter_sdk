@@ -30,6 +30,7 @@ import '../../utils/join_failure.dart';
 import '../../utils/meeting_end_time.dart';
 import '../../utils/name_input_formatter.dart';
 import '../../utils/utils.dart';
+import '../../utils/permission_request.dart';
 
 @protected
 class PreJoinScreen extends StatefulWidget {
@@ -2117,7 +2118,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     // Permanently denied reports isDenied == false, so check it explicitly:
     // otherwise the toggle would switch on without the permission.
     if (!status.isPermanentlyDenied && !status.isGranted && !status.isLimited) {
-      status = await media.permission.request();
+      status = await media.permission.requestSerially();
     }
     if (status.isGranted || status.isLimited) return true;
     if (!context.mounted) return false;
