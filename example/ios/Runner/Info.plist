@@ -26,10 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>NSBroadcastUploadExtension</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>It will capture your video for video conference</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app does not use your location. A bundled file-picker library includes optional photo geotagging, which is never enabled.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>It will use your microphone for audio conference</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -44,6 +48,8 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -61,9 +67,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>UIFileSharingEnabled</key>
-	<true/>
-	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
 </dict>
 </plist>
