@@ -35,10 +35,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../service/daakia_meeting_service.dart';
 import 'package:livekit_client/livekit_client.dart';
-import 'package:livekit_client/src/track/audio_management.dart'
-    show onConfigureNativeAudio, defaultNativeAudioConfigurationFunc, AudioTrackState;
-import 'package:livekit_client/src/support/native_audio.dart'
-    show NativeAudioConfiguration, AppleAudioCategory, AppleAudioCategoryOption, AppleAudioMode;
 import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
@@ -136,7 +132,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           statusBarBrightness: Brightness.dark,      // white icons on iOS
         ));
     WakelockPlus.enable();
-    _setupIosAudioConfig();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
         setState(() {
@@ -359,42 +354,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         .any((p) => p.track != null && !p.muted);
   }
 
-  // On iOS, override LiveKit's default audio config function so that when the user
-  // has chosen speaker output, we use overrideOutputAudioPort(.speaker) — applied by
-  // setting preferSpeakerOutput:true — instead of the defaultToSpeaker category option.
-  // defaultToSpeaker is only valid for PlayAndRecord; when audioTrackState=remoteOnly
-  // LiveKit picks Playback category, causing OSStatus error -50 with defaultToSpeaker.
-  // overrideOutputAudioPort(.speaker) works with any category and persists through
-  // LiveKit's automatic session reconfigurations.
-  void _setupIosAudioConfig() {
-    if (defaultTargetPlatform != TargetPlatform.iOS) return;
-    onConfigureNativeAudio = (AudioTrackState state) async {
-      // Only force speaker when user explicitly tapped "Speaker" (forceSpeakerOutput = true).
-      // At startup preferSpeakerOutput is true but forceSpeakerOutput is false, so iOS
-      // can auto-route to BT/wired if connected (videoChat + allowBluetooth handles it).
-      if (Hardware.instance.forceSpeakerOutput) {
-        if (state == AudioTrackState.none) return NativeAudioConfiguration.soloAmbient;
-        // Use PlayAndRecord so defaultToSpeaker (added by setSpeakerphoneOn forceSpeakerOutput)
-        // is valid, and preferSpeakerOutput calls overrideOutputAudioPort(.speaker) which
-        // forces the built-in loudspeaker even when BT is connected.
-        return NativeAudioConfiguration(
-          appleAudioCategory: AppleAudioCategory.playAndRecord,
-          appleAudioCategoryOptions: {
-            AppleAudioCategoryOption.allowBluetooth,
-            AppleAudioCategoryOption.allowBluetoothA2DP,
-            AppleAudioCategoryOption.allowAirPlay,
-          },
-          appleAudioMode: AppleAudioMode.videoChat,
-          preferSpeakerOutput: true,
-        );
-      }
-      return defaultNativeAudioConfigurationFunc(state);
-    };
-  }
-
   @override
   void dispose() {
-    onConfigureNativeAudio = defaultNativeAudioConfigurationFunc;
     _resetReconnectUiState();
     _zoomController.removeListener(_onZoomChanged);
     _zoomController.dispose();
@@ -479,6 +440,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           _onDuplicateIdentity();
           break;
         case DisconnectReason.roomDeleted:
+        case DisconnectReason.roomClosed:
           {
             showSnackBar(message: "Meeting ended");
             Timer(const Duration(seconds: 3), () {
@@ -508,7 +470,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           _handleGenericDisconnect("Failed to join the meeting.");
           break;
         case DisconnectReason.disconnected:
+        case DisconnectReason.migration:
+        case DisconnectReason.signalClose:
+        case DisconnectReason.connectionTimeout:
+        case DisconnectReason.mediaFailure:
           _handleGenericDisconnect("You have been disconnected.");
+          break;
+        // SIP and agent reasons don't apply to Daakia meetings, but keep the
+        // switch exhaustive so a stray one still closes the meeting cleanly.
+        case DisconnectReason.userUnavailable:
+        case DisconnectReason.userRejected:
+        case DisconnectReason.sipTrunkFailure:
+        case DisconnectReason.agentError:
+          _handleGenericDisconnect("Disconnected due to unknown reason.");
           break;
         case DisconnectReason.signalingConnectionFailure:
           _handleGenericDisconnect("Signaling connection failed.");
