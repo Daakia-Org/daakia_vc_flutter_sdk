@@ -528,7 +528,8 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (await cacheData.getMeetingUid() == widget.meetingId) {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
-        if (await cacheData.getAttendanceId() != "") {
+        if (await cacheData.getAttendanceId() != "" &&
+            await _cachedAttendanceMatchesJoin(cacheData)) {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
             final cachedToken = await cacheData.getHostToken() ?? "";
@@ -2176,6 +2177,20 @@ class _PreJoinState extends State<PreJoinScreen> {
         getFeaturesAndJoinMeeting(stopLoading);
       }
     }
+  }
+
+  /// Whether the cached attendance was made in the same role as this join.
+  /// The backend gives a join that sends `meeting_attendance_uid` that
+  /// attendance's LiveKit identity, so reusing a host attendance for a
+  /// participant join puts the participant on the host's identity, and the
+  /// two then kick each other out with DUPLICATE_IDENTITY. Host joins only
+  /// reuse host attendances; participant joins reuse participant or cohost
+  /// ones (a cohost who rejoins keeps the role).
+  Future<bool> _cachedAttendanceMatchesJoin(StorageHelper cacheData) async {
+    final cachedRole = await cacheData.getAttendanceRole();
+    if (widget.isHost) return cachedRole == AttendanceRole.host;
+    return cachedRole == AttendanceRole.participant ||
+        cachedRole == AttendanceRole.cohost;
   }
 
   Future<bool> shouldAddAttendanceId() async {
