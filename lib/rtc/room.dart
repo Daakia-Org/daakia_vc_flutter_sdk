@@ -6,6 +6,7 @@ import 'package:animated_emoji/emojis.g.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
@@ -1791,31 +1792,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<bool> _showExitConfirmationDialog(BuildContext context) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Exit Meeting'),
-              content: const Text('Are you sure you want to exit the meeting?'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(false); // Don't exit
-                  },
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(true); // Exit
-                  },
-                  child: const Text('Exit'),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
+  Future<bool> _showExitConfirmationDialog(BuildContext context) {
+    return confirmLeaveMeeting(context,
+        useCallTerminology:
+            _livekitProviderKey.currentState?.viewModel.useCallTerminology ??
+                false);
   }
 
   Widget _buildTopStatusIndicator({
