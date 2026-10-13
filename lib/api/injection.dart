@@ -33,7 +33,7 @@ Dio setDio() {
           attributes: {
             'endpoint': response.requestOptions.path,
             'method': response.requestOptions.method,
-            'payload': response.requestOptions.data,
+            'payload': _loggablePayload(response.requestOptions.data),
           },
         );
         handler.next(response);
@@ -51,7 +51,7 @@ Dio setDio() {
           attributes: {
             'endpoint': e.requestOptions.path,
             'method': e.requestOptions.method,
-            'payload': e.requestOptions.data,
+            'payload': _loggablePayload(e.requestOptions.data),
             'response': e.response?.data,
             'statusCode': e.response?.statusCode,
             'dioErrorType': e.type.name,
@@ -64,6 +64,16 @@ Dio setDio() {
   );
 
   return dio;
+}
+
+/// Datadog can't serialize a [FormData] (attachment uploads) and drops the
+/// whole log's attributes, so log its field names and file names instead.
+Object? _loggablePayload(Object? data) {
+  if (data is! FormData) return data;
+  return {
+    'fields': {for (final f in data.fields) f.key: f.value},
+    'files': [for (final f in data.files) '${f.key}: ${f.value.filename}'],
+  };
 }
 
 /// Generic API request handler
