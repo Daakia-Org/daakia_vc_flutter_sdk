@@ -19,6 +19,7 @@
 		B4EBDA568BA6CB29822FD434 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 24920A19FE4F913896CE993A /* Pods_RunnerTests.framework */; };
 		E1F3179B2CF6FACD00BE9D31 /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E1F3179A2CF6FACD00BE9D31 /* ReplayKit.framework */; };
 		E1F3179E2CF6FACD00BE9D31 /* SampleHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F3179D2CF6FACD00BE9D31 /* SampleHandler.swift */; };
+		E1F317A22CF6FACD00BE9D31 /* BroadcastExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E1F317992CF6FACD00BE9D31 /* BroadcastExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E1F317AC2CF70B3C00BE9D31 /* SocketConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F317AB2CF70B3C00BE9D31 /* SocketConnection.swift */; };
 		E1F317AE2CF70BDD00BE9D31 /* SampleUploader.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F317AD2CF70BDD00BE9D31 /* SampleUploader.swift */; };
 		E1F317B02CF70C5B00BE9D31 /* Atomic.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1F317AF2CF70C5B00BE9D31 /* Atomic.swift */; };
@@ -51,6 +52,17 @@
 			files = (
 			);
 			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E1F317A32CF6FACD00BE9D31 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				E1F317A22CF6FACD00BE9D31 /* BroadcastExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXCopyFilesBuildPhase section */
@@ -253,6 +265,7 @@
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
+				E1F317A32CF6FACD00BE9D31 /* Embed Foundation Extensions */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				4911DE674CC82689E0C4BDFC /* [CP] Embed Pods Frameworks */,
 			);
