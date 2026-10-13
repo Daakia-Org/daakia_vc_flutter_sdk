@@ -84,6 +84,11 @@ class Utils {
   ///
   /// Pass [forceFullHeight] for a sheet that must be scroll-controlled in
   /// every orientation (again, [DraggableScrollableSheet] requires it).
+  ///
+  /// The orientation is read inside the builder, not when the sheet opens, so
+  /// a sheet opened in portrait and then rotated takes the landscape height
+  /// (and back). The sheet is always scroll-controlled for that reason; the
+  /// portrait 9/16 cap the framework would apply is reproduced here instead.
   static Future<T?> showAdaptiveSheet<T>(
     BuildContext context, {
     required WidgetBuilder builder,
@@ -95,8 +100,6 @@ class Utils {
     bool enableDrag = true,
     bool useSafeArea = true,
   }) {
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
     return showModalBottomSheet<T>(
       context: context,
       backgroundColor: backgroundColor,
@@ -104,11 +107,23 @@ class Utils {
       isDismissible: isDismissible,
       enableDrag: enableDrag,
       useSafeArea: useSafeArea,
-      isScrollControlled: forceFullHeight || isLandscape,
+      isScrollControlled: true,
       builder: (sheetContext) {
-        final child = builder(sheetContext);
-        if (!scrollable) return child;
-        return SingleChildScrollView(child: child);
+        Widget child = builder(sheetContext);
+        if (scrollable) child = SingleChildScrollView(child: child);
+        if (forceFullHeight) return child;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isLandscape = MediaQuery.orientationOf(context) ==
+                Orientation.landscape;
+            if (isLandscape) return child;
+            return ConstrainedBox(
+              constraints:
+                  BoxConstraints(maxHeight: constraints.maxHeight * 9 / 16),
+              child: child,
+            );
+          },
+        );
       },
     );
   }
