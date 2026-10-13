@@ -25,6 +25,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
 import 'package:daakia_vc_flutter_sdk/theme/daakia_sdk_theme.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:daakia_vc_flutter_sdk/utils/whiteboard_download.dart';
+import 'package:daakia_vc_flutter_sdk/utils/whiteboard_file_selector.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_disconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_reconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/service/daakia_vc_logger.dart';
@@ -42,6 +43,7 @@ import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../model/annotation_stroke.dart';
@@ -1315,6 +1317,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             return NavigationDecision.prevent;
           },
           onPageFinished: (_) {
+            if (_webViewController.platform is AndroidWebViewController) {
+              _webViewController
+                  .runJavaScript(WhiteboardFileSelector.cancelScript)
+                  .catchError((Object e) {
+                DaakiaVcLogger.logWarning(
+                    'Whiteboard file-cancel bridge failed: $e',
+                    reportToSentry: false);
+              });
+            }
             _webViewController
                 .runJavaScript(WhiteboardDownload.script)
                 .catchError((Object e) {
@@ -1335,6 +1346,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                   : "Couldn't save the whiteboard export");
         },
       );
+    final platformController = _webViewController.platform;
+    if (platformController is AndroidWebViewController) {
+      platformController.setOnShowFileSelector(WhiteboardFileSelector.pick);
+    }
   }
 
   bool _isWhiteboardPage(String url) {
