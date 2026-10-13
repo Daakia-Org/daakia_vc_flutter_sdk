@@ -3,13 +3,16 @@
 ## v4.6.0-SNAPSHOT – Unreleased
 
 > **Snapshot, not released yet.** The final version number and date are set when this is published.
-> Requires **Flutter 3.38+ (Dart SDK ^3.10.0)**. After upgrading, run `flutter clean && flutter pub get`.
+> Requires **Flutter 3.41.6+ (Dart SDK ^3.11.0)**, **Android minSdk 24** and **compileSdk 37**. After upgrading, run `flutter clean && flutter pub get`.
 
 ### ⚠️ Migration
-- **LiveKit upgraded from 2.7 to 2.13.** LiveKit 2.7 no longer builds on current Flutter / Xcode, and LiveKit
-  2.12+ needs Flutter 3.38+ and Dart 3.10+. Speaker, earpiece and headset behaviour is kept the same as before.
-- **`DaakiaSdk.initialize(baseUrl:)` now takes the unversioned API root**, e.g. `https://api.daakia.co.in/`.
-  Each endpoint now adds its own API version, so drop any `/v2.0/` suffix from a custom base URL.
+- **Real-time video engine upgraded.** The previous version no longer builds on current Flutter / Xcode.
+  Speaker, earpiece and headset behaviour is kept the same as before.
+- **`DaakiaSdk.initialize(baseUrl:)` now takes the unversioned API root.** `baseUrl` is optional; this only
+  affects apps that pass a custom one. Each endpoint now adds its own API version, so drop any `/v2.0/` suffix.
+- **Dependencies updated to their latest versions.** The newer plugins need Flutter 3.41.6+, Dart 3.11+,
+  Android minSdk 24 and Android compileSdk 37 (raise both in your app if they are lower). Older versions of
+  the same packages in your app may conflict; upgrade them to their latest versions. See the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
 
 ### 🚀 New Features
 - **Live Whiteboard Collaboration** — Collaborate on the whiteboard live from mobile, with host controls.
@@ -147,7 +150,6 @@
 
 ### 📦 Dependency Updates
 - Dart SDK: `^3.5.3` → `^3.8.0`
-- `livekit_client`: `^2.5.3` → `^2.7.0`
 - `flutter_webrtc`: `^1.1.0` → `^1.4.0`
 - `connectivity_plus`: `^6.1.5` → `^7.0.0`
 - `device_info_plus`: `^11.5.0` → `^12.2.0`

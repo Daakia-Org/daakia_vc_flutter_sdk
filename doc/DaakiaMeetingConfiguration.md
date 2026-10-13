@@ -81,8 +81,8 @@ The `userEmail` field passes the signed-in user's email, when the host app knows
 - Sent as a top-level `email` field in the meeting join request, so the backend can match pre-invited
   co-hosts and the right participant identity. This helps when the invite email differs from the account's
   profile email, or when the user joins without a dashboard token.
-- Unlike [`metadata`](#metadata), it is **not** added to the participant's LiveKit metadata, so other
-  participants can't read it.
+- Unlike [`metadata`](#metadata), it is **not** shared with other participants, so they
+  can't read it.
 - Leave it `null` for guest or anonymous joins; the SDK uses the guest or password-verified email on its own.
 
 ### Example

@@ -11,7 +11,7 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ## Latest Release
 **v4.5.2** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
 
-**Next: v4.6.0-SNAPSHOT (unreleased)** - Upgrades LiveKit to 2.13 and needs Flutter 3.38+ / Dart 3.10+. See the
+**Next: v4.6.0-SNAPSHOT (unreleased)** - Needs Flutter 3.41.6+ / Dart 3.11+ and Android API 24+. See the
 [CHANGELOG](CHANGELOG.md) for what's coming.
 
 # How to use
@@ -31,9 +31,10 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
 
 | | Minimum |
 |---|---|
-| Flutter | 3.22+ (v4.5.x), **3.38+ from v4.6.0** |
-| Dart SDK | ^3.8.0 (v4.5.x), **^3.10.0 from v4.6.0** |
-| Android | API 21 |
+| Flutter | 3.22+ (v4.5.x), **3.41.6+ from v4.6.0** |
+| Dart SDK | ^3.8.0 (v4.5.x), **^3.11.0 from v4.6.0** |
+| Android | API 21 (v4.5.x), **API 24 from v4.6.0** |
+| Android compileSdk | **37 from v4.6.0** |
 | iOS | 14.0 |
 
 
@@ -170,7 +171,7 @@ You may need to delete `Podfile.lock` and re-run `pod install` after updating th
 
 ### Podfile Permission Macros
 
-The SDK uses [`permission_handler`](https://pub.dev/packages/permission_handler) to check and request camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
+The SDK checks and requests camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
 
 ```ruby
 post_install do |installer|
@@ -192,6 +193,11 @@ After updating your Podfile, run:
 ```bash
 cd ios && pod install
 ```
+
+> **Swift Package Manager:** if your app resolves plugins through SPM, these `Podfile` macros are not used;
+> camera and microphone access are enabled from the matching `NS*UsageDescription` keys in `Info.plist`.
+> After changing those keys, clear `~/Library/Developer/Xcode/DerivedData` once. See the
+> [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
 ## Usage/Examples
 
 ```dart
