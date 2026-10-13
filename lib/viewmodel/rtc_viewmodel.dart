@@ -3431,15 +3431,19 @@ class RtcViewmodel extends ChangeNotifier {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
     final sessionUid = Utils.getMetadataSessionUid(metadata);
-    final isCoHost = Utils.isCoHost(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
     if (sessionUid != null) {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
-    storageHelper.setAttendanceRole(
-        isCoHost ? AttendanceRole.cohost : AttendanceRole.participant);
+    // The host is stored as its own role so pre-join never hands a host's
+    // attendance to a participant join (see _cachedAttendanceMatchesJoin).
+    storageHelper.setAttendanceRole(Utils.isHost(metadata)
+        ? AttendanceRole.host
+        : Utils.isCoHost(metadata)
+            ? AttendanceRole.cohost
+            : AttendanceRole.participant);
   }
 
   // Only fires for the advance-password flow, where verify/password returns
