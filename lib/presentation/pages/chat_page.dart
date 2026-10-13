@@ -54,8 +54,10 @@ class _ChatState extends State<ChatPage>
     // Typing in landscape leaves ~150dp above the keyboard: trim padding so
     // the input and some messages stay visible.
     final media = MediaQuery.of(context);
-    final isCompact = media.orientation == Orientation.landscape &&
-        media.viewInsets.bottom > 0;
+    final isLandscape = media.orientation == Orientation.landscape;
+    // Read the keyboard from the view: the Chats scaffold this page sits in
+    // strips it from the MediaQuery its body sees, so viewInsets is always 0.
+    final isCompact = isLandscape && View.of(context).viewInsets.bottom > 0;
     return PopScope(
       onPopInvokedWithResult: (isPoped, dynamic) async {
         widget.viewModel.isChatOpen = false;
@@ -64,10 +66,11 @@ class _ChatState extends State<ChatPage>
         backgroundColor: const Color(0xFF000000),
         // Use a specific color for no_video_background
         body: Padding(
-          padding: EdgeInsets.symmetric(vertical: isCompact ? 4.0 : 20.0),
+          padding: EdgeInsets.symmetric(vertical: isLandscape ? 4.0 : 20.0),
           child: Column(
             children: [
-              if (widget.viewModel.pinnedPublicChat != null)
+              // No room for the pinned bar above the keyboard in landscape.
+              if (widget.viewModel.pinnedPublicChat != null && !isCompact)
                 PinnedMessageWidget(
                   name: widget.viewModel.pinnedPublicChat?.isSender == true
                       ? widget.viewModel.room.localParticipant?.name
