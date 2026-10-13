@@ -160,25 +160,37 @@ class _ChatControllerState extends State<ChatController>
     // visible. Tapping outside the input closes the keyboard and brings them
     // back.
     final media = MediaQuery.of(context);
-    final isTypingInLandscape = media.orientation == Orientation.landscape &&
-        media.viewInsets.bottom > 0;
+    final isLandscape = media.orientation == Orientation.landscape;
+    final isTypingInLandscape = isLandscape && media.viewInsets.bottom > 0;
+
+    final tabBar = TabBar(
+      controller: _tabController,
+      indicatorColor: Colors.white,
+      labelColor: Colors.white,
+      unselectedLabelColor: Colors.grey,
+      tabs: tabs,
+    );
+    const title = Text("Chats", style: TextStyle(color: Colors.white));
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       appBar: isTypingInLandscape
           ? null
           : AppBar(
-              title:
-                  const Text("Chats", style: TextStyle(color: Colors.white)),
+              // In landscape the tabs share the title row instead of adding a
+              // second bar, which leaves the conversation room for messages.
+              title: isLandscape
+                  ? Row(
+                      children: [
+                        title,
+                        const SizedBox(width: 24),
+                        Expanded(child: tabBar),
+                      ],
+                    )
+                  : title,
               backgroundColor: Colors.black,
               iconTheme: const IconThemeData(color: Colors.white),
-              bottom: TabBar(
-                controller: _tabController,
-                indicatorColor: Colors.white,
-                labelColor: Colors.white,
-                unselectedLabelColor: Colors.grey,
-                tabs: tabs,
-              ),
+              bottom: isLandscape ? null : tabBar,
             ),
       // Keeps the chat clear of the status bar while the app bar is hidden.
       // Always in the tree so the focused input is not rebuilt, which would
