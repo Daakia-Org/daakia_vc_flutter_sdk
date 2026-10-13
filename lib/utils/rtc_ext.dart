@@ -71,6 +71,25 @@ extension RTCExampleExt on BuildContext {
         ),
       );
 
+  Future<bool?> showCloseWhiteboardDialog() => showDialog<bool>(
+        context: this,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Close Whiteboard'),
+          content: const Text(
+              'This closes the whiteboard for everyone in the meeting.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+
   Future<bool?> showPermissionAskDialog(String message) => showDialog<bool>(
     context: this,
     builder: (ctx) => AlertDialog(
