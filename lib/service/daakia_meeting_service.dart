@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../utils/permission_request.dart';
+
 class DaakiaMeetingService {
   static const _channel = MethodChannel('io.daakia/meeting_service');
 
@@ -96,7 +98,7 @@ class DaakiaMeetingService {
       // POST_NOTIFICATIONS is a runtime permission on Android 13+.
       final notifStatus = await Permission.notification.status;
       if (notifStatus.isDenied) {
-        await Permission.notification.request();
+        await Permission.notification.requestSerially();
       }
     }
     if (session != _session) return; // stop() ran while we were waiting.

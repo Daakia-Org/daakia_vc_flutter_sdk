@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../resources/colors/color.dart';
+import '../../utils/permission_request.dart';
 
 /// The device permissions the pre-join screen asks for.
 enum MediaPermission {
@@ -77,7 +78,7 @@ class _MediaPermissionDialogState extends State<MediaPermissionDialog> {
       return;
     }
     setState(() => _requesting = true);
-    final status = await widget.permission.permission.request();
+    final status = await widget.permission.permission.requestSerially();
     if (!mounted) return;
     if (status.isGranted || status.isLimited) {
       Navigator.of(context).pop(true);

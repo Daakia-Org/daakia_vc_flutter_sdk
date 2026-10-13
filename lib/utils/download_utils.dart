@@ -4,6 +4,7 @@ import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'permission_request.dart';
 
 class DownloadUtils {
   static const _channel = MethodChannel('io.daakia/meeting_service');
@@ -30,7 +31,7 @@ class DownloadUtils {
       if (Platform.isAndroid) {
         final sdkInt = (await DeviceInfoPlugin().androidInfo).version.sdkInt;
         if (sdkInt < 29) {
-          final status = await Permission.storage.request();
+          final status = await Permission.storage.requestSerially();
           if (!status.isGranted) {
             debugPrint('[DownloadUtils] WRITE_EXTERNAL_STORAGE denied');
             return false;
