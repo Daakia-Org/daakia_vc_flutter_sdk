@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../resources/colors/color.dart';
+import '../dialog/leave_confirmation_dialog.dart';
 
 class EndMeetingBottomSheet extends StatefulWidget {
   final VoidCallback onEndCall;
@@ -16,30 +17,15 @@ class EndMeetingBottomSheet extends StatefulWidget {
 
 class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
   Future<void> _confirmEnd() async {
-    final sessionWord = widget.useCallTerminology ? 'call' : 'meeting';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('End ${sessionWord[0].toUpperCase()}${sessionWord.substring(1)}'),
-        content: Text(
-          'Are you sure you want to end this $sessionWord? This will end it for all participants.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'End ${sessionWord[0].toUpperCase()}${sessionWord.substring(1)}',
-              style: const TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) widget.onEndCall();
+    final confirmed = await confirmEndMeetingForAll(context,
+        useCallTerminology: widget.useCallTerminology);
+    if (confirmed) widget.onEndCall();
+  }
+
+  Future<void> _confirmLeave() async {
+    final confirmed = await confirmLeaveMeeting(context,
+        useCallTerminology: widget.useCallTerminology);
+    if (confirmed) widget.onLeaveCall();
   }
 
   @override
@@ -79,7 +65,7 @@ class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
             width: double.infinity,
             height: 60, // Square shape
             child: ElevatedButton(
-              onPressed: widget.onLeaveCall,
+              onPressed: _confirmLeave,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.grey,

@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/utils/permission_request.dart';
-import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' hide ConnectionState;
@@ -600,8 +600,9 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   void _onTapDisconnect(RtcViewmodel viewModel) async {
     if (!mounted) return;
-    final result = await context.showDisconnectDialog();
-    if (result == true) {
+    final result = await confirmLeaveMeeting(context,
+        useCallTerminology: viewModel.useCallTerminology);
+    if (result) {
       viewModel.isMeetingEnded = true;
       viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
     }
