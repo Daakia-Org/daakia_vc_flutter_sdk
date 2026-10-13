@@ -521,6 +521,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.setRecording(widget.room.isRecording);
       viewModel?.getAttendanceListForParticipant();
       viewModel?.fetchInvitedParticipants(silent: true);
+      // The joiner's metadata (with their email) can land just after the
+      // connect event, so read it a moment later.
+      final joined = event.participant;
+      Timer(const Duration(seconds: 2), () {
+        if (widget.room.remoteParticipants[joined.identity] == null) return;
+        _livekitProviderKey.currentState?.viewModel
+            .reportInviteeJoinedStatus(joined, joined: true);
+      });
       viewModel?.addParticipantToConsentList(event.participant);
       viewModel?.sendPrivateChatHistory(event.participant.identity);
       _sortParticipants();
@@ -534,6 +542,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           .getAttendanceListForParticipant();
       _livekitProviderKey.currentState?.viewModel
           .fetchInvitedParticipants(silent: true);
+      _livekitProviderKey.currentState?.viewModel
+          .reportInviteeJoinedStatus(event.participant, joined: false);
       _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
       _sortParticipants();
     })

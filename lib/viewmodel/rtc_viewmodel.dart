@@ -1984,6 +1984,62 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  /// Whether this device reports invitees joining and leaving.
+  ///
+  /// The backend keeps an invitee "joined" until a client says otherwise, so
+  /// one moderator reports for everyone: the host, or, with no host in the
+  /// room, the co-host who joined first. Same rule as the web client, so the
+  /// two don't race. [excludingIdentity] leaves out the participant whose
+  /// change is being reported.
+  bool _reportsInviteeStatus({String? excludingIdentity}) {
+    final local = room.localParticipant;
+    if (local == null) return false;
+    if (isHost()) return true;
+    if (!isCoHost()) return false;
+    final present = <Participant>[local, ...room.remoteParticipants.values]
+        .where((p) => p.identity != excludingIdentity)
+        .toList();
+    if (present.any((p) => Utils.isHost(p.metadata))) return false;
+    final moderators = present
+        .where((p) => p == local || Utils.isCoHost(p.metadata))
+        .toList()
+      ..sort((a, b) {
+        final byJoin = a.joinedAt.compareTo(b.joinedAt);
+        return byJoin != 0 ? byJoin : a.identity.compareTo(b.identity);
+      });
+    return moderators.first.identity == local.identity;
+  }
+
+  /// Tells the backend an invitee joined or left, then refreshes the
+  /// Participants Not Joined list here and for the other moderators.
+  ///
+  /// Without the "left" report the backend kept a departed invitee as joined,
+  /// so they never came back to the list; without the "joined" report a
+  /// rejoin that skips password entry (e.g. as co-host) stayed "not joined".
+  void reportInviteeJoinedStatus(Participant participant,
+      {required bool joined}) {
+    if (!isInviteParticipantEnabled) return;
+    if (participant is LocalParticipant) return;
+    if (!_reportsInviteeStatus(
+        excludingIdentity: joined ? null : participant.identity)) {
+      return;
+    }
+    final email = Utils.extractParticipantEmail(participant.metadata);
+    if (email == null) return;
+    networkRequestHandler(
+      apiCall: () => apiClient.updateParticipantJoinedStatus({
+        "meeting_uid": meetingDetails.meetingUid,
+        "participant_email": email,
+        "is_joined": joined,
+      }),
+      onSuccess: (_) {
+        sendAction(
+            ActionModel(action: MeetingActions.refreshInvitedParticipants));
+        fetchInvitedParticipants(silent: true);
+      },
+    );
+  }
+
   Future<bool> sendInviteEmails(List<String> emails) async {
     if (emails.isEmpty) return false;
     Map<String, dynamic> body = {

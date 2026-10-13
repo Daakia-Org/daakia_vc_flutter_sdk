@@ -601,6 +601,33 @@ class Utils {
     return 'unknown';
   }
 
+  /// The email an invitee joined with, from their participant metadata.
+  ///
+  /// Checks the same keys as the web client, top level first, then
+  /// `custom_metadata` (where pre-join puts the advance-password email).
+  static String? extractParticipantEmail(String? metadata) {
+    if (metadata == null || metadata.trim().isEmpty) return null;
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(metadata);
+      final custom = decoded['custom_metadata'] is Map
+          ? decoded['custom_metadata'] as Map
+          : const {};
+      for (final value in [
+        decoded['participant_email'],
+        decoded['email'],
+        custom['participant_email'],
+        custom['email'],
+        custom['identifier'],
+      ]) {
+        final email = value?.toString().trim() ?? '';
+        if (email.isNotEmpty) return email;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
+  }
+
   static String? extractClientPlatform(String? metadata) {
     if (metadata == null || metadata.trim().isEmpty) return null;
 
