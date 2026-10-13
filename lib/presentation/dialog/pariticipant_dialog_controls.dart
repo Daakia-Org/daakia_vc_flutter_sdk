@@ -70,62 +70,108 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
       onAnnotationUnavailable: () => showAnnotationUnavailableDialog(context),
     );
 
+    // In landscape the action list is taller than the screen, so the list
+    // scrolls and the header (with its close button) stays put.
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     return Dialog(
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(15),
       ),
       backgroundColor: Colors.transparent,
-      child: Card(
-        color: Colors.grey[900], // Replace with your color
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final action in actions)
-                CustomTextItem(
-                  icon: action.icon,
-                  text: action.label,
-                  onTap: action.onTap,
-                  isVisible: widget.isForIndividual && action.visible,
+      insetPadding: EdgeInsets.symmetric(
+          horizontal: 40, vertical: isLandscape ? 12 : 24),
+      // Keep the portrait width in landscape instead of spanning the screen.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Card(
+          color: Colors.grey[900], // Replace with your color
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 4, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.only(left: 12),
+                        child: Text(
+                          widget.isForIndividual
+                              ? widget.participant.name
+                              : 'All participants',
+                          style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
                 ),
-              CustomTextItem(
-                icon: Icons.mic_off,
-                text: "Mute all",
-                onTap: () {
-                  Navigator.pop(context);
-                  widget.viewModel.sendAction(ActionModel(action: MeetingActions.muteMic));
-                },
-                isVisible: !widget.isForIndividual,
-              ),
-              CustomTextItem(
-                icon: Icons.videocam_off,
-                text: "Video off all",
-                onTap: () {
-                  Navigator.pop(context);
-                  widget.viewModel
-                      .sendAction(ActionModel(action: MeetingActions.muteCamera));
-                },
-                isVisible: !widget.isForIndividual,
-              ),
-              // CustomTextItem(
-              //   icon: Icons.front_hand_outlined,
-              //   text: "Lower Hands All",
-              //   onTap: () {
-              //     Navigator.pop(context);
-              //     widget.viewModel
-              //         .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
-              //     widget.viewModel.stopHandRaisedForAll();
-              //   },
-              //   isVisible: !widget.isForIndividual &&
-              //       widget.viewModel.meetingDetails.features!
-              //           .isRaiseHandAllowed(),
-              // ),
-            ],
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (final action in actions)
+                          CustomTextItem(
+                            icon: action.icon,
+                            text: action.label,
+                            onTap: action.onTap,
+                            isVisible: widget.isForIndividual && action.visible,
+                          ),
+                        CustomTextItem(
+                          icon: Icons.mic_off,
+                          text: "Mute all",
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.viewModel.sendAction(ActionModel(action: MeetingActions.muteMic));
+                          },
+                          isVisible: !widget.isForIndividual,
+                        ),
+                        CustomTextItem(
+                          icon: Icons.videocam_off,
+                          text: "Video off all",
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.viewModel
+                                .sendAction(ActionModel(action: MeetingActions.muteCamera));
+                          },
+                          isVisible: !widget.isForIndividual,
+                        ),
+                        // CustomTextItem(
+                        //   icon: Icons.front_hand_outlined,
+                        //   text: "Lower Hands All",
+                        //   onTap: () {
+                        //     Navigator.pop(context);
+                        //     widget.viewModel
+                        //         .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
+                        //     widget.viewModel.stopHandRaisedForAll();
+                        //   },
+                        //   isVisible: !widget.isForIndividual &&
+                        //       widget.viewModel.meetingDetails.features!
+                        //           .isRaiseHandAllowed(),
+                        // ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
