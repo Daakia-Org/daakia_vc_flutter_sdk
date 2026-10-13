@@ -74,16 +74,13 @@ class AttachmentPickerSheet {
   ) async {
     try {
       viewModel.sendMainChatControllerEvent(ShowLoading());
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        allowMultiple: false,
+      PlatformFile? result = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: Constant.allowedExtensions(),
       );
       viewModel.sendMainChatControllerEvent(StopLoading());
       if (result != null) {
-        File? file = result.files.single.path != null
-            ? File(result.files.single.path!)
-            : null;
+        File? file = result.path != null ? File(result.path!) : null;
         final isValid = await Utils.validateFile(file, (error) {
           viewModel.sendMessageToUI(error);
         });
