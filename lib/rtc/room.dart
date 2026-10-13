@@ -23,6 +23,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
 import 'package:daakia_vc_flutter_sdk/theme/daakia_sdk_theme.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
+import 'package:daakia_vc_flutter_sdk/utils/whiteboard_download.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_disconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_reconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/service/daakia_vc_logger.dart';
@@ -1299,11 +1300,55 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          // Keep the view on the board. The board's image export (and any
+          // link inside it) otherwise navigates the whole view away to a
+          // blob:/data: image or another site, with no way back short of
+          // rejoining.
           onNavigationRequest: (NavigationRequest request) {
-            return NavigationDecision.navigate;
+            if (!request.isMainFrame || _isWhiteboardPage(request.url)) {
+              return NavigationDecision.navigate;
+            }
+            DaakiaVcLogger.logWarning(
+                'Whiteboard navigation blocked: ${_describeUrl(request.url)}',
+                reportToSentry: false);
+            return NavigationDecision.prevent;
+          },
+          onPageFinished: (_) {
+            _webViewController
+                .runJavaScript(WhiteboardDownload.script)
+                .catchError((Object e) {
+              DaakiaVcLogger.logWarning(
+                  'Whiteboard download bridge failed: $e',
+                  reportToSentry: false);
+            });
           },
         ),
+      )
+      ..addJavaScriptChannel(
+        WhiteboardDownload.channelName,
+        onMessageReceived: (message) async {
+          final saved = await WhiteboardDownload.save(message.message);
+          _livekitProviderKey.currentState?.viewModel.sendMessageToUI(
+              saved != null
+                  ? 'Saved $saved to Downloads'
+                  : "Couldn't save the whiteboard export");
+        },
       );
+  }
+
+  bool _isWhiteboardPage(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host == Uri.parse(Constant.whiteboardDomain).host;
+  }
+
+  /// Scheme and host only: the board URL carries the LiveKit token and
+  /// data: URLs carry the whole image.
+  String _describeUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return 'unparseable';
+    return uri.hasAuthority ? '${uri.scheme}://${uri.host}' : '${uri.scheme}:';
   }
 
   /// 👇 Call this function from your event listener to load the URL
@@ -1311,7 +1356,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (!_webViewInitialized) {
       _webViewInitialized = true;
       _webViewController.loadRequest(Uri.parse(url));
+      return;
     }
+    // Reopened: if the view was ever pulled off the board, put it back
+    // rather than show whatever it was left on.
+    _webViewController.currentUrl().then((current) {
+      if (current == null || !_isWhiteboardPage(current)) {
+        _webViewController.loadRequest(Uri.parse(url));
+      }
+    }).catchError((Object e) {
+      DaakiaVcLogger.logWarning('Whiteboard URL check failed: $e',
+          reportToSentry: false);
+    });
   }
 
   /// Tells the whiteboard page that our role or the collaboration setting
@@ -1614,12 +1670,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         ),
         // Reactions float up the trailing edge of the stage. Landscape starts
         // them higher and keeps them shorter because there is far less height.
+        // Display only: as a scrollable it would otherwise swallow every touch
+        // in its strip, even when empty, and the whiteboard under it (e.g. the
+        // export dialog's close button) couldn't be tapped there.
         Positioned(
           right: 0,
           top: isLandscape ? 8 : 50,
           bottom: isLandscape ? 8 : null,
-          child: EmojiReactionWidget(
-            viewModel: _livekitProviderKey.currentState?.viewModel,
+          child: IgnorePointer(
+            child: EmojiReactionWidget(
+              viewModel: _livekitProviderKey.currentState?.viewModel,
+            ),
           ),
         ),
       ],
@@ -1628,9 +1689,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   Widget _buildStage() {
     if (_isWhiteBoardEnabled) {
-      return WhiteBoardWidget(
-        key: const ValueKey('whiteboard'),
-        controller: _webViewController,
+      return Consumer<RtcViewmodel>(
+        builder: (context, viewModel, _) => WhiteBoardWidget(
+          key: const ValueKey('whiteboard'),
+          controller: _webViewController,
+          onClose: viewModel.canManageWhiteboard()
+              ? () async {
+                  if (await context.showCloseWhiteboardDialog() == true &&
+                      viewModel.isWhiteboardOpen) {
+                    viewModel.toggleWhiteboard();
+                  }
+                }
+              : null,
+          isClosing: viewModel.isWhiteboardActionInProgress,
+        ),
       );
     }
     if (participantTracks.isEmpty) {
