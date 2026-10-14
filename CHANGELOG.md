@@ -1,8 +1,7 @@
 # CHANGELOG
 
-## v4.6.0-SNAPSHOT – Unreleased
+## v4.6.0 – (2026-10)
 
-> **Snapshot, not released yet.** The final version number and date are set when this is published.
 > Requires **Flutter 3.41.6+ (Dart SDK ^3.11.0)**, **Android minSdk 24** and **compileSdk 37**. After upgrading, run `flutter clean && flutter pub get`.
 
 ### ⚠️ Migration
@@ -32,6 +31,10 @@
 - **Mic and Audio Output Feedback** — The mic button shows a spinner while switching, is dimmed with a
   "Reconnecting…" message during reconnects, and shows a message if the switch fails.
 - **Remove Participant Confirmation** — Hosts confirm before removing a participant.
+- **Leave and End Confirmations** — Clearer confirmations for leaving and for ending the meeting for everyone,
+  and a moderator's Leave now asks for confirmation too.
+- **Whiteboard Export and Close** — Exported PNG/SVG files are saved to the device's Downloads folder, and users
+  who can manage the whiteboard get a close button that confirms before closing it for everyone.
 
 ### 🧩 Improvements
 - **Audio routing:** Wired and USB-C headsets are detected like Bluetooth ones, Earpiece is hidden while a
@@ -44,6 +47,7 @@
 - **Resilience:** Type changes in the meeting details payload are tolerated, and API connection errors name the
   likely cause.
 - **Chat:** The unread badge is anchored to the chat tab label.
+- **Participants Not Joined:** Invitees joining and leaving are reported, so the list stays up to date.
 - **Dependencies:** `dio` ^5.10.0, `timezone` ^0.9.0.
 
 ### 🐞 Bug Fixes
@@ -66,6 +70,19 @@
   - The password is kept on rotation.
 - **Meeting end:** Participants can rejoin after a meeting is extended, and `end_date` is used for the meeting
   end time.
+- **Permissions:** All SDK permission requests are queued. A quick double-tap on the mic or camera button no
+  longer throws, a granted permission no longer toggles the device twice, and a request open in the host app
+  is waited for instead of failing.
+- **Rejoining in a different role:** A device that hosted and then rejoined as a participant no longer reuses
+  the host's session, which made the two kick each other out.
+- **Whiteboard:**
+  - iOS: exporting an image no longer replaces the board until rejoining.
+  - Android: Insert image now opens a picker, and cancelling it is treated as a cancel.
+  - The reactions strip no longer blocks taps on the board's top-right edge, including the export dialog's
+    close button.
+- **Rotation:** Bottom sheets resize when the device is rotated, the participant menu scrolls and can be
+  closed, and the chat pages fit landscape and stay usable while typing.
+- **Error responses:** A failed list request with an empty `data` object no longer fails to parse.
 - **Layout:** The screen-share request dialog and bottom sheets stay within short screens. All participant roles
   are shown, and the duplicate Rename option is removed.
 
