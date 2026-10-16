@@ -497,6 +497,9 @@ void showRemoveParticipantConfirmDialog(
 ) {
   final displayName =
       participant.name.isNotEmpty ? participant.name : participant.identity;
+  // A double tap would pop with the dialog's context after the dialog is gone
+  // (and on Remove, send the removal twice), so only the first tap counts.
+  var closed = false;
   showDialog(
     context: context,
     builder: (dialogCtx) => AlertDialog(
@@ -515,11 +518,17 @@ void showRemoveParticipantConfirmDialog(
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(dialogCtx),
+          onPressed: () {
+            if (closed) return;
+            closed = true;
+            Navigator.pop(dialogCtx);
+          },
           child: const Text('Cancel'),
         ),
         TextButton(
           onPressed: () {
+            if (closed) return;
+            closed = true;
             Navigator.pop(dialogCtx);
             viewModel.removeFromCall(participant.identity);
           },
