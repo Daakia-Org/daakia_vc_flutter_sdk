@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class RtcData {
   String? accessToken;
   String? meetingUid;
@@ -28,10 +30,10 @@ class RtcData {
     meetingUid = json['meeting_uid'];
     livekitServerURL = json['livekit_server_URL'];
     roleName = json['role_name'];
-    isHost = json['is_host'];
-    participantCanJoin = json['participant_can_join'];
-    meetingStarted = json['meeting_started'];
-    isRejected = json['is_rejected'];
+    isHost = JsonParser.toBool(json['is_host']);
+    participantCanJoin = JsonParser.toBool(json['participant_can_join']);
+    meetingStarted = JsonParser.toBool(json['meeting_started']);
+    isRejected = JsonParser.toBool(json['is_rejected']);
     requestId = json['request_id'];
     currentSessionUid = json['current_session_uid'];
   }

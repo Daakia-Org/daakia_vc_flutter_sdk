@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class ChatAttachmentConsentModel {
   bool chatAttachmentDownloadConsent = false;
 
@@ -5,7 +7,7 @@ class ChatAttachmentConsentModel {
 
   factory ChatAttachmentConsentModel.fromJson(Map<String, dynamic> json) {
     return ChatAttachmentConsentModel(
-      chatAttachmentDownloadConsent: json['chat_attachment_download_consent'],
+      chatAttachmentDownloadConsent: JsonParser.toBool(json['chat_attachment_download_consent']) ?? false,
     );
   }
 

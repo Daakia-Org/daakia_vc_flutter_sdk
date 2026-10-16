@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class EventPasswordProtectedData{
   bool? passwordVerified;
   String? participantEmail;
@@ -5,7 +7,7 @@ class EventPasswordProtectedData{
   EventPasswordProtectedData({this.passwordVerified, this.participantEmail});
 
   EventPasswordProtectedData.fromJson(Map<String, dynamic> json) {
-    passwordVerified = json['password_verified'];
+    passwordVerified = JsonParser.toBool(json['password_verified']);
     participantEmail = json['participant_email'];
   }
 

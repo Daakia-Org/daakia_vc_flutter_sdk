@@ -17,6 +17,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:safe_device/safe_device.dart';
 
 import '../model/transcription_model.dart';
+import 'json_parser.dart';
 
 FutureOr<void> Function()? onWindowShouldClose;
 
@@ -240,7 +241,7 @@ class Utils {
     if (metadata == null) return false;
     try {
       final jsonObject = jsonDecode(metadata);
-      return jsonObject['is_guest'] == true;
+      return JsonParser.toBool(jsonObject['is_guest']) ?? false;
     } catch (e) {
       return false;
     }
@@ -688,27 +689,6 @@ class Utils {
     return platform == 'android' || platform == 'ios' || platform == 'mobile_web';
   }
 
-  static bool _toBool(dynamic value) {
-    if (value == null) return false;
-
-    if (value is bool) return value;
-
-    if (value is String) {
-      switch (value.toLowerCase()) {
-        case 'true':
-        case '1':
-        case 'yes':
-          return true;
-        default:
-          return false;
-      }
-    }
-
-    if (value is num) {
-      return value != 0;
-    }
-
-    return false;
-  }
+  static bool _toBool(dynamic value) => JsonParser.toBool(value) ?? false;
 
 }

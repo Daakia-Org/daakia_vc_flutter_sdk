@@ -1,4 +1,5 @@
 import 'package:daakia_vc_flutter_sdk/model/feature_configuration.dart';
+import '../utils/json_parser.dart';
 
 class Features {
   int? id;
@@ -82,40 +83,40 @@ class Features {
   Features.fromJson(Map<String, dynamic> json) {
     id = json['id'];
     subscriptionId = json['subscription_id'];
-    isActive = json['is_active'];
+    isActive = JsonParser.toFlagInt(json['is_active']);
     audioVideoConference = json['audio_video_conference'];
     meetDuration = json['meet_duration'];
     cloudStorage = json['cloud_storage'];
-    saveCloud = json['save_cloud'];
-    internationalPhone = json['international_phone'];
-    hostMeetingMobile = json['host_meeting_mobile'];
-    conferenceChat = json['conference_chat'];
-    whiteboard = json['whiteboard'];
-    noiseCancellation = json['noise_cancellation'];
-    recordMeeting = json['record_meeting'];
-    poll = json['poll'];
-    raiseHand = json['raise_hand'];
-    breakoutRoom = json['breakout_room'];
-    screenSharing = json['screen_sharing'];
-    voiceTranscription = json['voice_transcription'];
-    voiceTextTranslation = json['voice_text_translation'];
-    liveStream = json['live_stream'];
-    shareYoutube = json['share_youtube'];
-    trackAttendance = json['track_attendance'];
-    muteParticipant = json['mute_participant'];
-    disableCamera = json['disable_camera'];
-    compatibility = json['compatibility'];
-    mobileSupport = json['mobile_support'];
-    encryption = json['encryption'];
-    lobby = json['lobby'];
-    protectedMeeting = json['protected_meeting'];
-    spamProtection = json['spam_protection'];
-    translation = json['translation'];
-    videoTranslation = json['video_translation'];
-    isBasic = json['is_basic'];
-    screenSharePermission = json['screen_share_permission'];
-    conferenceChatAttachment = json['conference_chat_attachment'];
-    workshopEnabled = json['workshop_enabled'];
+    saveCloud = JsonParser.toFlagInt(json['save_cloud']);
+    internationalPhone = JsonParser.toFlagInt(json['international_phone']);
+    hostMeetingMobile = JsonParser.toFlagInt(json['host_meeting_mobile']);
+    conferenceChat = JsonParser.toFlagInt(json['conference_chat']);
+    whiteboard = JsonParser.toFlagInt(json['whiteboard']);
+    noiseCancellation = JsonParser.toFlagInt(json['noise_cancellation']);
+    recordMeeting = JsonParser.toFlagInt(json['record_meeting']);
+    poll = JsonParser.toFlagInt(json['poll']);
+    raiseHand = JsonParser.toFlagInt(json['raise_hand']);
+    breakoutRoom = JsonParser.toFlagInt(json['breakout_room']);
+    screenSharing = JsonParser.toFlagInt(json['screen_sharing']);
+    voiceTranscription = JsonParser.toFlagInt(json['voice_transcription']);
+    voiceTextTranslation = JsonParser.toFlagInt(json['voice_text_translation']);
+    liveStream = JsonParser.toFlagInt(json['live_stream']);
+    shareYoutube = JsonParser.toFlagInt(json['share_youtube']);
+    trackAttendance = JsonParser.toFlagInt(json['track_attendance']);
+    muteParticipant = JsonParser.toFlagInt(json['mute_participant']);
+    disableCamera = JsonParser.toFlagInt(json['disable_camera']);
+    compatibility = JsonParser.toFlagInt(json['compatibility']);
+    mobileSupport = JsonParser.toFlagInt(json['mobile_support']);
+    encryption = JsonParser.toFlagInt(json['encryption']);
+    lobby = JsonParser.toFlagInt(json['lobby']);
+    protectedMeeting = JsonParser.toFlagInt(json['protected_meeting']);
+    spamProtection = JsonParser.toFlagInt(json['spam_protection']);
+    translation = JsonParser.toFlagInt(json['translation']);
+    videoTranslation = JsonParser.toFlagInt(json['video_translation']);
+    isBasic = JsonParser.toFlagInt(json['is_basic']);
+    screenSharePermission = JsonParser.toFlagInt(json['screen_share_permission']);
+    conferenceChatAttachment = JsonParser.toFlagInt(json['conference_chat_attachment']);
+    workshopEnabled = JsonParser.toFlagInt(json['workshop_enabled']);
 
     configurations = json['configurations'] != null
         ? FeatureConfiguration.fromJson(json['configurations'])

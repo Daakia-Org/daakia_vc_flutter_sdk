@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class HostControlsData {
   final bool annotationAllowed;
   final bool audioPermission;
@@ -24,12 +26,8 @@ class HostControlsData {
   });
 
   factory HostControlsData.fromJson(Map<String, dynamic> json) {
-    bool parseBool(String key, {bool fallback = false}) {
-      final v = json[key];
-      if (v is bool) return v;
-      if (v is int) return v == 1;
-      return fallback;
-    }
+    bool parseBool(String key, {bool fallback = false}) =>
+        JsonParser.toBool(json[key]) ?? fallback;
 
     return HostControlsData(
       annotationAllowed: parseBool('annotation_allowed'),

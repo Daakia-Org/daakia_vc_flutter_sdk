@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class AgentDispatchData {
   final bool? deleted;
   final String? dispatchId;
@@ -9,7 +11,7 @@ class AgentDispatchData {
 
   factory AgentDispatchData.fromJson(Map<String, dynamic> json) {
     return AgentDispatchData(
-      deleted: json['deleted'] as bool?,
+      deleted: JsonParser.toBool(json['deleted']),
       dispatchId: json['dispatch_id'] as String?,
     );
   }
