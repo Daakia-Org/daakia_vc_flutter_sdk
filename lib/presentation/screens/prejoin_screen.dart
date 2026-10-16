@@ -78,6 +78,12 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   var isLoading = false;
   var isNeedToCancelApiCall = false;
+
+  /// Keeps the Join button's state (and its spinner) when rotation swaps the
+  /// portrait and landscape bodies. Without it the button is rebuilt idle mid-
+  /// join, and the stop callback held by the join flow points at a disposed
+  /// button.
+  final _joinButtonKey = GlobalKey();
   var _enableAudio = false;
   var _enableVideo = false;
 
@@ -1659,6 +1665,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         const SizedBox(height: 20),
         LayoutBuilder(
           builder: (context, constraints) => LoadingBtn(
+            key: _joinButtonKey,
             height: 52,
             borderRadius: 12,
             animate: true,
@@ -1681,7 +1688,19 @@ class _PreJoinState extends State<PreJoinScreen> {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            onTap: (startLoading, stopLoading, btnState) async {
+            onTap: (startLoading, buttonStopLoading, btnState) async {
+              // The join flow can outlive this button (the page is closed, or
+              // the meeting ends while it waits). loading_btn's stop reverses
+              // the button's AnimationController, which throws once the button
+              // is disposed and would abort the caller mid-flow, e.g. before
+              // the "denied by host" message. A replacement button already
+              // starts idle, so there is nothing left to stop.
+              void stopLoading() {
+                try {
+                  buttonStopLoading();
+                } catch (_) {}
+              }
+
               if (btnState == ButtonState.idle) {
                 if (name.trim().isEmpty) {
                   Utils.showSnackBar(
