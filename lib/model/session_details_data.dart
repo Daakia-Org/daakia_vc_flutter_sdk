@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class SessionDetailsData {
   int? id;
   int? recordingConsentActive;
@@ -6,7 +8,7 @@ class SessionDetailsData {
 
   SessionDetailsData.fromJson(Map<String, dynamic> json) {
     id = json['id'];
-    recordingConsentActive = json['recording_consent_active'];
+    recordingConsentActive = JsonParser.toFlagInt(json['recording_consent_active']);
   }
 
   Map<String, dynamic> toJson() {

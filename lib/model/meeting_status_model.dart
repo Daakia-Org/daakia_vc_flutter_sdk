@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class MeetingStatusData {
   bool? inMeeting;
   List<ActiveMeetingItem>? meetings;
@@ -5,7 +7,7 @@ class MeetingStatusData {
   MeetingStatusData({this.inMeeting, this.meetings});
 
   MeetingStatusData.fromJson(Map<String, dynamic> json) {
-    inMeeting = json['in_meeting'];
+    inMeeting = JsonParser.toBool(json['in_meeting']);
     if (json['meetings'] != null) {
       meetings = (json['meetings'] as List)
           .map((e) => ActiveMeetingItem.fromJson(e as Map<String, dynamic>))

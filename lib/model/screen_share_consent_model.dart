@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class ScreenShareConsentModel {
   bool screenShareConsent = false;
 
@@ -5,7 +7,7 @@ class ScreenShareConsentModel {
 
   factory ScreenShareConsentModel.fromJson(Map<String, dynamic> json) {
     return ScreenShareConsentModel(
-      screenShareConsent: json['screen_share_consent'],
+      screenShareConsent: JsonParser.toBool(json['screen_share_consent']) ?? false,
     );
   }
 

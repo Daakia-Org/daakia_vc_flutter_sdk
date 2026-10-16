@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class FeatureConfiguration {
   int? autoEndConference;
   String? brandingLogoUrl;
@@ -34,21 +36,21 @@ class FeatureConfiguration {
   });
 
   FeatureConfiguration.fromJson(Map<String, dynamic> json) {
-    autoEndConference = json['auto_end_conference'];
+    autoEndConference = JsonParser.toFlagInt(json['auto_end_conference']);
     brandingLogoUrl = json['branding_logo_url'];
     brandingIconUrl = json['branding_icon_url'];
     brandingAppTitle = json['branding_app_title'];
-    brandingEnabled = json['branding_enabled'];
+    brandingEnabled = JsonParser.toFlagInt(json['branding_enabled']);
     askRecordingRequest = json['ask_recording_request'];
     storageUnit = json['storage_unit'];
     externalStorageUnitConfig = json['external_storage_unit_config'];
-    showMeetingInfo = json['show_meeting_info'];
-    allowMultipleCohost = json['allow_multiple_cohost'];
-    enableReaction = json['enable_reaction'];
-    enablePrivateChat = json['enable_private_chat'];
-    enableChat = json['enable_chat'];
-    allowProfileEditByHost = json['allow_profile_edit_by_host'];
-    allowProfileEditBySelf = json['allow_profile_edit_by_self'];
+    showMeetingInfo = JsonParser.toFlagInt(json['show_meeting_info']);
+    allowMultipleCohost = JsonParser.toFlagInt(json['allow_multiple_cohost']);
+    enableReaction = JsonParser.toFlagInt(json['enable_reaction']);
+    enablePrivateChat = JsonParser.toFlagInt(json['enable_private_chat']);
+    enableChat = JsonParser.toFlagInt(json['enable_chat']);
+    allowProfileEditByHost = JsonParser.toFlagInt(json['allow_profile_edit_by_host']);
+    allowProfileEditBySelf = JsonParser.toFlagInt(json['allow_profile_edit_by_self']);
   }
 
   Map<String, dynamic> toJson() {

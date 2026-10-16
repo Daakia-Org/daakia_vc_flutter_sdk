@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class MeetingDetailsModel {
   String? eventMode;
   String? eventType;
@@ -64,7 +66,7 @@ class MeetingDetailsModel {
     startDate = json['start_date'];
     endDate = json['end_date'];
     duration = json['duration'];
-    isStartNow = _parseNullableInt(json['is_start_now']);
+    isStartNow = JsonParser.toFlagInt(json['is_start_now']);
     topic = json['topic'];
     timeZone = json['time_zone'];
     timezoneIdentifier = json['timezone_identifier'];
@@ -79,9 +81,9 @@ class MeetingDetailsModel {
     conferenceStatus = json['conference_status'] != null
         ? ConferenceStatus.fromJson(json['conference_status'])
         : null;
-    isLobbyMode = json['is_lobby_mode'];
-    isStandardPassword = json['is_standard_password'];
-    isCommonPassword = json['is_common_password'];
+    isLobbyMode = JsonParser.toBool(json['is_lobby_mode']);
+    isStandardPassword = JsonParser.toBool(json['is_standard_password']);
+    isCommonPassword = JsonParser.toBool(json['is_common_password']);
     // `?.` matters here: a plain `.toString()` turns a null session into the
     // literal string "null".
     currentSessionUid = json['current_session_uid']?.toString();
@@ -92,7 +94,8 @@ class MeetingDetailsModel {
         ? MeetingConfig.fromJson(json['meeting_config'])
         : null;
     meetingId = json['meeting_id'];
-    hostPinVerificationRequired = json['host_pin_verification_required'];
+    hostPinVerificationRequired =
+        JsonParser.toFlagInt(json['host_pin_verification_required']);
   }
 
   Map<String, dynamic> toJson() {
@@ -134,15 +137,6 @@ class MeetingDetailsModel {
   }
 }
 
-/// The backend returns some flags as `1`/`0` on one endpoint and `true`/`false`
-/// on another (e.g. `is_start_now`), so normalise instead of assigning raw JSON.
-int? _parseNullableInt(dynamic value) {
-  if (value == null) return null;
-  if (value is int) return value;
-  if (value is bool) return value ? 1 : 0;
-  return int.tryParse(value.toString());
-}
-
 class ConferenceStatus {
   String? title;
 
@@ -167,7 +161,7 @@ class TranscriptionDetail {
   TranscriptionDetail({transcriptionEnable, transcriptionLangIso, transcriptionLangTitle});
 
   TranscriptionDetail.fromJson(Map<String, dynamic> json) {
-    transcriptionEnable = json['transcription_enable'];
+    transcriptionEnable = JsonParser.toBool(json['transcription_enable']);
     transcriptionLangIso = json['transcription_lang_iso'];
     transcriptionLangTitle = json['transcription_lang_title'];
   }
@@ -175,7 +169,7 @@ class TranscriptionDetail {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['transcription_enable'] = transcriptionEnable;
-    data['transcription_enable'] = transcriptionLangIso;
+    data['transcription_lang_iso'] = transcriptionLangIso;
     data['transcription_lang_title'] = transcriptionLangTitle;
     return data;
   }
@@ -192,12 +186,12 @@ class MeetingConfig {
   MeetingConfig({autoStartRecording, recordingForceStopped, autoMeetingEnd, autoMeetingEndSchedule, autoMeetingEndScheduleTimezoneFormated, this.isGuestMode});
 
   MeetingConfig.fromJson(Map<String, dynamic> json) {
-    autoStartRecording = json['auto_start_recording'];
-    recordingForceStopped = json['recording_force_stopped'];
-    autoMeetingEnd = json['auto_meeting_end'];
+    autoStartRecording = JsonParser.toFlagInt(json['auto_start_recording']);
+    recordingForceStopped = JsonParser.toFlagInt(json['recording_force_stopped']);
+    autoMeetingEnd = JsonParser.toFlagInt(json['auto_meeting_end']);
     autoMeetingEndSchedule = json['auto_meeting_end_schedule'];
     autoMeetingEndScheduleTimezoneFormated = json['auto_meeting_end_schedule_timezone_formated'];
-    isGuestMode = _parseFlag(json['is_guest_mode']);
+    isGuestMode = JsonParser.toFlagInt(json['is_guest_mode']);
   }
 
   Map<String, dynamic> toJson() {
@@ -209,13 +203,5 @@ class MeetingConfig {
     data['auto_meeting_end_schedule_timezone_formated'] = autoMeetingEndScheduleTimezoneFormated;
     data['is_guest_mode'] = isGuestMode;
     return data;
-  }
-
-  // Backend usually sends is_guest_mode as an int flag (0/1) but may send a bool.
-  static int? _parseFlag(dynamic value) {
-    if (value == null) return null;
-    if (value is bool) return value ? 1 : 0;
-    if (value is int) return value;
-    return int.tryParse(value.toString());
   }
 }

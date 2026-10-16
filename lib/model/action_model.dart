@@ -3,6 +3,7 @@ import 'package:daakia_vc_flutter_sdk/model/reaction_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 
 import 'consent_participant.dart';
+import '../utils/json_parser.dart';
 
 class ActionModel {
   final String? action;
@@ -146,7 +147,7 @@ class ActionModel {
       userIdentity: json['user_identity'] as String?,
       message: json['message'] as String? ?? "",
       token: json['token'] as String? ?? "",
-      value: json['value'] as bool? ?? true,
+      value: JsonParser.toBool(json['value']) ?? true,
       liveCaptionsData: json['liveCaptionsData'] as TranscriptionActionModel?,
       consent: json['consent'] as String?,
       participants: (json['participants'] as List<dynamic>?)
@@ -162,10 +163,10 @@ class ActionModel {
       reaction: json['reaction'] != null
           ? Reaction.fromJson(json['reaction'] as Map<String, dynamic>)
           : null,
-      removeReaction: json['removeReaction'] as bool? ?? false,
+      removeReaction: JsonParser.toBool(json['removeReaction']) ?? false,
       requestBy: json['request_by'] as String? ?? "",
       requestByName: json['request_by_name'] as String? ?? "",
-      isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
+      isScreenShareAllowed: JsonParser.toBool(json['is_screen_share_allowed']) ?? false,
       messages: json['messages'] as List<Map<String, dynamic>>?,
       raisedHands: (json['raisedHands'] as List<dynamic>?)
           ?.map((e) => RaisedHand.fromJson(e as Map<String, dynamic>))
