@@ -208,7 +208,9 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               ? null
               : SnackBarAction(
                   label: 'Open',
-                  onPressed: () => Utils.openMediaFile(path, context),
+                  // The snack bar outlives this screen, so Open can be tapped
+                  // after it is closed; this State's context is gone by then.
+                  onPressed: () => Utils.openMediaFile(path, messenger.context),
                 ),
         ),
       );
