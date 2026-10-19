@@ -459,12 +459,12 @@ class RtcViewmodel extends ChangeNotifier {
     }));
   }
 
-  void disableVideo() async {
+  Future<void> disableVideo() async {
     await participant.setCameraEnabled(false);
     notifyListeners();
   }
 
-  void enableVideo() async {
+  Future<void> enableVideo() async {
     await participant.setCameraEnabled(true);
     notifyListeners();
   }

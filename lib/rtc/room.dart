@@ -769,13 +769,24 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       case MeetingActions.askToUnmuteMic:
         final result = await context
             .showPermissionAskDialog("Host is asking you to turn on your mic");
-        if (result == true) viewModel?.enableAudio();
+        if (result != true) break;
+        try {
+          await viewModel?.enableAudio();
+        } catch (_) {
+          showSnackBar(
+              message: "Couldn't turn on your microphone. Try again.");
+        }
         break;
 
       case MeetingActions.askToUnmuteCamera:
         final result = await context.showPermissionAskDialog(
             "Host is asking you to turn on your camera");
-        if (result == true) viewModel?.enableVideo();
+        if (result != true) break;
+        try {
+          await viewModel?.enableVideo();
+        } catch (_) {
+          showSnackBar(message: "Couldn't turn on your camera. Try again.");
+        }
         break;
 
       case MeetingActions.makeCoHost:
