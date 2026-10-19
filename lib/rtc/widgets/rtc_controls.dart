@@ -438,9 +438,18 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
 
-    participant.isCameraEnabled()
-        ? viewModel.disableVideo()
-        : viewModel.enableVideo();
+    final enabling = !participant.isCameraEnabled();
+    try {
+      if (enabling) {
+        await viewModel.enableVideo();
+      } else {
+        await viewModel.disableVideo();
+      }
+    } catch (_) {
+      _showMessage(enabling
+          ? "Couldn't turn on your camera. Try again."
+          : "Couldn't turn off your camera. Try again.");
+    }
   }
 
   void _showSettingsDialog(String permissionType) {
