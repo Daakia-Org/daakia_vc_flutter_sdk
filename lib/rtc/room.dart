@@ -557,7 +557,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       var recordingAudioPath = event.activeRecording
           ? Constant.startRecordingUrl
           : Constant.stopRecordingUrl;
-      playAudio(recordingAudioPath);
+      unawaited(playAudio(recordingAudioPath));
       handleRecordingButton(viewModel, event.activeRecording);
     })
     ..on<RoomAttemptReconnectEvent>((event) {
@@ -2264,8 +2264,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   late final AudioPlayer player;
 
-  void playAudio(String link) {
-    player.play(UrlSource(link), mode: PlayerMode.lowLatency);
+  /// Plays a recording chime streamed from [link].
+  ///
+  /// Uses mediaPlayer rather than lowLatency. On Android, lowLatency (SoundPool)
+  /// downloads the URL on a background thread that doesn't handle errors, so
+  /// an offline device or a host that doesn't resolve crashes the whole app.
+  /// mediaPlayer reports the failure back here instead.
+  Future<void> playAudio(String link) async {
+    try {
+      await player.play(UrlSource(link), mode: PlayerMode.mediaPlayer);
+    } catch (e) {
+      // Only the chime is lost; the recording state change itself still lands.
+      debugPrint("Recording chime failed to play: $e");
+    }
   }
 
   //===============================[End of meeting warning]===============================
@@ -2566,7 +2577,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void checkRecordingPlayer(bool isRecording) {
     if (isRecording && !isCheckedWhileJoining) {
-      playAudio(Constant.startRecordingUrl);
+      unawaited(playAudio(Constant.startRecordingUrl));
       isCheckedWhileJoining = true;
     }
   }
