@@ -198,6 +198,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.checkSessionStatus(
             asUser: true,
             callBack: () {
+              // Joining a meeting that is already recording doesn't ask again.
+              if (widget.room.isRecording) return;
               showRecordingConsentDialog(viewModel);
             });
       } else {
@@ -935,6 +937,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         showSnackBar(message: "${remoteData.identity?.name} has stopped sharing their screen.");
         final stoppedSharerId = remoteData.identity?.identity;
         if (stoppedSharerId != null) viewModel?.resetAnnotationSharer(stoppedSharerId);
+        break;
+
+      case MeetingActions.requestStartRecording:
+        viewModel?.handleStartRecordingRequest();
         break;
 
       case MeetingActions.startRecording:

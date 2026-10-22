@@ -64,6 +64,10 @@ class MeetingActions {
 
   static const String startRecording = "started-recording";
 
+  /// Sent to hosts and co-hosts by a participant whose consent completed the
+  /// list, asking one of them to start the recording.
+  static const String requestStartRecording = "start-recording";
+
   static const String stopRecording = "stopped-recording";
 
   static const String finallyStartRecording = "recording-finally-started";
@@ -167,6 +171,7 @@ class MeetingActions {
     screenShareStarted,
     screenShareStopped,
     startRecording,
+    requestStartRecording,
     stopRecording,
     finallyStartRecording,
     finallyStopRecording,

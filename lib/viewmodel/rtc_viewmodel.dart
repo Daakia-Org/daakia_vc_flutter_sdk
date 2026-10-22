@@ -2100,7 +2100,7 @@ class RtcViewmodel extends ChangeNotifier {
         apiCall: () => apiClient.updateRecordingConsent(selfIdentity, body),
         onSuccess: (data) {
           if (data?.canStartRecording == true) {
-            startRecording();
+            startRecordingAfterConsent();
           }
           if (needToUpdateLocally) {
             locallyUpdateRecordingConsentStatus(status);
@@ -2112,6 +2112,30 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) {
           sendMessageToUI(message);
         });
+  }
+
+  /// Starting a recording needs the host's token, so a participant whose
+  /// consent completed the list asks the hosts and co-hosts to start it.
+  void startRecordingAfterConsent() {
+    if ((isHost() || isCoHost()) &&
+        meetingDetails.authorizationToken.isNotEmpty) {
+      startRecording();
+      return;
+    }
+    for (final participant in room.remoteParticipants.values) {
+      if (Utils.isHost(participant.metadata) ||
+          Utils.isCoHost(participant.metadata)) {
+        sendPrivateAction(
+            ActionModel(action: MeetingActions.requestStartRecording),
+            participant.identity);
+      }
+    }
+  }
+
+  void handleStartRecordingRequest() {
+    if (!isHost() && !isCoHost()) return;
+    if (meetingDetails.authorizationToken.isEmpty || isRecording) return;
+    startRecording();
   }
 
   void startRecordingConsentFlow() {
