@@ -96,6 +96,7 @@ class _EmojiDialogState extends State<EmojiDialog>
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             child: Row(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildIcon(context, AnimatedEmojis.redHeart, 0, MeetingActions.heart),
                 _buildIcon(context, AnimatedEmojis.blush, 1, MeetingActions.blush),
@@ -112,8 +113,13 @@ class _EmojiDialogState extends State<EmojiDialog>
 
   Widget _buildIcon(BuildContext context, AnimatedEmojiData emojiAsset,
       int index, String action) {
-    return Expanded(
+    // Fixed-size slot rather than Expanded: the dialog's minimum width (and the
+    // full landscape width) would otherwise be shared out between the five
+    // emojis, leaving wide gaps between them.
+    return SizedBox.square(
+      dimension: 48,
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
         onTap: () {
           if (Navigator.of(context).canPop()) {
             Navigator.of(context).pop(); // Dismiss dialog on tap
@@ -121,15 +127,17 @@ class _EmojiDialogState extends State<EmojiDialog>
           widget.viewModel.sendAction(ActionModel(action: action));
           widget.viewModel.sendEvent(ShowReaction(action));
         },
-        child: Visibility(
-          visible: _isVisible[index], // Toggle visibility
-          child: SlideTransition(
-            position: _slideAnimations[index],
-            child: AnimatedEmoji(
-              emojiAsset,
-              size: 30,
-              animate: _isVisible[index],
-              repeat: true,
+        child: Center(
+          child: Visibility(
+            visible: _isVisible[index], // Toggle visibility
+            child: SlideTransition(
+              position: _slideAnimations[index],
+              child: AnimatedEmoji(
+                emojiAsset,
+                size: 30,
+                animate: _isVisible[index],
+                repeat: true,
+              ),
             ),
           ),
         ),
