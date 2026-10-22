@@ -2232,7 +2232,15 @@ class RtcViewmodel extends ChangeNotifier {
             meetingDetails.meetingUid, getSessionId() ?? ""),
         onSuccess: (data) {
           if (data != null) {
-            final localList = ConsentParticipant.fromRemoteList(data);
+            // The server lists everyone who was in the session, including
+            // people who have since left; only show who is here now.
+            final present = {
+              room.localParticipant?.identity,
+              ...room.remoteParticipants.keys,
+            };
+            final localList = ConsentParticipant.fromRemoteList(data)
+                .where((p) => present.contains(p.participantId))
+                .toList();
             participantListForConsent = localList;
 
             if (onLoaded != null) {
