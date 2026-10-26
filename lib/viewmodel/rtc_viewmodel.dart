@@ -1955,21 +1955,75 @@ class RtcViewmodel extends ChangeNotifier {
 
   List<InvitedParticipant> _invitedParticipantList = [];
 
+  /// Last list from the backend, kept so [refreshInvitedParticipantFilter]
+  /// can re-filter it as people come and go without another request.
+  List<InvitedParticipant> _rawInvitedParticipants = [];
+
   List<InvitedParticipant> get invitedParticipantList =>
       _invitedParticipantList;
 
+  /// Emails of everyone in the room, us included, lower-cased.
+  ///
+  /// The backend's "joined" flag lags (or never flips when a moderator
+  /// rejoins without the password step), so anyone present is left out of
+  /// Participants Not Joined regardless of what the backend says.
+  Set<String> _presentEmails() {
+    final emails = <String>{};
+    void add(String? email) {
+      final normalized = email?.trim().toLowerCase() ?? '';
+      if (normalized.isNotEmpty) emails.add(normalized);
+    }
+
+    final local = room.localParticipant;
+    if (local != null) add(Utils.extractParticipantEmail(local.metadata));
+    add(sdkConfiguration?.userEmail);
+    for (final participant in room.remoteParticipants.values) {
+      add(Utils.extractParticipantEmail(participant.metadata));
+    }
+    return emails;
+  }
+
   void _applyInvitedParticipants(List<InvitedParticipant> rawList) {
+    _rawInvitedParticipants = rawList;
+    final presentEmails = _presentEmails();
     final seenAttendees = <String>{};
     final tempList = <InvitedParticipant>[];
     for (var invitee in rawList) {
       final attendee = invitee.attendee;
       if (attendee == null || attendee.isEmpty) continue;
       if (invitee.participantStatus?.toLowerCase() == 'joined') continue;
+      if (presentEmails.contains(attendee.trim().toLowerCase())) continue;
       if (!seenAttendees.add(attendee)) continue;
       tempList.add(invitee);
     }
     _invitedParticipantList = tempList;
     notifyListeners();
+  }
+
+  /// Re-filters the last fetched list against who is in the room now.
+  void refreshInvitedParticipantFilter() =>
+      _applyInvitedParticipants(_rawInvitedParticipants);
+
+  String? _lastLocalRole;
+
+  /// Called when our metadata changes. If our role changed (made or removed
+  /// as co-host, or the role landed after we connected), moderators fetch the
+  /// list and anyone else drops it.
+  ///
+  /// The first fetch runs as soon as the room opens, which can be before the
+  /// role reaches our metadata, so a co-host saw no list until they rejoined.
+  void onLocalMetadataChanged() {
+    final role = Utils.getMetadataRole(room.localParticipant?.metadata);
+    if (role == _lastLocalRole) return;
+    _lastLocalRole = role;
+    if (isHost() || isCoHost()) {
+      fetchInvitedParticipants(silent: true);
+    } else if (_rawInvitedParticipants.isNotEmpty ||
+        _invitedParticipantList.isNotEmpty) {
+      _rawInvitedParticipants = [];
+      _invitedParticipantList = [];
+      notifyListeners();
+    }
   }
 
   void fetchInvitedParticipants({bool silent = false}) {
