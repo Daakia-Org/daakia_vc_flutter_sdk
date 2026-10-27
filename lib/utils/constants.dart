@@ -55,6 +55,29 @@ class Constant {
   /// card stops it sooner; the short message never does.
   static const int meetingEndWarningSoundDurationMs = 60000;
 
+  /// Idle minutes before the "Still there?" prompt when the meeting's
+  /// `meeting_config.inactive_timeout_minutes` is missing or not positive.
+  static const int inactiveTimeoutDefaultMinutes = 5;
+
+  /// How often the inactive-meeting watcher re-checks the room. Matches web.
+  static const int inactiveCheckIntervalMs = 60000;
+
+  /// The "Still there?" countdown. Fixed in the client on every platform; it
+  /// does not come from the API.
+  static const int inactiveCountdownSeconds = 120;
+
+  /// Gap between broadcasting the inactivity notice and ending the meeting, so
+  /// the other clients receive it before the room closes under them.
+  static const int inactiveEndNoticeLeadMs = 500;
+
+  /// How long a received inactivity notice may label a ROOM_DELETED disconnect
+  /// as an inactivity end. Keeps a stale notice off a later, normal end.
+  static const int inactiveEndNoticeValidityMs = 60000;
+
+  /// How long the "ended due to inactivity" screen stays before the meeting
+  /// closes.
+  static const int inactiveEndScreenSeconds = 10;
+
   static const int maxMessageSize = 16384; // 16 KB limit
 
   static const int maxMessageCharLimit = 512;

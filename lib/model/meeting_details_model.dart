@@ -182,10 +182,14 @@ class MeetingConfig {
   String? autoMeetingEndSchedule;
   String? autoMeetingEndScheduleTimezoneFormated;
   int? isGuestMode;
+  int? inactivePromptEnabled;
+  int? inactiveTimeoutMinutes;
 
-  MeetingConfig({autoStartRecording, recordingForceStopped, autoMeetingEnd, autoMeetingEndSchedule, autoMeetingEndScheduleTimezoneFormated, this.isGuestMode});
+  MeetingConfig({autoStartRecording, recordingForceStopped, autoMeetingEnd, autoMeetingEndSchedule, autoMeetingEndScheduleTimezoneFormated, this.isGuestMode, this.inactivePromptEnabled, this.inactiveTimeoutMinutes});
 
   MeetingConfig.fromJson(Map<String, dynamic> json) {
+    inactivePromptEnabled = JsonParser.toFlagInt(json['inactive_prompt_enabled']);
+    inactiveTimeoutMinutes = JsonParser.toFlagInt(json['inactive_timeout_minutes']);
     autoStartRecording = JsonParser.toFlagInt(json['auto_start_recording']);
     recordingForceStopped = JsonParser.toFlagInt(json['recording_force_stopped']);
     autoMeetingEnd = JsonParser.toFlagInt(json['auto_meeting_end']);
@@ -202,6 +206,8 @@ class MeetingConfig {
     data['auto_meeting_end_schedule'] = autoMeetingEndSchedule;
     data['auto_meeting_end_schedule_timezone_formated'] = autoMeetingEndScheduleTimezoneFormated;
     data['is_guest_mode'] = isGuestMode;
+    data['inactive_prompt_enabled'] = inactivePromptEnabled;
+    data['inactive_timeout_minutes'] = inactiveTimeoutMinutes;
     return data;
   }
 }
