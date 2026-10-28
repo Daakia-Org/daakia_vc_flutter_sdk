@@ -21,7 +21,7 @@ dependencies:
   json_annotation: ^4.12.0
   dio: ^5.11.1
   loading_btn: ^1.0.3
-  livekit_client: ^2.13.1
+  livekit_client: ^2.13.2
   pretty_dio_logger: ^1.4.0
 
   permission_handler: ^13.0.2
@@ -30,7 +30,7 @@ dependencies:
   uuid: ^4.6.0
   intl: ^0.20.3
   collection: ^1.19.1
-  flutter_webrtc: ^1.6.2+hotfix.4
+  flutter_webrtc: ^1.6.3
   animated_emoji: ^3.3.0
   safe_device: ^1.4.1
   wakelock_plus: ^1.8.1
