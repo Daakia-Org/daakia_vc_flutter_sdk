@@ -35,6 +35,9 @@
   and a moderator's Leave now asks for confirmation too.
 - **Whiteboard Export and Close** — Exported PNG/SVG files are saved to the device's Downloads folder, and users
   who can manage the whiteboard get a close button that confirms before closing it for everyone.
+- **Inactive Meeting Prompt** — When nobody has their mic, camera or screen share on for the meeting's
+  configured idle time, one person is asked "Still there?" with a 2-minute countdown. If nobody answers, the
+  meeting closes, the same as on web, and people are shown that it ended due to inactivity.
 
 ### 🧩 Improvements
 - **Audio routing:** Wired and USB-C headsets are detected like Bluetooth ones, Earpiece is hidden while a
@@ -44,10 +47,13 @@
 - **Audio output picker:** Updates at once and ignores taps on the current output.
 - **Diagnostics:** Added audio diagnostics logging (`audio_diag`). Sentry noise is reduced (no info logs or
   reconnect attempts, only bad-response API errors), and backend type changes are reported.
-- **Resilience:** Type changes in the meeting details payload are tolerated, and API connection errors name the
-  likely cause.
+- **Resilience:** Type changes in the meeting details payload are tolerated, feature and permission flags are
+  accepted as either `true`/`false` or `1`/`0`, and API connection errors name the likely cause.
 - **Chat:** The unread badge is anchored to the chat tab label.
 - **Participants Not Joined:** Invitees joining and leaving are reported, so the list stays up to date.
+- **Recording chimes:** The recording start/stop sounds come from the server configuration and are cached on
+  the device, with built-in sounds as the fallback.
+- **Reactions:** The reaction panel is compact and evenly spaced in portrait and landscape.
 - **Dependencies:** `dio` ^5.10.0, `timezone` ^0.9.0.
 
 ### 🐞 Bug Fixes
@@ -68,6 +74,7 @@
   - Host email/PIN verification works in landscape and with the keyboard open.
   - Host mic/camera locks are respected.
   - The password is kept on rotation.
+  - The Join button keeps working if the device is rotated while joining.
 - **Meeting end:** Participants can rejoin after a meeting is extended, and `end_date` is used for the meeting
   end time.
 - **Permissions:** All SDK permission requests are queued. A quick double-tap on the mic or camera button no
@@ -82,6 +89,21 @@
     close button.
 - **Rotation:** Bottom sheets resize when the device is rotated, the participant menu scrolls and can be
   closed, and the chat pages fit landscape and stay usable while typing.
+- **Recording:**
+  - Android: the app no longer crashes when the recording chime can't be downloaded (offline, or the sound
+    host can't be reached).
+  - With recording consent on, the recording starts once everyone agrees, whoever agrees last (including a
+    participant or someone on web).
+  - People who join or rejoin while a meeting is already recording no longer get the consent popup.
+  - The consent list leaves out people who have left the meeting.
+- **Chat history:** Restored chat history keeps the "Edited" label, and deleted messages stay deleted. History
+  sent from mobile now carries both states for web too.
+- **Mic and camera:** A message is shown when turning on the mic or camera fails, including after accepting a
+  host's request to turn it on.
+- **Crashes:**
+  - iOS: fixed a rare crash when a video tile is removed while its first frame is being drawn.
+  - Tapping **Open** on a saved transcript's message after closing the transcript screen no longer crashes.
+  - Double-tapping **Remove** in the remove-participant confirmation no longer crashes.
 - **Error responses:** A failed list request with an empty `data` object no longer fails to parse.
 - **Layout:** The screen-share request dialog and bottom sheets stay within short screens. All participant roles
   are shown, and the duplicate Rename option is removed.
