@@ -34,7 +34,8 @@ import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_provider.dart';
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_viewmodel.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+// livekit_client's ConnectionState is the one used here.
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import '../service/daakia_meeting_service.dart';
 import 'audio_routing.dart';
@@ -50,6 +51,8 @@ import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
 import '../presentation/dialog/duplicate_identity_dialog.dart';
+import '../presentation/dialog/inactive_meeting_dialog.dart';
+import '../presentation/dialog/inactivity_ended_dialog.dart';
 import '../presentation/dialog/meeting_ending_dialog.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
@@ -57,6 +60,7 @@ import '../utils/consent_status_enum.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 import '../utils/utils.dart';
+import 'inactive_meeting_watcher.dart';
 import 'meeting_manager.dart';
 import 'method_channels/daakia_pip.dart';
 
@@ -123,6 +127,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // Re-ensure the meeting notification is visible. Covers the case where the
       // user granted POST_NOTIFICATIONS in system Settings while in the meeting.
       DaakiaMeetingService.restartIfActive();
+      // Timers may have been paused in the background; catch up at once.
+      _inactivityWatcher?.check();
     }
   }
 
@@ -189,6 +195,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             }
           });
       meetingManager.startMeetingEndScheduler();
+      _initInactivityWatcher(viewModel);
       _initializeWebViewController();
       viewModel?.getWhiteboardData();
       viewModel?.getAttendanceListForParticipant();
@@ -375,6 +382,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     viewModel?.stopLobbyCheck();
     viewModel?.cancelRoomEvents();
     meetingManager.cancelMeetingEndScheduler();
+    _inactivityWatcher?.dispose();
+    _inactivityWatcher = null;
     lobbyManager?.dispose();
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
@@ -399,10 +408,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<RoomConnectedEvent>((event) {
       // Successfully connected
       onReconnectSuccess();
+      _updateInactivityWatcher();
     })
+    ..on<RoomReconnectingEvent>((_) => _updateInactivityWatcher())
     ..on<RoomReconnectedEvent>((event) {
       // Successfully reconnected
       onReconnectSuccess();
+      _updateInactivityWatcher();
     })
     ..on<RoomDisconnectedEvent>((event) async {
       // Run cleanup and navigation for ALL disconnect reasons, including null.
@@ -419,6 +431,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         });
       }
       _isProgrammaticPop = true;
+      // Down before anything below pops the meeting, or the pop would close
+      // the prompt instead.
+      _stopInactivityWatcher();
       DatadogDisconnectLogger.logDisconnectEvent(
           meetingId: widget.meetingDetails.meetingUid,
           room: widget.room,
@@ -432,6 +447,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _disconnectHandled = true;
       _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
       clearMemory(_livekitProviderKey.currentState?.viewModel);
+      if (_isInactivityEnd(event.reason)) {
+        _finishInactivityEnd(_livekitProviderKey.currentState?.viewModel);
+        return;
+      }
       switch (event.reason) {
         case DisconnectReason.participantRemoved:
           {
@@ -534,6 +553,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.addParticipantToConsentList(event.participant);
       viewModel?.sendPrivateChatHistory(event.participant.identity);
       _sortParticipants();
+      _updateInactivityWatcher();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
       _livekitProviderKey.currentState?.viewModel
@@ -548,6 +568,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           .reportInviteeJoinedStatus(event.participant, joined: false);
       _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
       _sortParticipants();
+      _updateInactivityWatcher();
     })
     ..on<RoomRecordingStatusChanged>((event) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -624,6 +645,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       if (event.participant is LocalParticipant) {
         _notifyWhiteboardPermissionChanged();
       }
+      // A role change anywhere can move who watches for inactivity.
+      _updateInactivityWatcher();
     })
     ..on<RoomMetadataChangedEvent>((event) {})
     ..on<DataReceivedEvent>((event) {
@@ -894,6 +917,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         _applyMeetingExtension();
         // Somebody took the decision; nobody else needs the prompt any more.
         _dismissMeetingEndingDialog();
+        break;
+
+      case MeetingActions.inactiveMeetingAutoEnd:
+        // The ROOM_DELETED that follows is labelled from this.
+        _inactivityNoticeAt = DateTime.now();
         break;
 
       case MeetingActions.notificationSoundSetting:
@@ -1941,6 +1969,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           setState(() {});
         }
       } else if (event is EndMeeting) {
+        if (_inactivityAutoClosed) {
+          _finishInactivityEnd(viewModel);
+          return;
+        }
+        // Down first: with the prompt on top, the pop below would close it
+        // instead of the meeting.
+        _stopInactivityWatcher();
         clearMemory(viewModel);
         DatadogDisconnectLogger.logDisconnectEvent(
             meetingId: widget.meetingDetails.meetingUid,
@@ -2285,6 +2320,179 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  //===============================[Inactive meeting prompt]===============================
+
+  /// Runs the idle clock while this device is the elected watcher. Null when
+  /// the feature is off for the meeting.
+  InactiveMeetingWatcher? _inactivityWatcher;
+  BuildContext? _inactivityDialogContext;
+
+  /// Set when this device's countdown ran out and it is closing the meeting.
+  bool _inactivityAutoClosed = false;
+
+  /// When another device last announced it is ending the meeting for
+  /// inactivity.
+  DateTime? _inactivityNoticeAt;
+
+  /// Guards [_finishInactivityEnd]: the end can be reached through both the
+  /// end-meeting response and the ROOM_DELETED disconnect.
+  bool _inactivityEndStarted = false;
+
+  void _initInactivityWatcher(RtcViewmodel? viewModel) {
+    if (viewModel == null || !viewModel.isInactivePromptEnabled()) return;
+    _inactivityWatcher = InactiveMeetingWatcher(
+      room: widget.room,
+      timeout: viewModel.inactiveTimeout(),
+      onShowPrompt: () => _showInactivityPrompt(viewModel),
+      onHidePrompt: _closeInactivityPrompt,
+    );
+    _updateInactivityWatcher();
+  }
+
+  /// Re-runs the election and starts or stops the clock to match. Called on
+  /// connect, reconnect, joins, leaves and role changes.
+  void _updateInactivityWatcher() {
+    final watcher = _inactivityWatcher;
+    if (watcher == null || !mounted || _inactivityAutoClosed) return;
+    final room = widget.room;
+    if (room.connectionState == ConnectionState.connected &&
+        InactiveMeetingRules.isWatcher(room)) {
+      watcher.start();
+    } else {
+      // Whoever takes over starts a fresh clock of their own.
+      watcher.stop();
+    }
+  }
+
+  void _stopInactivityWatcher() {
+    _inactivityWatcher?.stop();
+    // Also covers a prompt left at 0:00 while the meeting is being closed.
+    _closeInactivityPrompt();
+  }
+
+  bool _showInactivityPrompt(RtcViewmodel viewModel) {
+    final watcher = _inactivityWatcher;
+    // Never stacked on the meeting-end warning; the watcher asks again once
+    // that card is gone.
+    if (!mounted || watcher == null || _isEndingDialogOpen) return false;
+
+    BuildContext? openedWith;
+    showInactiveMeetingDialog(
+      context,
+      solo: watcher.solo,
+      canEndForAll: () => InactiveMeetingRules.canEndForAll(widget.room),
+      onStay: watcher.stay,
+      onLeave: () => _leaveMeetingAfterPrompt(viewModel),
+      onEnd: () => _endMeetingFromPrompt(viewModel),
+      onCountdownZero: () => _onInactivityCountdownZero(viewModel),
+      onOpened: (dialogContext) =>
+          _inactivityDialogContext = openedWith = dialogContext,
+    ).then((_) {
+      // A newer prompt may already be up; only clear what this one set.
+      if (_inactivityDialogContext != openedWith) return;
+      _inactivityDialogContext = null;
+      _inactivityWatcher?.promptClosed();
+    });
+    return true;
+  }
+
+  /// Pops the prompt's own route, even if something was pushed above it.
+  void _closeInactivityPrompt() {
+    final dialogContext = _inactivityDialogContext;
+    if (dialogContext == null || !dialogContext.mounted) return;
+    final route = ModalRoute.of(dialogContext);
+    if (route == null || !route.isActive) return;
+    if (route.isCurrent) {
+      Navigator.of(dialogContext).pop();
+    } else {
+      Navigator.of(dialogContext).removeRoute(route);
+    }
+  }
+
+  /// Leave now: exactly what the Leave button does — this device only.
+  void _leaveMeetingAfterPrompt(RtcViewmodel viewModel) {
+    _stopInactivityWatcher();
+    viewModel.isMeetingEnded = true;
+    viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+  }
+
+  /// End meeting, pressed by a host or co-host. Same API as the regular End
+  /// button. On failure the prompt stays open with the reason so they can try
+  /// again; on success the regular end flow closes everything.
+  Future<String?> _endMeetingFromPrompt(RtcViewmodel viewModel) {
+    final result = Completer<String?>();
+    viewModel.endMeetingForAll(onFailed: (message) {
+      if (!result.isCompleted) result.complete(message);
+    });
+    return result.future;
+  }
+
+  void _onInactivityCountdownZero(RtcViewmodel viewModel) {
+    final room = widget.room;
+    // Recording started, or someone came back, during the countdown.
+    if (room.isRecording || !InactiveMeetingRules.isIdle(room)) {
+      _inactivityWatcher?.stay();
+      return;
+    }
+
+    _inactivityAutoClosed = true;
+    // Head-count now, not whichever text the prompt was showing.
+    final groupEnd = InactiveMeetingRules.humans(room).length > 1 &&
+        InactiveMeetingRules.canEndForAll(room);
+    if (!groupEnd) {
+      // Solo, or a group watcher who can't end it: leave. The backend closes
+      // an empty room; in a group the next watcher starts its own clock.
+      viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+      return;
+    }
+
+    // Tell everyone first, so their ROOM_DELETED reads as an inactivity end.
+    unawaited(viewModel.sendAction(
+        ActionModel(action: MeetingActions.inactiveMeetingAutoEnd)));
+    Timer(const Duration(milliseconds: Constant.inactiveEndNoticeLeadMs), () {
+      if (!mounted) return;
+      viewModel.endMeetingForAll(onFailed: (message) {
+        if (!mounted) return;
+        // Don't leave the host on a 0:00 prompt: leave, and let the meeting
+        // carry on for the others until the next watcher tries.
+        showSnackBar(message: message);
+        viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+      });
+    });
+  }
+
+  bool _isInactivityEnd(DisconnectReason? reason) {
+    if (_inactivityAutoClosed) return true;
+    final noticeAt = _inactivityNoticeAt;
+    if (reason != DisconnectReason.roomDeleted || noticeAt == null) {
+      return false;
+    }
+    final age = DateTime.now().difference(noticeAt);
+    return !age.isNegative &&
+        age <
+            const Duration(milliseconds: Constant.inactiveEndNoticeValidityMs);
+  }
+
+  /// Closes the meeting behind the "ended due to inactivity" screen.
+  void _finishInactivityEnd(RtcViewmodel? viewModel) {
+    if (_inactivityEndStarted) return;
+    _inactivityEndStarted = true;
+    // Our own disconnect below must not show "You have left the meeting."
+    _disconnectHandled = true;
+    _stopInactivityWatcher();
+    viewModel?.isMeetingEnded = true;
+    clearMemory(viewModel);
+    DatadogDisconnectLogger.logDisconnectEvent(
+        meetingId: widget.meetingDetails.meetingUid,
+        room: widget.room,
+        reason: "INACTIVITY");
+    unawaited(widget.room.disconnect());
+    if (!mounted) return;
+    showInactivityEndedDialog(context).then((_) {
+      if (mounted) closeMeetingProgrammatically(context);
+    });
+  }
+
   //===============================[End of meeting warning]===============================
 
   /// Its own player, so a recording chime starting or stopping can't cut the
@@ -2497,6 +2705,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // Dismissing is personal and stops only this client's sound; the meeting
       // still ends on schedule, and the next tier still fires.
       unawaited(_stopMeetingEndWarningSound());
+      // The inactivity prompt held back for this card can show now.
+      _inactivityWatcher?.check();
     });
   }
 
@@ -2515,6 +2725,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _endingDialogContext = null;
       // The card and the chime are one unit, as with the prompt.
       unawaited(_stopMeetingEndWarningSound());
+      _inactivityWatcher?.check();
     });
   }
 

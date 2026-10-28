@@ -124,6 +124,11 @@ class MeetingActions {
   /// on or off. `value` carries the new state.
   static const String allowLiveCollabWhiteboard = "allow-live-collab-whiteboard";
 
+  /// Sent by the inactive-meeting watcher just before it ends an idle meeting,
+  /// so everyone else can label the ROOM_DELETED that follows as an inactivity
+  /// end. Carries no payload.
+  static const String inactiveMeetingAutoEnd = "inactive-meeting-auto-end";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -199,6 +204,7 @@ class MeetingActions {
     refreshInvitedParticipants,
     notificationSoundSetting,
     allowLiveCollabWhiteboard,
+    inactiveMeetingAutoEnd,
     // ✅ Add new fields here
   };
 }

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
@@ -1565,15 +1566,46 @@ class RtcViewmodel extends ChangeNotifier {
         });
   }
 
-  void endMeetingForAll() {
+  /// Ends the meeting for everyone.
+  ///
+  /// [onFailed], when given, receives the backend's message instead of it
+  /// being shown as a room notice, for callers with somewhere of their own to
+  /// show it.
+  void endMeetingForAll({ValueChanged<String>? onFailed}) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
     };
     networkRequestHandler(
       apiCall: () => apiClient.endMeeting(selfIdentity, body),
       onSuccess: (_) => sendEvent(EndMeeting(reason: "roomDeleted")),
-      onError: (message) => sendMessageToUI(message),
+      onError: (message) {
+        if (onFailed != null) {
+          onFailed(message);
+        } else {
+          sendMessageToUI(message);
+        }
+      },
     );
+  }
+
+  //===============================[Inactive meeting prompt]===============================
+
+  /// Whether the "Still there?" prompt is on for this meeting
+  /// (`meeting_config.inactive_prompt_enabled`, decided by the backend).
+  bool isInactivePromptEnabled() =>
+      meetingDetails.meetingBasicDetails?.meetingConfig?.inactivePromptEnabled ==
+      1;
+
+  /// Idle time before the prompt: `meeting_config.inactive_timeout_minutes`,
+  /// [Constant.inactiveTimeoutDefaultMinutes] when missing or not positive, and
+  /// never under a minute. Fractions are kept, matching web (`0.5` -> 1 min).
+  Duration inactiveTimeout() {
+    final minutes =
+        meetingDetails.meetingBasicDetails?.meetingConfig?.inactiveTimeoutMinutes;
+    final effective = minutes == null || minutes <= 0
+        ? Constant.inactiveTimeoutDefaultMinutes
+        : math.max(1, minutes);
+    return Duration(milliseconds: (effective * 60000).round());
   }
 
   void updateParticipantName({String? participant, required String newName}) {
