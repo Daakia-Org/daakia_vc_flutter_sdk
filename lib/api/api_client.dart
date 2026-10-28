@@ -19,6 +19,7 @@ import 'package:retrofit/retrofit.dart';
 import '../model/agent_dispatch_data.dart';
 import '../model/base_list_response.dart';
 import '../model/base_response.dart';
+import '../model/cdn_assets_model.dart';
 import '../model/meeting_status_model.dart';
 import '../model/event_password_protected_data.dart';
 import '../model/host_controls_data.dart';
@@ -107,6 +108,12 @@ abstract class RestClient {
     @Query("meeting_uid") String meetingUid,
     @Header("secret") String secret,
   );
+
+  //-------------------[CONFIGURATION]-------------------
+
+  // Public on purpose: sounds are needed before anyone is signed in.
+  @GET("v2.0/configuration/cdn-assets")
+  Future<BaseResponse<CdnAssetsModel>> getCdnAssets();
 
   //-------------------[OBSERVABILITY]-------------------
 
