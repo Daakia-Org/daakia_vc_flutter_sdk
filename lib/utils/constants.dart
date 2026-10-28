@@ -14,9 +14,6 @@ class Constant {
   static const String whiteboardPermissionChangedEvent =
       "daakia:whiteboard-permission-changed";
 
-  static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
-  static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
-
   static const String meetingEndWarningSoundDir = "packages/daakia_vc_flutter_sdk/assets/sounds/";
   static const String meetingEndWarningSound = "meeting_end_warning.m4a";
 

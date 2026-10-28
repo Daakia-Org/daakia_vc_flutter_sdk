@@ -23,6 +23,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
 import 'package:daakia_vc_flutter_sdk/theme/daakia_sdk_theme.dart';
+import 'package:daakia_vc_flutter_sdk/utils/cdn_sounds.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:daakia_vc_flutter_sdk/utils/whiteboard_download.dart';
 import 'package:daakia_vc_flutter_sdk/utils/whiteboard_file_selector.dart';
@@ -577,10 +578,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       if (!event.activeRecording) {
         clearConsentList(viewModel);
       }
-      var recordingAudioPath = event.activeRecording
-          ? Constant.startRecordingUrl
-          : Constant.stopRecordingUrl;
-      unawaited(playAudio(recordingAudioPath));
+      unawaited(playAudio(event.activeRecording
+          ? CdnSounds.recordingStart
+          : CdnSounds.recordingStop));
+      // The chime is played here, so the join-time check must not repeat it.
+      isCheckedWhileJoining = true;
       handleRecordingButton(viewModel, event.activeRecording);
     })
     ..on<RoomAttemptReconnectEvent>((event) {
@@ -2305,18 +2307,32 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   late final AudioPlayer player;
 
-  /// Plays a recording chime streamed from [link].
+  /// Plays the recording chime for [soundKey]: from the cached file when it
+  /// has been downloaded, otherwise streamed from the backend URL, retrying
+  /// once on the fallback URL.
   ///
   /// Uses mediaPlayer rather than lowLatency. On Android, lowLatency (SoundPool)
   /// downloads the URL on a background thread that doesn't handle errors, so
   /// an offline device or a host that doesn't resolve crashes the whole app.
   /// mediaPlayer reports the failure back here instead.
-  Future<void> playAudio(String link) async {
-    try {
-      await player.play(UrlSource(link), mode: PlayerMode.mediaPlayer);
-    } catch (e) {
-      // Only the chime is lost; the recording state change itself still lands.
-      debugPrint("Recording chime failed to play: $e");
+  Future<void> playAudio(String soundKey) async {
+    final cached = CdnSounds.cachedFile(soundKey);
+    final sources = <Source>[
+      if (cached != null) DeviceFileSource(cached),
+      for (final url in {CdnSounds.url(soundKey), CdnSounds.fallbackUrl(soundKey)})
+        UrlSource(url),
+    ];
+    for (final source in sources) {
+      try {
+        // A source that never loads can leave play() pending, hence the timeout.
+        await player
+            .play(source, mode: PlayerMode.mediaPlayer)
+            .timeout(const Duration(seconds: 10));
+        return;
+      } catch (e) {
+        // Only the chime is lost; the recording state change itself still lands.
+        debugPrint("Recording chime failed to play from $source: $e");
+      }
     }
   }
 
@@ -2794,7 +2810,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void checkRecordingPlayer(bool isRecording) {
     if (isRecording && !isCheckedWhileJoining) {
-      unawaited(playAudio(Constant.startRecordingUrl));
+      unawaited(playAudio(CdnSounds.recordingStart));
       isCheckedWhileJoining = true;
     }
   }

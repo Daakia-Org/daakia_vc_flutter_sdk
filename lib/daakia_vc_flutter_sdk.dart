@@ -1,5 +1,6 @@
 library daakia_vc_flutter_sdk;
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:daakia_vc_flutter_sdk/api/injection.dart';
@@ -17,6 +18,7 @@ import 'service/daakia_meeting_service.dart';
 import 'service/daakia_vc_datadog_service.dart';
 import 'service/daakia_vc_sentry_service.dart';
 import 'theme/daakia_sdk_theme.dart';
+import 'utils/cdn_sounds.dart';
 import 'utils/constants.dart';
 import 'utils/sdk_crypto.dart';
 
@@ -124,6 +126,7 @@ class _DaakiaVideoConferenceState extends State<DaakiaVideoConferenceWidget> {
         'Move it to DaakiaSdk.initialize(secret: yourKey) in main() and remove it from the widget.',
       );
     }
+    unawaited(CdnSounds.load());
     _verifyLicense();
   }
 
