@@ -45,4 +45,15 @@ class JsonParser {
     if (value is String) return int.tryParse(value.trim());
     return null;
   }
+
+  /// Reads a number sent as a number or a numeric string, keeping fractions.
+  /// Returns null for null, booleans, NaN/infinity or anything unrecognised.
+  static num? toNum(dynamic value) {
+    final parsed = value is num
+        ? value
+        : value is String
+            ? num.tryParse(value.trim())
+            : null;
+    return parsed != null && parsed.isFinite ? parsed : null;
+  }
 }

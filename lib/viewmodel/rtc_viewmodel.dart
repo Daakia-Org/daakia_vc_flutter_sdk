@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
@@ -1596,14 +1597,15 @@ class RtcViewmodel extends ChangeNotifier {
       1;
 
   /// Idle time before the prompt: `meeting_config.inactive_timeout_minutes`,
-  /// [Constant.inactiveTimeoutDefaultMinutes] when missing or not positive.
+  /// [Constant.inactiveTimeoutDefaultMinutes] when missing or not positive, and
+  /// never under a minute. Fractions are kept, matching web (`0.5` -> 1 min).
   Duration inactiveTimeout() {
     final minutes =
         meetingDetails.meetingBasicDetails?.meetingConfig?.inactiveTimeoutMinutes;
-    return Duration(
-        minutes: minutes == null || minutes <= 0
-            ? Constant.inactiveTimeoutDefaultMinutes
-            : minutes);
+    final effective = minutes == null || minutes <= 0
+        ? Constant.inactiveTimeoutDefaultMinutes
+        : math.max(1, minutes);
+    return Duration(milliseconds: (effective * 60000).round());
   }
 
   void updateParticipantName({String? participant, required String newName}) {
