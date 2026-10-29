@@ -47,6 +47,18 @@ class MeetingEndTime {
     return extended.isAfter(scheduled) ? extended : scheduled;
   }
 
+  /// Whether the meeting has already used its one extension.
+  ///
+  /// Until someone extends, the schedule is just `end_date` again in wall-clock
+  /// form; afterwards it sits [Constant.meetingExtendTime] minutes later. A
+  /// minute's slack absorbs rounding, since an extension is never that small.
+  bool get isExtended {
+    final scheduled = this.scheduled;
+    final extended = this.extended;
+    if (scheduled == null || extended == null) return false;
+    return extended.difference(scheduled) >= const Duration(minutes: 1);
+  }
+
   /// ISO-8601 with no zone is read as UTC, as `end_date` always has been.
   static DateTime? _parseUtc(String? value) {
     if (value == null || value.trim().isEmpty) return null;

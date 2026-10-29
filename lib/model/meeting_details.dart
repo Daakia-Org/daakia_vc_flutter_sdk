@@ -9,11 +9,15 @@ class MeetingDetails {
   MeetingDetailsModel? meetingBasicDetails;
   final String? participantEmail;
 
+  /// License secret, kept so in-meeting code can re-read `meeting/basic/detail`.
+  final String? secretKey;
+
   MeetingDetails(
       {required this.meetingUid,
       this.features,
       required this.authorizationToken,
         required this.livekitToken,
       required this.meetingBasicDetails,
-      this.participantEmail});
+      this.participantEmail,
+      this.secretKey});
 }

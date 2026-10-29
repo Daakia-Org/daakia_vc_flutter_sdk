@@ -1785,6 +1785,45 @@ class RtcViewmodel extends ChangeNotifier {
         ?.toIso8601String();
   }
 
+  /// Whether the meeting was extended before this client joined, so a rejoin
+  /// doesn't offer an extension the backend has already used up.
+  bool isMeetingAlreadyExtended() {
+    return MeetingEndTime.from(meetingDetails.meetingBasicDetails).isExtended;
+  }
+
+  /// Re-reads the end time once the room is up, as web does.
+  ///
+  /// The details in hand were fetched before pre-join, so an extension made
+  /// while this client sat there would otherwise be missed: it would count down
+  /// to the old end and offer an extension that is already used up. Only ever
+  /// moves the end out. [onDone] runs whether or not the fetch succeeds.
+  void syncMeetingEndTime({required VoidCallback onDone}) {
+    final secret = meetingDetails.secretKey;
+    final config = meetingDetails.meetingBasicDetails?.meetingConfig;
+    if (!isAutoMeetingEndEnable() || secret == null || config == null) {
+      onDone();
+      return;
+    }
+    final current = MeetingEndTime.from(meetingDetails.meetingBasicDetails).end;
+    networkRequestHandler(
+      apiCall: () =>
+          apiClient.getMeetingDetails(meetingDetails.meetingUid, secret),
+      onSuccess: (fresh) {
+        final freshConfig = fresh?.meetingConfig;
+        final freshEnd = MeetingEndTime.from(fresh).end;
+        if (freshConfig != null &&
+            freshEnd != null &&
+            (current == null || freshEnd.isAfter(current))) {
+          config.autoMeetingEndSchedule = freshConfig.autoMeetingEndSchedule;
+          config.autoMeetingEndScheduleTimezoneFormated =
+              freshConfig.autoMeetingEndScheduleTimezoneFormated;
+        }
+        onDone();
+      },
+      onError: (_) => onDone(),
+    );
+  }
+
   //===============================[Whiteboard]===============================
 
   /// The meeting's whiteboard, once one exists. It is created on first open

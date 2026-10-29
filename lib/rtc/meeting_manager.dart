@@ -28,9 +28,10 @@ class MeetingManager {
   Function(MeetingEndEvents event) endMeetingCallBack;
   bool? isAutoMeetingEnd = false;
 
-  /// True once the meeting has been extended, locally or by a remote client.
-  /// Suppresses the extend prompt for the rest of the meeting.
-  bool isExtended = false;
+  /// True once the meeting has been extended, locally, by a remote client, or
+  /// before this client joined. Suppresses the extend prompt for the rest of
+  /// the meeting.
+  bool isExtended;
 
   bool _hasEnded = false;
 
@@ -40,6 +41,7 @@ class MeetingManager {
     @Deprecated('No longer used; MeetingManager renders no UI of its own.')
     BuildContext? context,
     this.isAutoMeetingEnd,
+    this.isExtended = false,
   }) {
     endDateTime = _parseEndDate(endDate);
     if (endDateTime == null) {
@@ -127,6 +129,25 @@ class MeetingManager {
     debugPrint(
         "Meeting extended by ${Constant.meetingExtendTime} minutes. New end time: $endDateTime");
     startMeetingEndScheduler();
+  }
+
+  /// Adopts a later end time learned after the scheduler started — an
+  /// extension that happened before this client joined but after its meeting
+  /// details were fetched. Never moves the end earlier. Returns whether the end
+  /// time moved.
+  bool adoptExtendedEndDate(String? endDate) {
+    isExtended = true;
+    final adopted = _parseEndDate(endDate);
+    final current = endDateTime;
+    if (_hasEnded ||
+        adopted == null ||
+        (current != null && !adopted.isAfter(current))) {
+      return false;
+    }
+    endDateTime = adopted;
+    debugPrint("Meeting was already extended. New end time: $endDateTime");
+    startMeetingEndScheduler();
+    return true;
   }
 
   void _endMeeting() {

@@ -186,6 +186,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       meetingManager = MeetingManager(
           endDate: viewModel?.getMeetingEndDate(),
           isAutoMeetingEnd: viewModel?.isAutoMeetingEndEnable(),
+          // Only in-memory otherwise: a rejoin after the extension would offer
+          // it again, and the backend would turn the second one down.
+          isExtended: viewModel?.isMeetingAlreadyExtended() ?? false,
           endMeetingCallBack: (event) {
             if (event is MeetingEnd) {
               _meetingEndLogic(viewModel);
@@ -196,6 +199,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             }
           });
       meetingManager.startMeetingEndScheduler();
+      viewModel?.syncMeetingEndTime(onDone: () {
+        if (!mounted) return;
+        if (viewModel.isMeetingAlreadyExtended() &&
+            meetingManager.adoptExtendedEndDate(viewModel.getMeetingEndDate())) {
+          // Warnings already given counted down to the old end.
+          _warnedTiers.clear();
+          _promptedTiers.clear();
+        }
+        _isMeetingEndTimeSynced = true;
+      });
       _initInactivityWatcher(viewModel);
       _initializeWebViewController();
       viewModel?.getWhiteboardData();
@@ -2543,6 +2556,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// mid-window has not been prompted yet, even though the tier is old news.
   final Set<int> _promptedTiers = {};
 
+  /// Whether the post-join re-read of the end time has come back. Until then
+  /// the extend prompt is held, as on web, so it can't offer an extension that
+  /// was used while this client sat on pre-join.
+  bool _isMeetingEndTimeSynced = false;
+
   /// Starts, or joins, preparation of the chime. Runs at most once.
   ///
   /// Kicked off on join rather than when the warning fires, so that decoding
@@ -2656,6 +2674,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         meetingManager.canExtendMeeting && viewModel.isMeetingExtendLeader();
 
     if (isExtendLeader) {
+      // Not marked as prompted, so the next tick offers it once synced.
+      if (!_isMeetingEndTimeSynced) return;
       if (!_promptedTiers.add(tier)) return;
       // The prompt stands in for the message and carries the chime with it.
       if (event.isFinalWarning &&

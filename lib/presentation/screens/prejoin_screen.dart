@@ -1083,7 +1083,8 @@ class _PreJoinState extends State<PreJoinScreen> {
         // marks a pre-registered participant email as joined, so forwarding
         // a guest-entered email would let a guest impersonate/mark a real
         // invited participant as joined just by typing their address.
-        participantEmail: _joinAsGuest ? null : _participantEmail);
+        participantEmail: _joinAsGuest ? null : _participantEmail,
+        secretKey: widget.secretKey);
 
     if (!mounted) {
       // Nobody is going to take ownership of this room, so don't leak it.
