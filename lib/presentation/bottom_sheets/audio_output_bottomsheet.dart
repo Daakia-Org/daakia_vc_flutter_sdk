@@ -115,12 +115,16 @@ class AudioOutputSheet extends StatefulWidget {
   final MediaDevice? selectedDevice;
   final void Function(MediaDevice) onDeviceSelected;
 
+  /// Shows a "Disconnect Audio" row under the devices when given.
+  final VoidCallback? onDisconnectAudio;
+
   const AudioOutputSheet({
     super.key,
     required this.speakerphoneOn,
     required this.initialDevices,
     required this.selectedDevice,
     required this.onDeviceSelected,
+    this.onDisconnectAudio,
   });
 
   @override
@@ -239,6 +243,17 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
                   onTap: () => widget.onDeviceSelected(device),
                 ),
               ),
+            if (widget.onDisconnectAudio != null) ...[
+              const Divider(color: Colors.white24, height: 16),
+              ListTile(
+                leading: const Icon(Icons.headset_off, color: Colors.redAccent),
+                title: const Text(
+                  'Disconnect Audio',
+                  style: TextStyle(color: Colors.redAccent),
+                ),
+                onTap: widget.onDisconnectAudio,
+              ),
+            ],
             const SizedBox(height: 8),
           ],
         ),

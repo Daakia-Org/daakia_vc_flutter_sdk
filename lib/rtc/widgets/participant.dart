@@ -229,8 +229,11 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                     title: widget.participant.name.isNotEmpty
                         ? widget.participant.name
                         : widget.participant.identity,
+                    // With audio disconnected we drop everyone's audio on
+                    // purpose; their mic state still comes from the publisher.
                     audioAvailable: audioPublication?.muted == false &&
-                        audioPublication?.subscribed == true,
+                        (audioPublication?.subscribed == true ||
+                            viewModel.isAudioDisconnected),
                     connectionQuality: widget.participant.connectionQuality,
                     isScreenShare: isScreenShare,
                     enabledE2EE: widget.participant.isEncrypted,
