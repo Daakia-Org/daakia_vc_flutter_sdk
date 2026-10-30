@@ -487,9 +487,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         case DisconnectReason.roomDeleted:
         case DisconnectReason.roomClosed:
           {
-            showSnackBar(
-                message: _roomClosedMessage(
-                    _livekitProviderKey.currentState?.viewModel));
+            final viewModel = _livekitProviderKey.currentState?.viewModel;
+            // A host ending it gets the same card as a duplicate identity;
+            // the meeting closes from the card.
+            if (_closedByHost(viewModel)) {
+              _showMeetingEndedDialog(viewModel);
+              break;
+            }
+            showSnackBar(message: _roomClosedMessage(viewModel));
             Timer(const Duration(seconds: 3), () {
               if (mounted) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -2127,6 +2132,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _showDuplicateIdentityDialog(connectionDropped: true);
   }
 
+  void _showMeetingEndedDialog(RtcViewmodel? viewModel) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => DuplicateIdentityDialog.meetingEnded(
+        useCallTerminology: viewModel?.useCallTerminology == true,
+        onLeave: () {
+          Navigator.of(dialogCtx).pop();
+          closeMeetingProgrammatically(context);
+        },
+      ),
+    );
+  }
+
   void _showDuplicateIdentityDialog({bool connectionDropped = false}) {
     void onLeave(BuildContext dialogCtx) {
       Navigator.of(dialogCtx).pop();
@@ -2151,22 +2170,28 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
-  /// What participants are told when the room closes under them. Inactivity
-  /// ends are handled before this, and a close at or after the scheduled end
-  /// is the clock's doing; anything else is a host or co-host pressing End.
+  /// Whether the room closing under this device was a host or co-host
+  /// pressing End. Inactivity ends are handled before this; this device's own
+  /// End and a close at or after the scheduled end are the other cases.
+  bool _closedByHost(RtcViewmodel? viewModel) =>
+      viewModel?.endedMeetingForAll != true &&
+      !_closedAtScheduledEnd(viewModel);
+
+  bool _closedAtScheduledEnd(RtcViewmodel? viewModel) {
+    final endsAt = meetingManager.endDateTime;
+    return viewModel?.meetingClosesAtScheduledEnd() == true &&
+        endsAt != null &&
+        !DateTime.now().isBefore(endsAt);
+  }
+
+  /// The room-closed notice for the cases [_closedByHost] leaves out.
   String _roomClosedMessage(RtcViewmodel? viewModel) {
     final session =
         viewModel?.useCallTerminology == true ? 'call' : 'meeting';
     if (viewModel?.endedMeetingForAll == true) {
       return 'You ended the $session for everyone';
     }
-    final endsAt = meetingManager.endDateTime;
-    if (viewModel?.meetingClosesAtScheduledEnd() == true &&
-        endsAt != null &&
-        !DateTime.now().isBefore(endsAt)) {
-      return '${session == 'call' ? 'Call' : 'Meeting'} ended';
-    }
-    return 'The host has ended the $session';
+    return '${session == 'call' ? 'Call' : 'Meeting'} ended';
   }
 
   void _meetingEndLogic(RtcViewmodel? viewModel) {
