@@ -6,6 +6,7 @@ import 'package:animated_emoji/emojis.g.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
@@ -484,7 +485,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         case DisconnectReason.roomDeleted:
         case DisconnectReason.roomClosed:
           {
-            showSnackBar(message: "Meeting ended");
+            showSnackBar(
+                message: _roomClosedMessage(
+                    _livekitProviderKey.currentState?.viewModel));
             Timer(const Duration(seconds: 3), () {
               if (mounted) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1878,10 +1881,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   Future<bool> _showExitConfirmationDialog(BuildContext context) {
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    // Back is a leave, so a host gets the same warning as the Leave button.
+    if (viewModel != null && (viewModel.isHost() || viewModel.isCoHost())) {
+      return confirmModeratorLeave(context, viewModel);
+    }
     return confirmLeaveMeeting(context,
-        useCallTerminology:
-            _livekitProviderKey.currentState?.viewModel.useCallTerminology ??
-                false);
+        useCallTerminology: viewModel?.useCallTerminology ?? false);
   }
 
   Widget _buildTopStatusIndicator({
@@ -2131,6 +2137,24 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (Navigator.canPop(context)) {
       Navigator.of(context).pop();
     }
+  }
+
+  /// What participants are told when the room closes under them. Inactivity
+  /// ends are handled before this, and a close at or after the scheduled end
+  /// is the clock's doing; anything else is a host or co-host pressing End.
+  String _roomClosedMessage(RtcViewmodel? viewModel) {
+    final session =
+        viewModel?.useCallTerminology == true ? 'call' : 'meeting';
+    if (viewModel?.endedMeetingForAll == true) {
+      return 'You ended the $session for everyone';
+    }
+    final endsAt = meetingManager.endDateTime;
+    if (viewModel?.meetingClosesAtScheduledEnd() == true &&
+        endsAt != null &&
+        !DateTime.now().isBefore(endsAt)) {
+      return '${session == 'call' ? 'Call' : 'Meeting'} ended';
+    }
+    return 'The host has ended the $session';
   }
 
   void _meetingEndLogic(RtcViewmodel? viewModel) {

@@ -8,8 +8,15 @@ class EndMeetingBottomSheet extends StatefulWidget {
   final VoidCallback onLeaveCall;
   final bool useCallTerminology;
 
+  /// Asks before leaving; [confirmLeaveMeeting] when not given.
+  final Future<bool> Function(BuildContext context)? confirmLeave;
+
   const EndMeetingBottomSheet(
-      {required this.onEndCall, required this.onLeaveCall, this.useCallTerminology = false, super.key});
+      {required this.onEndCall,
+      required this.onLeaveCall,
+      this.useCallTerminology = false,
+      this.confirmLeave,
+      super.key});
 
   @override
   State<EndMeetingBottomSheet> createState() => _EndMeetingBottomSheetState();
@@ -23,9 +30,12 @@ class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
   }
 
   Future<void> _confirmLeave() async {
-    final confirmed = await confirmLeaveMeeting(context,
-        useCallTerminology: widget.useCallTerminology);
-    if (confirmed) widget.onLeaveCall();
+    final confirmLeave = widget.confirmLeave;
+    final confirmed = confirmLeave != null
+        ? await confirmLeave(context)
+        : await confirmLeaveMeeting(context,
+            useCallTerminology: widget.useCallTerminology);
+    if (confirmed && mounted) widget.onLeaveCall();
   }
 
   @override

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/utils/permission_request.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
@@ -627,6 +628,8 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       builder: (context) {
         return EndMeetingBottomSheet(
           useCallTerminology: viewModel.useCallTerminology,
+          confirmLeave: (sheetContext) =>
+              confirmModeratorLeave(sheetContext, viewModel),
           onEndCall: () {
             Navigator.pop(context);
             viewModel.endMeetingForAll();
