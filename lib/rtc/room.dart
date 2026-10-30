@@ -1065,7 +1065,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.allowMicPermission:
         viewModel?.isMicPermissionGranted = true;
-        showSnackBar(message: "Your mic permission has been granted");
+        // Granted while audio is disconnected: they can't be heard until they
+        // reconnect, so say so and offer it right here.
+        if (viewModel?.isAudioDisconnected == true) {
+          showSnackBar(
+            message:
+                "Your mic permission has been granted. Reconnect audio to speak.",
+            actionText: "Reconnect",
+            actionCallBack: () => viewModel?.joinAudio(),
+          );
+        } else {
+          showSnackBar(message: "Your mic permission has been granted");
+        }
         break;
 
       case MeetingActions.revokeMicPermission:
@@ -1550,6 +1561,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           },
           debugShowCheckedModeBanner: false,
           theme: DaakiaSdkTheme.meeting,
+          // Room notices (top-anchored, deduped) sit above the navigator, so
+          // they still show while chat, participants, captions or any other
+          // page is open over the meeting. Not in PiP, which has no room.
+          builder: (context, child) => Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              if (!_isInPipMode)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: RoomNotification(key: _notificationKey),
+                ),
+            ],
+          ),
           home: AnnotatedRegion<SystemUiOverlayStyle>(
             value: const SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
@@ -1572,14 +1598,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                               : _buildPortraitLayout(context),
                         ),
                       ),
-                    ),
-
-                    /// Toast notification overlay (top-anchored, deduped)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: RoomNotification(key: _notificationKey),
                     ),
 
                     /// Overlay banner
