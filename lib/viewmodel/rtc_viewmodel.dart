@@ -425,8 +425,63 @@ class RtcViewmodel extends ChangeNotifier {
   }
 
   Future<void> enableAudio() async {
+    // Talking without hearing anyone makes no sense, so unmuting (the mic
+    // button, or accepting the host's request) brings audio back first.
+    if (_isAudioDisconnected) await joinAudio(announce: false);
     await _setMicrophoneLogged(true);
     notifyListeners();
+  }
+
+  //===============================[Meeting audio off]===============================
+
+  bool _isAudioDisconnected = false;
+
+  /// Meeting audio off on this device ("leave computer audio"): still in the
+  /// meeting, but the mic is off, nobody else is heard and the SDK's own
+  /// sounds stay quiet until [joinAudio]. For a second device in the same room
+  /// as one that is already in the meeting.
+  bool get isAudioDisconnected => _isAudioDisconnected;
+
+  EventsListener<RoomEvent>? _audioDisconnectListener;
+
+  /// Turns the mic off and unsubscribes from every remote audio track,
+  /// including ones published or re-subscribed (after a reconnect) later.
+  Future<void> disconnectAudio() async {
+    if (_isAudioDisconnected) return;
+    _isAudioDisconnected = true;
+    notifyListeners();
+    if (participant.isMicrophoneEnabled()) {
+      await _setMicrophoneLogged(false);
+    }
+    for (final remote in room.remoteParticipants.values) {
+      for (final publication in remote.audioTrackPublications) {
+        await publication.unsubscribe();
+      }
+    }
+    // Auto-subscribe brings new audio tracks in; drop them as they arrive.
+    _audioDisconnectListener ??= room.createListener()
+      ..on<TrackSubscribedEvent>((event) {
+        if (_isAudioDisconnected && event.track is RemoteAudioTrack) {
+          event.publication.unsubscribe();
+        }
+      });
+    notifyListeners();
+  }
+
+  /// Hears everyone again. The mic stays off: joining audio isn't unmuting.
+  /// [announce] says so in a room notice; off when unmuting comes next.
+  Future<void> joinAudio({bool announce = true}) async {
+    if (!_isAudioDisconnected) return;
+    _isAudioDisconnected = false;
+    await _audioDisconnectListener?.dispose();
+    _audioDisconnectListener = null;
+    for (final remote in room.remoteParticipants.values) {
+      for (final publication in remote.audioTrackPublications) {
+        await publication.subscribe();
+      }
+    }
+    notifyListeners();
+    if (announce) sendMessageToUI('Audio reconnected. Your mic is muted.');
   }
 
   // Diagnostics: records each mic toggle and the resulting publication state,

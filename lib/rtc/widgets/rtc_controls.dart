@@ -4,6 +4,7 @@ import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/meeting_audio_dialogs.dart';
 import 'package:daakia_vc_flutter_sdk/utils/permission_request.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
@@ -255,22 +256,47 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     return Icons.volume_up;
   }
 
-  Widget _buildAudioOutputButton() {
+  /// The mic and speaker buttons are disabled while audio is disconnected;
+  /// tapping either says why and offers to reconnect. Reconnecting leaves the
+  /// mic muted.
+  Future<void> _onAudioOffControlPressed(RtcViewmodel viewModel) async {
+    if (_micBusy) return;
+    final turnOn = await showAudioDisconnectedPrompt(context);
+    if (!turnOn || !mounted) return;
+    setState(() => _micBusy = true);
+    try {
+      await viewModel.joinAudio();
+    } finally {
+      if (mounted) setState(() => _micBusy = false);
+    }
+  }
+
+  Widget _buildAudioOutputButton(RtcViewmodel viewModel) {
+    if (viewModel.isAudioDisconnected) {
+      return IconButton(
+        onPressed: () => _onAudioOffControlPressed(viewModel),
+        icon: Icon(Icons.volume_off,
+            color: Colors.white.withValues(alpha: 0.4)),
+        iconSize: 30,
+      );
+    }
     return IconButton(
+      // Where the output can't be switched there is no sheet; the button still
+      // offers Disconnect Audio.
       onPressed: Hardware.instance.canSwitchSpeakerphone
-          ? _showAudioOutputSheet
-          : null,
-      icon: Icon(
-        _audioOutputIcon,
-        color: Colors.white.withValues(
-          alpha: Hardware.instance.canSwitchSpeakerphone ? 1.0 : 0.5,
-        ),
-      ),
+          ? () => _showAudioOutputSheet(viewModel)
+          : () => _confirmDisconnectAudio(viewModel),
+      icon: Icon(_audioOutputIcon, color: Colors.white),
       iconSize: 30,
     );
   }
 
-  void _showAudioOutputSheet() {
+  Future<void> _confirmDisconnectAudio(RtcViewmodel viewModel) async {
+    final confirmed = await confirmDisconnectAudio(context);
+    if (confirmed && mounted) await viewModel.disconnectAudio();
+  }
+
+  void _showAudioOutputSheet(RtcViewmodel viewModel) {
     Utils.showAdaptiveSheet<void>(
       context,
       // The device list grows with whatever is paired.
@@ -283,6 +309,10 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         speakerphoneOn: _speakerphoneOn,
         initialDevices: _audioOutputDevices,
         selectedDevice: _selectedOutputDevice,
+        onDisconnectAudio: () {
+          Navigator.pop(ctx);
+          _confirmDisconnectAudio(viewModel);
+        },
         onDeviceSelected: (device) async {
           Navigator.pop(ctx);
           DaakiaAudioRouting.diag('sheetTap', {
@@ -338,6 +368,11 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     if (_micBusy) return;
     if (_isReconnecting) {
       _showMessage('Reconnecting… try again in a moment');
+      return;
+    }
+
+    if (viewModel.isAudioDisconnected) {
+      await _onAudioOffControlPressed(viewModel);
       return;
     }
 
@@ -481,12 +516,16 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   Widget _buildMicButton(RtcViewmodel viewModel) {
     return _ControlButton(
-      icon: participant.isMicrophoneEnabled() ? Icons.mic : Icons.mic_off,
-      iconColor: _isMicOsDenied
-          ? Colors.orange
-          : Colors.white.withValues(
-              alpha: _isReconnecting ? 0.4 : viewModel.getMicAlpha(),
-            ),
+      icon: !viewModel.isAudioDisconnected && participant.isMicrophoneEnabled()
+          ? Icons.mic
+          : Icons.mic_off,
+      iconColor: viewModel.isAudioDisconnected
+          ? Colors.white.withValues(alpha: 0.4)
+          : _isMicOsDenied
+              ? Colors.orange
+              : Colors.white.withValues(
+                  alpha: _isReconnecting ? 0.4 : viewModel.getMicAlpha(),
+                ),
       showWarning: _isMicOsDenied,
       busy: _micBusy,
       onPressed: () => _onMicPressed(viewModel),
@@ -544,7 +583,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   List<Widget> _buildButtons(RtcViewmodel viewModel) {
     return [
-      _buildAudioOutputButton(),
+      _buildAudioOutputButton(viewModel),
       _buildCameraButton(viewModel),
       _buildMicButton(viewModel),
       IconButton(

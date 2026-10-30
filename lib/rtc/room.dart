@@ -7,6 +7,8 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/meeting_audio_dialogs.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/meeting_audio_off_banner.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
@@ -810,8 +812,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.askToUnmuteMic:
-        final result = await context
-            .showPermissionAskDialog("Host is asking you to turn on your mic");
+        final result = viewModel?.isAudioDisconnected == true
+            ? await confirmUnmuteWithAudioOff(context)
+            : await context.showPermissionAskDialog(
+                "Host is asking you to turn on your mic");
         if (result != true) break;
         try {
           await viewModel?.enableAudio();
@@ -1740,6 +1744,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                     indicatorColor: Colors.red,
                   ),
               ];
+              // Meeting audio off: the indicator lays out the whole row, so
+              // its chip can sit beside these pills.
+              if (viewModel.isAudioDisconnected) {
+                return MeetingAudioOffIndicator(
+                  pills: pills,
+                  onTurnOn: () => viewModel.joinAudio(),
+                );
+              }
               if (pills.isEmpty) {
                 return const SizedBox.shrink();
               }
@@ -2353,6 +2365,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// an offline device or a host that doesn't resolve crashes the whole app.
   /// mediaPlayer reports the failure back here instead.
   Future<void> playAudio(String soundKey) async {
+    // Meeting audio off means silent, chimes included.
+    if (_livekitProviderKey.currentState?.viewModel.isAudioDisconnected ==
+        true) {
+      return;
+    }
     final cached = CdnSounds.cachedFile(soundKey);
     final sources = <Source>[
       if (cached != null) DeviceFileSource(cached),
@@ -2639,6 +2656,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// played hangs and throws `TimeoutException` out of `AudioPlayer.seek` 30s
   /// later, as an unhandled async error.
   Future<void> _playMeetingEndWarningSound() async {
+    // Meeting audio off means silent; the warning card still shows.
+    if (_livekitProviderKey.currentState?.viewModel.isAudioDisconnected ==
+        true) {
+      return;
+    }
     _meetingEndWarningWanted = true;
     try {
       final warningPlayer = await _prepareMeetingEndWarningSound();

@@ -10,6 +10,8 @@ Future<bool> showLeaveConfirmationDialog(
   required String message,
   required String confirmLabel,
   IconData icon = Icons.call_end_rounded,
+  Color accentColor = LeaveConfirmationDialog.danger,
+  String cancelLabel = 'Cancel',
 }) async {
   final confirmed = await showDialog<bool>(
     context: context,
@@ -18,6 +20,8 @@ Future<bool> showLeaveConfirmationDialog(
       message: message,
       confirmLabel: confirmLabel,
       icon: icon,
+      accentColor: accentColor,
+      cancelLabel: cancelLabel,
     ),
   );
   return confirmed == true;
@@ -56,6 +60,8 @@ class LeaveConfirmationDialog extends StatelessWidget {
     required this.message,
     required this.confirmLabel,
     this.icon = Icons.call_end_rounded,
+    this.accentColor = danger,
+    this.cancelLabel = 'Cancel',
   });
 
   final String title;
@@ -63,7 +69,11 @@ class LeaveConfirmationDialog extends StatelessWidget {
   final String confirmLabel;
   final IconData icon;
 
-  static const Color _danger = Color(0xFFD32F2F);
+  /// Icon tint and confirm button; red unless the action isn't destructive.
+  final Color accentColor;
+  final String cancelLabel;
+
+  static const Color danger = Color(0xFFD32F2F);
 
   @override
   Widget build(BuildContext context) {
@@ -90,10 +100,10 @@ class LeaveConfirmationDialog extends StatelessWidget {
                 width: 64,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: _danger.withValues(alpha: 0.1),
+                  color: accentColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: _danger, size: 30),
+                child: Icon(icon, color: accentColor, size: 30),
               ),
               const SizedBox(height: 20),
               Text(
@@ -122,7 +132,7 @@ class LeaveConfirmationDialog extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context, true),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _danger,
+                    backgroundColor: accentColor,
                     foregroundColor: Colors.white,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
@@ -143,7 +153,8 @@ class LeaveConfirmationDialog extends StatelessWidget {
                 child: TextButton(
                   onPressed: () => Navigator.pop(context, false),
                   style: TextButton.styleFrom(foregroundColor: Colors.black54),
-                  child: const Text('Cancel', style: TextStyle(fontSize: 15)),
+                  child: Text(cancelLabel,
+                      style: const TextStyle(fontSize: 15)),
                 ),
               ),
             ],
