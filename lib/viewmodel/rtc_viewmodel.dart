@@ -537,7 +537,12 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void makeCoHost(String identity, bool isCoHost) {
+  /// [onDone] runs once the new co-host has been told, so a caller about to
+  /// leave the meeting doesn't disconnect before the message goes out.
+  /// [onFailed], when given, receives the backend's message instead of it
+  /// being shown as a room notice.
+  void makeCoHost(String identity, bool isCoHost,
+      {VoidCallback? onDone, ValueChanged<String>? onFailed}) {
     Map<String, dynamic> body = {
       "participant_identity": identity,
       "meeting_uid": meetingDetails.meetingUid,
@@ -546,21 +551,31 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () =>
           apiClient.makeCoHost(meetingDetails.authorizationToken, selfIdentity, body),
-      onSuccess: (_) => {
-        sendPrivateAction(
+      onSuccess: (_) async {
+        if (!meetingDetails.features!.isAllowMultipleCoHost()) {
+          if (isCoHost) {
+            coHostCount++;
+          } else {
+            coHostCount--;
+          }
+        }
+        await sendPrivateAction(
             ActionModel(
                 action: !isCoHost
                     ? MeetingActions.removeCoHost
                     : MeetingActions.makeCoHost,
                 token: !isCoHost ? "" : meetingDetails.authorizationToken,
                 user: {"name": room.localParticipant?.name}),
-            identity),
-        if (!meetingDetails.features!.isAllowMultipleCoHost())
-          {
-            if (isCoHost) {coHostCount++} else {coHostCount--}
-          }
+            identity);
+        onDone?.call();
       },
-      onError: (message) => sendMessageToUI(message),
+      onError: (message) {
+        if (onFailed != null) {
+          onFailed(message);
+        } else {
+          sendMessageToUI(message);
+        }
+      },
     );
   }
 
@@ -1566,6 +1581,10 @@ class RtcViewmodel extends ChangeNotifier {
         });
   }
 
+  /// Whether this device asked the backend to end the meeting, so the
+  /// ROOM_DELETED that follows isn't announced as somebody else's doing.
+  bool endedMeetingForAll = false;
+
   /// Ends the meeting for everyone.
   ///
   /// [onFailed], when given, receives the backend's message instead of it
@@ -1575,10 +1594,13 @@ class RtcViewmodel extends ChangeNotifier {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
     };
+    // Set before the call: the room can close under us before it returns.
+    endedMeetingForAll = true;
     networkRequestHandler(
       apiCall: () => apiClient.endMeeting(selfIdentity, body),
       onSuccess: (_) => sendEvent(EndMeeting(reason: "roomDeleted")),
       onError: (message) {
+        endedMeetingForAll = false;
         if (onFailed != null) {
           onFailed(message);
         } else {
