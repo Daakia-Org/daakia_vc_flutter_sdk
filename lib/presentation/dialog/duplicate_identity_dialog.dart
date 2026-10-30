@@ -8,7 +8,8 @@ import '../../utils/utils.dart';
 /// The default copy is for a real join from another device. Use
 /// [DuplicateIdentityDialog.connectionDropped] when the kick came from this
 /// device's own reconnect (see `_onDuplicateIdentity` in room.dart), so the
-/// user isn't told about a device they never used.
+/// user isn't told about a device they never used, and
+/// [DuplicateIdentityDialog.meetingEnded] when a host ended the meeting.
 class DuplicateIdentityDialog extends StatefulWidget {
   final VoidCallback onLeave;
   final String title;
@@ -17,12 +18,16 @@ class DuplicateIdentityDialog extends StatefulWidget {
   /// Null shows the icon for this device's platform.
   final IconData? icon;
 
+  /// Button label; the seconds left are added after it.
+  final String leaveLabel;
+
   const DuplicateIdentityDialog({
     required this.onLeave,
     this.title = "Joined on Another Device",
     this.message =
         "You have joined this meeting from another device. You will be disconnected from this device.",
     this.icon,
+    this.leaveLabel = "Leave Meeting",
     super.key,
   });
 
@@ -35,6 +40,22 @@ class DuplicateIdentityDialog extends StatefulWidget {
           message:
               "Your internet connection dropped and you were disconnected from this meeting. Please rejoin once your connection is stable.",
           icon: Icons.wifi_off_rounded,
+          key: key,
+        );
+
+  /// A host or co-host ended the meeting for everyone.
+  const DuplicateIdentityDialog.meetingEnded({
+    required VoidCallback onLeave,
+    bool useCallTerminology = false,
+    Key? key,
+  }) : this(
+          onLeave: onLeave,
+          title: useCallTerminology ? "Call Ended" : "Meeting Ended",
+          message: useCallTerminology
+              ? "The host has ended the call for everyone."
+              : "The host has ended the meeting for everyone.",
+          icon: Icons.call_end_rounded,
+          leaveLabel: useCallTerminology ? "Leave Call" : "Leave Meeting",
           key: key,
         );
 
@@ -115,7 +136,7 @@ class _DuplicateIdentityDialogState extends State<DuplicateIdentityDialog> {
                 ),
               ),
               child: Text(
-                "Leave Meeting ($_countdown)",
+                "${widget.leaveLabel} ($_countdown)",
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 15,
