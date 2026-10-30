@@ -149,9 +149,9 @@ class RoomNotificationState extends State<RoomNotification>
                         _actionCallback?.call();
                         _dismiss();
                       },
-                      child: const Text(
-                        'Open',
-                        style: TextStyle(
+                      child: Text(
+                        _actionText!,
+                        style: const TextStyle(
                           color: Color(0xFF64B5F6),
                           fontWeight: FontWeight.w600,
                           fontSize: 15,
