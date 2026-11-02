@@ -581,6 +581,50 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  final Set<String> _movingToLobby = {};
+
+  /// Whether a move to the lobby for [identity] is still in flight.
+  bool isMovingToLobby(String identity) => _movingToLobby.contains(identity);
+
+  /// Whether this host / co-host may send [participant] back to the lobby.
+  /// Mirrors the web's `canMoveParticipantToLobby`, including its gate on
+  /// participants using the mobile apps, which the web lifts once the apps
+  /// handle being moved; lift both together.
+  bool canMoveToLobby(Participant participant) {
+    final local = room.localParticipant;
+    if (local == null || participant.identity == local.identity) return false;
+    if (meetingDetails.meetingBasicDetails?.isLobbyMode != true) return false;
+    if (!isHost() && !isCoHost()) return false;
+    if (participant.kind != ParticipantKind.STANDARD) return false;
+    if (Utils.isHost(participant.metadata) ||
+        Utils.isCoHost(participant.metadata)) {
+      return false;
+    }
+    final platform = Utils.extractClientPlatform(participant.metadata);
+    return platform != 'android' && platform != 'ios';
+  }
+
+  void moveToLobby(Participant participant) {
+    final identity = participant.identity;
+    if (!_movingToLobby.add(identity)) return;
+    notifyListeners();
+    final name = participant.name.isNotEmpty ? participant.name : identity;
+    networkRequestHandler(
+      apiCall: () => apiClient.moveParticipantToLobby(
+        meetingDetails.authorizationToken,
+        {
+          "meeting_uid": meetingDetails.meetingUid,
+          "participant_identity": identity,
+        },
+      ),
+      onSuccess: (_) => sendMessageToUI("$name moved to the lobby."),
+      onError: (message) => sendMessageToUI(message),
+    ).whenComplete(() {
+      _movingToLobby.remove(identity);
+      if (!isMeetingEnded) notifyListeners();
+    });
+  }
+
   int _coHostCount = 0;
 
   // Getter
@@ -1006,7 +1050,11 @@ class RtcViewmodel extends ChangeNotifier {
     }
     networkRequestHandler(
         apiCall: () => apiClient.acceptParticipantInLobby(selfIdentity, body),
-        onSuccess: (_) {},
+        // Gone from the list and the banner now, not when its heartbeat
+        // goes stale.
+        onSuccess: (_) => acceptAll
+            ? _clearLobbyRequests()
+            : removeLobbyRequest(request.requestId),
         onError: (message) => sendMessageToUI(message));
   }
 
@@ -1017,7 +1065,10 @@ class RtcViewmodel extends ChangeNotifier {
   List<RemoteActivityData> get lobbyRequestList =>
       List.unmodifiable(_lobbyRequestList);
 
-  void checkAndAddUserToLobbyList(RemoteActivityData remoteData) {
+  /// Adds a request from a `lobby` message, or refreshes its heartbeat: the
+  /// server repeats it on every 5 s poll of a pending request. Returns whether
+  /// the request is new.
+  bool checkAndAddUserToLobbyList(RemoteActivityData remoteData) {
     final requestId = remoteData.requestId ?? "";
 
     if (!_previousLobbyRequestList.contains(requestId)) {
@@ -1025,10 +1076,48 @@ class RtcViewmodel extends ChangeNotifier {
       _previousLobbyRequestList.add(requestId);
       requestTimestamps[requestId] = DateTime.now().millisecondsSinceEpoch;
       notifyListeners();
+      return true;
     } else {
       // Update the timestamp for the existing request
       requestTimestamps[requestId] = DateTime.now().millisecondsSinceEpoch;
+      return false;
     }
+  }
+
+  /// Requests that were waiting when the host closed the lobby banner. Only
+  /// someone new brings it back.
+  final Set<String> _dismissedLobbyRequests = {};
+
+  /// Whether someone arrived since the host last closed the lobby banner. The
+  /// banner then lists everyone waiting, not just the newcomer, so it always
+  /// agrees with the lobby count.
+  bool get hasNewLobbyRequest => _lobbyRequestList
+      .any((r) => !_dismissedLobbyRequests.contains(r.requestId));
+
+  void dismissLobbyBanner() {
+    _dismissedLobbyRequests
+        .addAll(_lobbyRequestList.map((r) => r.requestId ?? ""));
+    notifyListeners();
+  }
+
+  /// Drops a request that was admitted or denied, here or by another host
+  /// (`lobby_leave`).
+  void removeLobbyRequest(String? requestId) {
+    if (requestId == null) return;
+    requestTimestamps.remove(requestId);
+    _previousLobbyRequestList.remove(requestId);
+    _dismissedLobbyRequests.remove(requestId);
+    final before = _lobbyRequestList.length;
+    _lobbyRequestList.removeWhere((data) => data.requestId == requestId);
+    if (_lobbyRequestList.length != before) notifyListeners();
+  }
+
+  void _clearLobbyRequests() {
+    requestTimestamps.clear();
+    _previousLobbyRequestList.clear();
+    _dismissedLobbyRequests.clear();
+    _lobbyRequestList.clear();
+    notifyListeners();
   }
 
   void startLobbyCheck() {
@@ -1036,10 +1125,11 @@ class RtcViewmodel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
       final currentTime = DateTime.now().millisecondsSinceEpoch;
 
-      // Remove entries older than 12 seconds without `removeWhere`
+      // Drop requests with no heartbeat for 15 s, the same cut-off as web.
+      // Pending requests repeat their `lobby` message on every 5 s poll.
       List<String> toRemove = [];
       requestTimestamps.forEach((requestId, timestamp) {
-        if (currentTime - timestamp > 12000) {
+        if (currentTime - timestamp > 15000) {
           toRemove.add(requestId);
         }
       });
@@ -1047,6 +1137,7 @@ class RtcViewmodel extends ChangeNotifier {
       for (final requestId in toRemove) {
         requestTimestamps.remove(requestId);
         _previousLobbyRequestList.remove(requestId);
+        _dismissedLobbyRequests.remove(requestId);
         _lobbyRequestList.removeWhere((data) => data.requestId == requestId);
       }
 
@@ -3354,7 +3445,16 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool isParticipantPageOpen = false;
+  bool _isParticipantPageOpen = false;
+
+  bool get isParticipantPageOpen => _isParticipantPageOpen;
+
+  // The lobby banner hides while the page, with its own lobby list, is open.
+  set isParticipantPageOpen(bool value) {
+    if (_isParticipantPageOpen == value) return;
+    _isParticipantPageOpen = value;
+    notifyListeners();
+  }
 
   @Deprecated('Use getHostControls() instead.')
   void getParticipantDrawerConsent() {

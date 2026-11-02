@@ -18,6 +18,33 @@ RestClient? _apiClientInstance;
 RestClient get apiClient => _apiClientInstance ??=
     RestClient(setDio(), errorLogger: const ApiParseErrorLogger());
 
+String? _liveKitToken;
+String? _liveKitTokenMeetingUid;
+
+/// Remembers the LiveKit access token of the room this device joined, so every
+/// call to our API carries it as `x-livekit-token`. The backend verifies the
+/// JWT, which makes it proof of who is calling: it keeps this device's own
+/// attendance on a rejoin and authorises host / co-host actions for guests who
+/// have no login. `x-self-identity` can't do that, since everyone in the room
+/// can see everyone's identity.
+///
+/// Kept after the meeting closes on purpose: a rejoin's `/join` needs it.
+void setLiveKitToken(String meetingUid, String token) {
+  _liveKitTokenMeetingUid = meetingUid;
+  _liveKitToken = token.isEmpty ? null : token;
+}
+
+/// Drops the remembered token unless it belongs to [meetingUid]; another
+/// meeting's token is never valid proof.
+void clearLiveKitTokenUnlessFor(String meetingUid) {
+  if (_liveKitTokenMeetingUid == meetingUid) return;
+  _liveKitTokenMeetingUid = null;
+  _liveKitToken = null;
+}
+
+/// Only our own API gets the token: it grants this device's room access.
+bool _isOwnApi(Uri uri) => uri.host == Uri.tryParse(Constant.baseUrl)?.host;
+
 Dio setDio() {
   final dio = Dio();
   dio.options.baseUrl = Constant.baseUrl;
@@ -25,6 +52,10 @@ Dio setDio() {
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) {
+        final token = _liveKitToken;
+        if (token != null && _isOwnApi(options.uri)) {
+          options.headers['x-livekit-token'] = token;
+        }
         handler.next(options);
       },
       onResponse: (response, handler) {

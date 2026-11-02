@@ -608,12 +608,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
           isLabelVisible:
               (viewModel.getUnReadCount() +
                   viewModel.getUnreadCountPrivateChat() +
-                  viewModel.screenShareRequestCount) >
+                  viewModel.screenShareRequestCount +
+                  viewModel.lobbyRequestList.length) >
               0,
           label: Text(
             (viewModel.getUnReadCount() +
                     viewModel.getUnreadCountPrivateChat() +
-                    viewModel.screenShareRequestCount)
+                    viewModel.screenShareRequestCount +
+                    viewModel.lobbyRequestList.length)
                 .toString(),
             style: const TextStyle(color: Colors.white),
           ),

@@ -50,6 +50,12 @@ class ParticipantDialogState extends State<ParticipantDialogControls> {
         showRemoveParticipantConfirmDialog(
             navigator.context, widget.participant, widget.viewModel);
       },
+      onMoveToLobby: () {
+        final navigator = Navigator.of(context);
+        navigator.pop();
+        showMoveToLobbyConfirmDialog(
+            navigator.context, widget.participant, widget.viewModel);
+      },
       onOpenPrivateChat: () {
         // Capture navigator before closing anything — context becomes
         // invalid once the dialog is popped.

@@ -138,6 +138,15 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  /// Proof of host / co-host is `Authorization` or the `x-livekit-token` the
+  /// Dio interceptor adds (guest co-hosts have only that); `x-self-identity`
+  /// isn't accepted here.
+  @POST("v2.0/rtc/meeting/participant/moveToLobby")
+  Future<BaseResponse<RtcData>> moveParticipantToLobby(
+    @Header("Authorization") String token,
+    @Body() Map<String, dynamic> body,
+  );
+
   @POST("v2.0/rtc/meeting/create/cohost")
   Future<BaseResponse> makeCoHost(
     @Header("Authorization") String token,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../events/rtc_events.dart';
+import '../presentation/dialog/lobby_dialogs.dart';
 import '../model/action_model.dart';
 import '../viewmodel/rtc_viewmodel.dart';
 import 'meeting_actions.dart';
@@ -44,6 +45,7 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
   required VoidCallback onDismiss,
   VoidCallback? onRename,
   required VoidCallback onRemoveFromCall,
+  required VoidCallback onMoveToLobby,
   required VoidCallback onOpenPrivateChat,
   required VoidCallback onAnnotationUnavailable,
 }) {
@@ -183,6 +185,16 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
             isPinned ? null : participant.identity;
         viewModel.sendEvent(SortParticipants());
       },
+    ),
+    ParticipantActionSpec(
+      icon: Icons.meeting_room_outlined,
+      label: viewModel.isMovingToLobby(participant.identity)
+          ? 'Moving to lobby…'
+          : 'Move to lobby',
+      visible: viewModel.canMoveToLobby(participant),
+      onTap: viewModel.isMovingToLobby(participant.identity)
+          ? () {}
+          : onMoveToLobby,
     ),
     removeFromCallSpec(participant, viewModel, onRemoveFromCall),
     ParticipantActionSpec(
@@ -538,6 +550,24 @@ void showRemoveParticipantConfirmDialog(
       ],
     ),
   );
+}
+
+/// Shared "Move to lobby" confirmation, used by every surface that exposes
+/// the Move action from [buildParticipantActionSpecs]. The participant has to
+/// be admitted again afterwards, so it is confirmed like a removal.
+Future<void> showMoveToLobbyConfirmDialog(
+  BuildContext context,
+  Participant participant,
+  RtcViewmodel viewModel,
+) async {
+  final displayName =
+      participant.name.isNotEmpty ? participant.name : participant.identity;
+  final confirmed = await showMoveToLobbyDialog(
+    context,
+    name: displayName,
+    useCallTerminology: viewModel.useCallTerminology,
+  );
+  if (confirmed) viewModel.moveToLobby(participant);
 }
 
 /// Shared "Annotation unavailable on mobile" dialog, used by every surface
