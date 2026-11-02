@@ -2,6 +2,40 @@ import 'package:flutter/material.dart';
 
 import '../../resources/colors/color.dart';
 
+/// Tells a participant waiting in the lobby that the host declined them.
+/// Completes when they close it; the caller then leaves the pre-join screen.
+Future<void> showLobbyDeniedDialog(
+  BuildContext context, {
+  bool useCallTerminology = false,
+}) {
+  final noun = useCallTerminology ? 'call' : 'meeting';
+  return showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => PopScope(
+      canPop: false,
+      child: _LobbyCard(
+        icon: Icons.do_not_disturb_on_outlined,
+        iconColor: Colors.redAccent,
+        title: "You can't join this $noun",
+        message: const Text(
+          'The host declined your request to join.',
+          textAlign: TextAlign.center,
+          style: _messageStyle,
+        ),
+        actions: [
+          Expanded(
+            child: _primaryButton(
+              label: 'Close',
+              onPressed: () => Navigator.of(dialogContext).pop(),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 /// Asks a host or co-host to confirm sending [name] back to the lobby.
 /// Resolves to true when they confirm.
 Future<bool> showMoveToLobbyDialog(

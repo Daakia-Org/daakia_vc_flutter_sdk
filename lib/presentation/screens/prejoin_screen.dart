@@ -23,6 +23,7 @@ import '../../model/meeting_status_model.dart';
 import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
 import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
+import '../../presentation/dialog/lobby_dialogs.dart';
 import '../../presentation/dialog/media_permission_dialog.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/room.dart';
@@ -680,18 +681,21 @@ class _PreJoinState extends State<PreJoinScreen> {
         livekitToken: it.accessToken ?? "");
   }
 
-  void _handleRejection(Function stopLoading) {
+  Future<void> _handleRejection(Function stopLoading) async {
     isRejected = true;
     lobbyRequestId = "";
     if (_shouldSkipPreJoin) {
       _skipJoinErrorMessage = alertMessage;
     }
     stopLoading.call();
-    if (mounted) {
-      setState(() => Utils.showSnackBar(context, message: alertMessage));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).pop();
-      });
+    if (!mounted) return;
+    // A dialog rather than a snackbar: the screen closes right after, which
+    // took a snackbar with it before it could be read.
+    await showLobbyDeniedDialog(context,
+        useCallTerminology:
+            widget.configuration?.useCallTerminology == true);
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 
