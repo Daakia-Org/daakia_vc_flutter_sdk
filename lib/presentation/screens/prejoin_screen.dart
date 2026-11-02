@@ -124,6 +124,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void initState() {
+    clearLiveKitTokenUnlessFor(widget.meetingId);
     _subscription =
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
     unawaited(_initializeMediaState());
@@ -1085,6 +1086,7 @@ class _PreJoinState extends State<PreJoinScreen> {
         // invited participant as joined just by typing their address.
         participantEmail: _joinAsGuest ? null : _participantEmail,
         secretKey: widget.secretKey);
+    setLiveKitToken(widget.meetingId, livekitToken);
 
     if (!mounted) {
       // Nobody is going to take ownership of this room, so don't leak it.
