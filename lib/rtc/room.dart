@@ -14,6 +14,7 @@ import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
+import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/workshop_mode_dialog.dart';
@@ -471,6 +472,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       switch (event.reason) {
         case DisconnectReason.participantRemoved:
           {
+            final movedToLobby = _takeFreshMoveToLobby();
+            if (movedToLobby != null) {
+              _leaveForLobby(movedToLobby);
+              break;
+            }
             showSnackBar(message: "Host has removed you from the meeting!");
             Timer(const Duration(seconds: 3), () {
               if (mounted) {
@@ -695,6 +701,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
       if (AnnotationActions.all.contains(json['action'])) {
         _handleAnnotationData(json, event.participant);
+        return;
+      }
+      if (json['action'] == MeetingActions.moveToLobby) {
+        _onMoveToLobbyNotice(json, event.participant);
         return;
       }
     } catch (_) {}
@@ -2178,6 +2188,65 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
               onLeave: () => onLeave(dialogCtx))
           : DuplicateIdentityDialog(onLeave: () => onLeave(dialogCtx)),
     );
+  }
+
+  /// From the server's `move_to_lobby` notice, which comes about 500 ms before
+  /// the PARTICIPANT_REMOVED that carries it out.
+  MovedToLobby? _moveToLobbyNotice;
+  DateTime? _moveToLobbyNoticeAt;
+
+  /// The removal normally lands within a second; a notice older than this is
+  /// stale, so a later real "Remove from call" isn't mistaken for a move.
+  static const _moveToLobbyNoticeValidity = Duration(seconds: 10);
+
+  void _onMoveToLobbyNotice(
+      Map<String, dynamic> json, RemoteParticipant? sender) {
+    // Only the server may send it. Anyone in the room can publish data, so a
+    // participant-sent copy would otherwise let them fake a move.
+    if (sender != null) return;
+    final requestId = json['request_id'];
+    if (requestId is! String || requestId.isEmpty) return;
+    final local = widget.room.localParticipant;
+    // Captured now: by the time of the removal the tracks are going down.
+    _moveToLobbyNotice = MovedToLobby(
+      requestId: requestId,
+      micOn: local?.isMicrophoneEnabled() == true,
+      cameraOn: local?.isCameraEnabled() == true,
+    );
+    _moveToLobbyNoticeAt = DateTime.now();
+  }
+
+  /// The pending move, if one arrived recently enough to explain a removal.
+  /// Consumed either way.
+  MovedToLobby? _takeFreshMoveToLobby() {
+    final notice = _moveToLobbyNotice;
+    final noticeAt = _moveToLobbyNoticeAt;
+    _moveToLobbyNotice = null;
+    _moveToLobbyNoticeAt = null;
+    if (notice == null || noticeAt == null) return null;
+    final age = DateTime.now().difference(noticeAt);
+    if (age.isNegative || age > _moveToLobbyNoticeValidity) return null;
+    return notice;
+  }
+
+  /// Closes the meeting and hands [movedToLobby] to the pre-join screen, which
+  /// waits in the lobby to be admitted again.
+  void _leaveForLobby(MovedToLobby movedToLobby) {
+    DaakiaVcLogger.logInfo(
+      'Moved to the lobby by the host',
+      attributes: {
+        'meeting_uid': widget.meetingDetails.meetingUid,
+        'request_id': movedToLobby.requestId,
+      },
+    );
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _isProgrammaticPop = true;
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop(movedToLobby);
+      }
+    });
   }
 
   // When closing the meeting programmatically

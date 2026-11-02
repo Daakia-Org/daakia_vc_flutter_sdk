@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:daakia_vc_flutter_sdk/model/features.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
@@ -78,6 +79,10 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   var isLoading = false;
   var isNeedToCancelApiCall = false;
+
+  /// Set while waiting to be admitted again after a host moved this
+  /// participant from the meeting to the lobby.
+  var _movedToLobby = false;
 
   /// Keeps the Join button's state (and its spinner) when rotation swaps the
   /// portrait and landscape bodies. Without it the button is rebuilt idle mid-
@@ -812,14 +817,16 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     _participantTimer?.cancel(); // Cancel any previous timer if exists
 
-    // Set up a timer to repeat every 10 seconds
-    _participantTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    // Every 5 s, the backend's lobby contract: each poll also refreshes the
+    // request on the host's side, and the web drops a request it hasn't heard
+    // about for 15 s.
+    _participantTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (isNeedToCancelApiCall) {
         stopLoading.call();
         timer.cancel();
         return;
       }
-      if (isUserCanJoin || isRejected || iterations >= 50) {
+      if (isUserCanJoin || isRejected || iterations >= 100) {
         // Stop the timer if the user can join, has been rejected, or after 2 minutes
         // stopLoading();
         timer.cancel();
@@ -961,13 +968,17 @@ class _PreJoinState extends State<PreJoinScreen> {
         );
       }
 
-      await _enterMeeting(room, listener,
+      final movedToLobby = await _enterMeeting(room, listener,
           livekitToken: livekitToken, joinedWithoutMedia: withoutMedia);
       if (mounted) {
         setState(() {
           stopLoading();
           isLoading = false;
         });
+      }
+      // After the stop above, which would otherwise end the wait it starts.
+      if (movedToLobby != null && mounted) {
+        unawaited(_waitInLobbyAfterMove(movedToLobby));
       }
       return;
     }
@@ -1065,7 +1076,9 @@ class _PreJoinState extends State<PreJoinScreen> {
   bool _isMediaPathFailure(Object error) =>
       error is MediaConnectException || error is NegotiationError;
 
-  Future<void> _enterMeeting(
+  /// Runs the meeting. Returns how to wait in the lobby when a host moved this
+  /// participant there; otherwise null, and this screen has closed too.
+  Future<MovedToLobby?> _enterMeeting(
     Room room,
     EventsListener<RoomEvent> listener, {
     required String livekitToken,
@@ -1091,20 +1104,57 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (!mounted) {
       // Nobody is going to take ownership of this room, so don't leak it.
       await _disposeRoom(room, listener);
-      return;
+      return null;
     }
 
     final navigator = Navigator.of(context);
-    await navigator.push<void>(
+    final result = await navigator.push<Object?>(
       MaterialPageRoute(
           builder: (_) => RoomPage(room, listener, meetingDetails,
               fastConnection: true,
               sdkConfiguration: widget.configuration,
               joinNotice: joinedWithoutMedia ? _weakConnectionNotice : null)),
     );
+    if (result is MovedToLobby && mounted) return result;
     if (mounted && navigator.canPop()) {
       navigator.pop();
     }
+    return null;
+  }
+
+  /// Waits to be admitted again after a host moved this participant to the
+  /// lobby. The server has already made the lobby request, so this only polls
+  /// `/join` with its id: no new request, and no name or password again (both
+  /// were checked on the first join and are still held here).
+  Future<void> _waitInLobbyAfterMove(MovedToLobby move) async {
+    _participantTimer?.cancel();
+    setState(() {
+      _movedToLobby = true;
+      lobbyRequestId = move.requestId;
+      isRejected = false;
+      isUserCanJoin = false;
+      isNeedToCancelApiCall = false;
+      isLoading = true;
+    });
+    // The preview tracks went into the meeting and were stopped with it.
+    await _discardLocalMedia();
+    await _restoreLocalMedia(move.micOn, move.cameraOn);
+    if (!mounted || !_movedToLobby) return;
+    startAddingParticipantsPool(_stopLobbyWait);
+  }
+
+  /// Every way the wait ends: admitted (the meeting covers this screen),
+  /// denied, or the poll failed, which leaves the join form so the user can
+  /// ask to join again.
+  void _stopLobbyWait() {
+    isLoading = false;
+    if (mounted && _movedToLobby) setState(() => _movedToLobby = false);
+  }
+
+  void _leaveLobbyWait() {
+    isNeedToCancelApiCall = true;
+    _participantTimer?.cancel();
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
   /// A [Room] that never connected still owns a signal client, listeners and
@@ -1224,6 +1274,9 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_movedToLobby) {
+      return _buildMovedToLobbyWait();
+    }
     if (_shouldSkipPreJoin) {
       return _buildSkipPreJoinLoader();
     }
@@ -1847,6 +1900,59 @@ class _PreJoinState extends State<PreJoinScreen> {
         _participantEmail = null;
       }
     });
+  }
+
+  Widget _buildMovedToLobbyWait() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 220, child: _buildPreview()),
+                  const SizedBox(height: 32),
+                  const Center(
+                    child: CircularProgressIndicator(color: themeColor),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Asking the host to join....",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "The host moved you to the lobby. Please wait to be "
+                    "admitted again.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.black54, fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 24),
+                  Center(
+                    child: OutlinedButton(
+                      onPressed: _leaveLobbyWait,
+                      child: const Text("Leave"),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildSkipPreJoinLoader() {
