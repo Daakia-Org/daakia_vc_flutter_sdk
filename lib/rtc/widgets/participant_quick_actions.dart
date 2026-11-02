@@ -87,6 +87,13 @@ class _ParticipantQuickActionsSheetState
             participant,
             viewModel);
       },
+      onMoveToLobby: () {
+        Navigator.pop(context);
+        showMoveToLobbyConfirmDialog(
+            Navigator.of(this.context, rootNavigator: false).context,
+            participant,
+            viewModel);
+      },
       onOpenPrivateChat: () {
         Navigator.pop(context);
         widget.onNavigateTo(

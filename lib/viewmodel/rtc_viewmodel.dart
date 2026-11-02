@@ -581,6 +581,50 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  final Set<String> _movingToLobby = {};
+
+  /// Whether a move to the lobby for [identity] is still in flight.
+  bool isMovingToLobby(String identity) => _movingToLobby.contains(identity);
+
+  /// Whether this host / co-host may send [participant] back to the lobby.
+  /// Mirrors the web's `canMoveParticipantToLobby`, including its gate on
+  /// participants using the mobile apps, which the web lifts once the apps
+  /// handle being moved; lift both together.
+  bool canMoveToLobby(Participant participant) {
+    final local = room.localParticipant;
+    if (local == null || participant.identity == local.identity) return false;
+    if (meetingDetails.meetingBasicDetails?.isLobbyMode != true) return false;
+    if (!isHost() && !isCoHost()) return false;
+    if (participant.kind != ParticipantKind.STANDARD) return false;
+    if (Utils.isHost(participant.metadata) ||
+        Utils.isCoHost(participant.metadata)) {
+      return false;
+    }
+    final platform = Utils.extractClientPlatform(participant.metadata);
+    return platform != 'android' && platform != 'ios';
+  }
+
+  void moveToLobby(Participant participant) {
+    final identity = participant.identity;
+    if (!_movingToLobby.add(identity)) return;
+    notifyListeners();
+    final name = participant.name.isNotEmpty ? participant.name : identity;
+    networkRequestHandler(
+      apiCall: () => apiClient.moveParticipantToLobby(
+        meetingDetails.authorizationToken,
+        {
+          "meeting_uid": meetingDetails.meetingUid,
+          "participant_identity": identity,
+        },
+      ),
+      onSuccess: (_) => sendMessageToUI("$name moved to the lobby."),
+      onError: (message) => sendMessageToUI(message),
+    ).whenComplete(() {
+      _movingToLobby.remove(identity);
+      if (!isMeetingEnded) notifyListeners();
+    });
+  }
+
   int _coHostCount = 0;
 
   // Getter
