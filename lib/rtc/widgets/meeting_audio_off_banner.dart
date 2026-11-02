@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'status_pill_row.dart';
+
 /// The stage's status row while meeting audio is off on this device.
 ///
 /// It opens as a full banner, so turning audio off is never missed, then
@@ -18,7 +20,7 @@ class MeetingAudioOffIndicator extends StatefulWidget {
   final VoidCallback onTurnOn;
 
   /// The other status pills, laid out here so the chip can sit beside them.
-  final List<Widget> pills;
+  final List<StatusPill> pills;
 
   @override
   State<MeetingAudioOffIndicator> createState() =>
@@ -75,19 +77,11 @@ class _MeetingAudioOffIndicatorState extends State<MeetingAudioOffIndicator> {
   }
 
   /// Same row as the status pills elsewhere: centred and inset past the
-  /// stage's corner buttons. Only the [chip] takes taps.
-  Widget _pillRow({Widget? chip}) {
+  /// stage's corner buttons.
+  Widget _pillRow({StatusPill? chip}) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 84),
-      child: Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 8,
-        runSpacing: 6,
-        children: [
-          for (final pill in widget.pills) IgnorePointer(child: pill),
-          ?chip,
-        ],
-      ),
+      child: StatusPillRow(pills: [...widget.pills, ?chip]),
     );
   }
 
@@ -146,38 +140,13 @@ class _MeetingAudioOffIndicatorState extends State<MeetingAudioOffIndicator> {
     );
   }
 
-  /// Same look as the Workshop / Recording pills, but tappable.
-  Widget _buildChip() {
-    return Semantics(
-      button: true,
-      label: 'Audio disconnected. Show options',
-      child: GestureDetector(
-        onTap: _expand,
-        behavior: HitTestBehavior.opaque,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.55),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: _amber.withValues(alpha: 0.6)),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.headset_off_rounded, color: _amber, size: 14),
-              SizedBox(width: 6),
-              Text(
-                'Audio off',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+  /// Same look as the Workshop / Recording pills; tapping opens the banner.
+  StatusPill _buildChip() {
+    return StatusPill(
+      label: 'Audio off',
+      color: _amber,
+      icon: Icons.headset_off_rounded,
+      onTap: _expand,
     );
   }
 }

@@ -20,6 +20,7 @@ import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/workshop_mode_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/pages/all_participant_page.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/lobby_request_banner.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/status_pill_row.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
@@ -1770,17 +1771,30 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           top: 10,
           child: Consumer<RtcViewmodel>(
             builder: (context, viewModel, _) {
-              final pills = <Widget>[
+              final waiting = viewModel.isHost() || viewModel.isCoHost()
+                  ? viewModel.lobbyRequestList.length
+                  : 0;
+              final pills = <StatusPill>[
+                // Stays for as long as anyone waits, banner hidden or not, so
+                // a host never wonders why someone hasn't joined. Blue, not
+                // amber: amber already means "Audio off" in this row.
+                if (waiting > 0)
+                  StatusPill(
+                    label: '$waiting in lobby',
+                    color: const Color(0xFF8FA8FF),
+                    icon: Icons.meeting_room_outlined,
+                    compactText: '$waiting',
+                    showChevron: true,
+                    onTap: _openParticipantsPage,
+                  ),
                 if (viewModel.isWebinarModeEnable)
-                  _buildTopStatusIndicator(
+                  const StatusPill(
                     label: 'Workshop',
-                    indicatorColor: const Color(0xFF34C759),
+                    color: Color(0xFF34C759),
+                    compactIcon: Icons.co_present_outlined,
                   ),
                 if (viewModel.isRecording)
-                  _buildTopStatusIndicator(
-                    label: 'Recording',
-                    indicatorColor: Colors.red,
-                  ),
+                  const StatusPill(label: 'Recording', color: Colors.red),
               ];
               // Meeting audio off: the indicator lays out the whole row, so
               // its chip can sit beside these pills.
@@ -1790,19 +1804,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                   onTurnOn: () => viewModel.joinAudio(),
                 );
               }
-              if (pills.isEmpty) {
-                return const SizedBox.shrink();
-              }
-              return IgnorePointer(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 84),
-                  child: Wrap(
-                    alignment: WrapAlignment.center,
-                    spacing: 8,
-                    runSpacing: 6,
-                    children: pills,
-                  ),
-                ),
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 84),
+                child: StatusPillRow(pills: pills),
               );
             },
           ),
@@ -1938,51 +1942,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
     return confirmLeaveMeeting(context,
         useCallTerminology: viewModel?.useCallTerminology ?? false);
-  }
-
-  Widget _buildTopStatusIndicator({
-    required String label,
-    required Color indicatorColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: indicatorColor.withValues(alpha: 0.35),
-        ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: indicatorColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: indicatorColor.withValues(alpha: 0.7),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   /// Surfaces [RoomPage.joinNotice], once the meeting UI has settled enough
