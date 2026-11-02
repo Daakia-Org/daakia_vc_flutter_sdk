@@ -173,6 +173,8 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 icon: Icons.people,
                 text: 'Participants',
                 isVisible: viewModel.isHost() || viewModel.isCoHost() || !viewModel.isParticipantDrawerHidden,
+                // People waiting in the lobby; only hosts and co-hosts get them.
+                setBadge: BadgeData(viewModel.lobbyRequestList.length),
                 onTap: () {
                   showParticipantBottomSheet(viewModel);
                 },

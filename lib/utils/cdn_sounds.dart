@@ -20,8 +20,10 @@ class CdnSounds {
 
   static const String recordingStart = "recording_start";
   static const String recordingStop = "recording_stop";
+  static const String lobbyNotification = "lobby_notification";
 
   static const Map<String, String> _fallbacks = {
+    lobbyNotification: "https://cdn.daakia.co.in/sounds/lobbyNotification.mp3",
     recordingStart: "https://cdn.daakia.co.in/sounds/recording_start.mp3",
     recordingStop: "https://cdn.daakia.co.in/sounds/recording_stop.mp3",
   };

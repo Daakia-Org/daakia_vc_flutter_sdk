@@ -18,7 +18,8 @@ import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/workshop_mode_dialog.dart';
-import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/pages/all_participant_page.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/lobby_request_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
@@ -177,7 +178,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _sortParticipants();
     WidgetsBindingCompatible.instance?.addPostFrameCallback((_) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
-      lobbyManager = LobbyRequestManager(context, viewModel);
       viewModel?.context = context;
       if (!fastConnection) {
         _askPublish();
@@ -402,7 +402,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     meetingManager.cancelMeetingEndScheduler();
     _inactivityWatcher?.dispose();
     _inactivityWatcher = null;
-    lobbyManager?.dispose();
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
     _sortParticipantsDebounceTimer?.cancel();
@@ -765,7 +764,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
-  late LobbyRequestManager? lobbyManager;
 
   Future<void> _checkReceivedDataType(RemoteActivityData remoteData) async {
     var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -802,9 +800,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.lobby:
         if (viewModel?.isHost() == true || viewModel?.isCoHost() == true) {
-          viewModel?.checkAndAddUserToLobbyList(remoteData);
-          lobbyManager?.showLobbyRequestDialog(remoteData);
+          // The banner shows it; heartbeats for a known request stay silent.
+          final isNew = viewModel!.checkAndAddUserToLobbyList(remoteData);
+          if (isNew && viewModel.isNotificationSoundEnabled) {
+            unawaited(playAudio(CdnSounds.lobbyNotification));
+          }
         }
+        break;
+
+      case MeetingActions.lobbyLeave:
+        viewModel?.removeLobbyRequest(remoteData.requestId);
         break;
 
       case MeetingActions.heart:
@@ -1587,7 +1592,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                   top: 0,
                   left: 0,
                   right: 0,
-                  child: RoomNotification(key: _notificationKey),
+                  child: _buildTopNotices(context),
                 ),
             ],
           ),
@@ -2247,6 +2252,42 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         Navigator.of(context).pop(movedToLobby);
       }
     });
+  }
+
+  /// The lobby banner, with room notices stacked under it rather than on top.
+  Widget _buildTopNotices(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(top: media.padding.top),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LobbyRequestBanner(
+              viewModel: Provider.of<RtcViewmodel>(context, listen: false),
+              onView: _openParticipantsPage,
+            ),
+            RoomNotification(key: _notificationKey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openParticipantsPage() {
+    final navigator = _innerNavigatorKey.currentState;
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    if (navigator == null || viewModel == null) return;
+    if (viewModel.isParticipantPageOpen) return;
+    viewModel.isParticipantPageOpen = true;
+    navigator
+        .push(MaterialPageRoute<void>(
+          builder: (_) => const AllParticipantPage(),
+          fullscreenDialog: true,
+        ))
+        .then((_) => viewModel.isParticipantPageOpen = false);
   }
 
   // When closing the meeting programmatically

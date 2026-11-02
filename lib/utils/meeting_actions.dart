@@ -30,6 +30,9 @@ class MeetingActions {
   // a host or co-host moved back to the lobby. Handled ahead of the action
   // switch in room.dart, since the sender check needs the raw event.
   static const String moveToLobby = "move_to_lobby";
+  // A lobby request was admitted or denied. Sent by the server, and by a web
+  // host that admits or denies.
+  static const String lobbyLeave = "lobby_leave";
 
   static const String heart = "heart";
   static const String blush = "blush";
@@ -157,6 +160,7 @@ class MeetingActions {
     sendPublicMessage,
     lobby,
     moveToLobby,
+    lobbyLeave,
     heart,
     blush,
     clap,
