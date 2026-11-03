@@ -23,11 +23,7 @@ import '../pages/permission_request_page.dart';
 import '../pages/transcription_screen.dart';
 
 class MoreOptionBottomSheet extends StatefulWidget {
-  /// Opens the meeting's audio output picker, for the device test page. Null
-  /// where the output can't be switched.
-  final Future<void> Function()? onChangeAudioOutput;
-
-  const MoreOptionBottomSheet({super.key, this.onChangeAudioOutput});
+  const MoreOptionBottomSheet({super.key});
 
   @override
   State<StatefulWidget> createState() {
@@ -229,10 +225,7 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
 
   void showDeviceTestPage(RtcViewmodel viewModel) {
     Navigator.of(context).push(MaterialPageRoute<void>(
-        builder: (_) => DeviceTestPage(
-              viewModel: viewModel,
-              onChangeAudioOutput: widget.onChangeAudioOutput,
-            ),
+        builder: (_) => DeviceTestPage(viewModel: viewModel),
         fullscreenDialog: true));
   }
 

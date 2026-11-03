@@ -214,6 +214,11 @@ class DaakiaAudioRouting {
   static List<MediaDevice> uiOutputs = const [];
   static bool uiInitialRouteApplied = false;
 
+  /// Bumped whenever the output picker changes the ui* state above, so a
+  /// screen other than the one that opened the picker (the controls bar, when
+  /// the device test page switched the output) can refresh.
+  static final ValueNotifier<int> uiRevision = ValueNotifier(0);
+
   static void _resetUiState() {
     uiSpeakerphoneOn = true;
     uiEarpieceChoice = false;

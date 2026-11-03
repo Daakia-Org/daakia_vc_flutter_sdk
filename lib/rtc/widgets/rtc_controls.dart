@@ -75,6 +75,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     participant.addListener(_onChange);
+    DaakiaAudioRouting.uiRevision.addListener(_onAudioUiChanged);
     _isReconnecting = widget.room.connectionState == ConnectionState.reconnecting;
     _roomListener = widget.room.createListener()
       ..on<RoomReconnectingEvent>((_) => _setReconnecting(true))
@@ -296,78 +297,17 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     if (confirmed && mounted) await viewModel.disconnectAudio();
   }
 
-  /// [allowDisconnect] false leaves out the "Disconnect Audio" row, for the
-  /// device test page.
-  Future<void> _showAudioOutputSheet(
-    RtcViewmodel viewModel, {
-    bool allowDisconnect = true,
-  }) {
-    return Utils.showAdaptiveSheet<void>(
+  void _showAudioOutputSheet(RtcViewmodel viewModel) {
+    showMeetingAudioOutputPicker(
       context,
-      // The device list grows with whatever is paired.
-      scrollable: true,
-      backgroundColor: Colors.transparent,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => AudioOutputSheet(
-        speakerphoneOn: _speakerphoneOn,
-        initialDevices: _audioOutputDevices,
-        selectedDevice: _selectedOutputDevice,
-        onDisconnectAudio: allowDisconnect
-            ? () {
-                Navigator.pop(ctx);
-                _confirmDisconnectAudio(viewModel);
-              }
-            : null,
-        onDeviceSelected: (device) async {
-          Navigator.pop(ctx);
-          DaakiaAudioRouting.diag('sheetTap', {
-            'label': device.label,
-            'groupId': device.groupId,
-          });
-          final label = device.label.toLowerCase();
-          final bool speaker;
-          final bool earpiece;
-          if (label.contains('speakerphone') || label.contains('speaker')) {
-            speaker = true;
-            earpiece = false;
-          } else if (label.contains('earpiece') || label.contains('receiver')) {
-            speaker = false;
-            earpiece = true;
-          } else {
-            // BT / wired headset.
-            // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
-            // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
-            // auto-route to the connected BT/wired device by OS priority.
-            speaker = false;
-            earpiece = false;
-          }
-
-          // Already on this output: switching again would only reconfigure
-          // the audio session for nothing.
-          final alreadySelected = speaker
-              ? _speakerphoneOn
-              : !_speakerphoneOn && _userExplicitlySelectedEarpiece == earpiece;
-          if (alreadySelected) return;
-
-          // Update the tick and button icon right away. The switch itself
-          // blocks the platform thread while iOS reconfigures audio (up to ~1s),
-          // so start it after the sheet has finished closing; otherwise the
-          // close animation is what freezes.
-          setState(() {
-            _speakerphoneOn = speaker;
-            _selectedOutputDevice = null;
-            _userExplicitlySelectedEarpiece = earpiece;
-          });
-          await Future.delayed(const Duration(milliseconds: 300));
-          DaakiaAudioRouting.setSpeakerphoneOn(
-            speaker,
-            forceSpeakerOutput: speaker,
-          );
-        },
-      ),
+      onDisconnectAudio: () => _confirmDisconnectAudio(viewModel),
     );
+  }
+
+  /// The output can also be switched from the device test page; follow it.
+  void _onAudioUiChanged() {
+    if (!mounted) return;
+    setState(() => _selectedOutputDevice = null);
   }
 
   Future<void> _onMicPressed(RtcViewmodel viewModel) async {
@@ -651,19 +591,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       context,
       // No scrollable: the sheet body is already a scroll view of its own.
       builder: (BuildContext context) {
-        final viewModel = context.read<RtcViewmodel>();
-        return MoreOptionBottomSheet(
-          // The device test page offers the same output picker as the
-          // speaker button.
-          onChangeAudioOutput: AudioManager.instance.canSwitchSpeakerphone
-              ? () async {
-                  if (mounted) {
-                    await _showAudioOutputSheet(viewModel,
-                        allowDisconnect: false);
-                  }
-                }
-              : null,
-        );
+        return const MoreOptionBottomSheet();
       },
     );
   }
@@ -706,6 +634,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   @override
   void dispose() {
     participant.removeListener(_onChange);
+    DaakiaAudioRouting.uiRevision.removeListener(_onAudioUiChanged);
     _roomListener.dispose();
     _deviceSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);

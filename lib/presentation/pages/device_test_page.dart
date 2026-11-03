@@ -9,7 +9,10 @@ import '../../rtc/audio_routing.dart';
 import '../../service/daakia_meeting_service.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../bottom_sheets/audio_output_bottomsheet.dart'
-    show isExternalAudioDevice, isWiredHeadsetPort;
+    show
+        isExternalAudioDevice,
+        isWiredHeadsetPort,
+        showMeetingAudioOutputPicker;
 
 /// In-meeting check of the camera, microphone and speaker.
 ///
@@ -24,15 +27,7 @@ import '../bottom_sheets/audio_output_bottomsheet.dart'
 class DeviceTestPage extends StatefulWidget {
   final RtcViewmodel viewModel;
 
-  /// Opens the meeting's audio output picker. Null where the output can't be
-  /// switched; the page then only names the current output.
-  final Future<void> Function()? onChangeAudioOutput;
-
-  const DeviceTestPage({
-    super.key,
-    required this.viewModel,
-    this.onChangeAudioOutput,
-  });
+  const DeviceTestPage({super.key, required this.viewModel});
 
   @override
   State<DeviceTestPage> createState() => _DeviceTestPageState();
@@ -73,6 +68,7 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     super.initState();
     _participant?.addListener(_onMeetingChanged);
     _vm.addListener(_onMeetingChanged);
+    DaakiaAudioRouting.uiRevision.addListener(_onOutputChanged);
     _syncMic();
     _syncCamera();
     unawaited(_checkCanFlip());
@@ -83,6 +79,7 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     _disposed = true;
     _participant?.removeListener(_onMeetingChanged);
     _vm.removeListener(_onMeetingChanged);
+    DaakiaAudioRouting.uiRevision.removeListener(_onOutputChanged);
     _stopVisualizer();
     _releaseTestMic();
     _releaseTestCamera();
@@ -292,10 +289,16 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     }
   }
 
+  bool get _canChangeOutput => AudioManager.instance.canSwitchSpeakerphone;
+
   Future<void> _changeOutput() async {
-    await widget.onChangeAudioOutput?.call();
-    // The picker switches the route a moment after it closes.
-    await Future.delayed(const Duration(milliseconds: 400));
+    // The meeting's own picker, minus "Disconnect Audio". Its state lives in
+    // DaakiaAudioRouting, so it doesn't depend on the controls bar (which is
+    // rebuilt on rotation).
+    await showMeetingAudioOutputPicker(context);
+  }
+
+  void _onOutputChanged() {
     if (mounted) setState(() {});
   }
 
@@ -760,7 +763,7 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
         ),
       );
     }
-    final canChange = widget.onChangeAudioOutput != null;
+    final canChange = _canChangeOutput;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

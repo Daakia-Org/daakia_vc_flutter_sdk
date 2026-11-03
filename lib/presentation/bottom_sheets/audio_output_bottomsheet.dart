@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../../rtc/audio_routing.dart';
+import '../../utils/utils.dart';
 
 bool isExternalAudioDevice(String label) {
   final l = label.toLowerCase();
@@ -107,6 +108,87 @@ List<MediaDevice> augmentOutputsForIos(List<MediaDevice> allDevices) {
   }
 
   return result;
+}
+
+/// Opens the meeting's audio output picker and applies the choice.
+///
+/// State lives in [DaakiaAudioRouting]'s ui* fields rather than in the caller,
+/// so this works from any screen and survives the controls bar being rebuilt
+/// on rotation. [onDisconnectAudio] adds the "Disconnect Audio" row.
+Future<void> showMeetingAudioOutputPicker(
+  BuildContext context, {
+  VoidCallback? onDisconnectAudio,
+}) {
+  return Utils.showAdaptiveSheet<void>(
+    context,
+    // The device list grows with whatever is paired.
+    scrollable: true,
+    backgroundColor: Colors.transparent,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+    ),
+    builder: (ctx) => AudioOutputSheet(
+      speakerphoneOn: DaakiaAudioRouting.uiSpeakerphoneOn,
+      initialDevices: DaakiaAudioRouting.uiOutputs,
+      selectedDevice: null,
+      onDisconnectAudio: onDisconnectAudio == null
+          ? null
+          : () {
+              Navigator.pop(ctx);
+              onDisconnectAudio();
+            },
+      onDeviceSelected: (device) {
+        Navigator.pop(ctx);
+        unawaited(_applyAudioOutput(device));
+      },
+    ),
+  );
+}
+
+Future<void> _applyAudioOutput(MediaDevice device) async {
+  DaakiaAudioRouting.diag('sheetTap', {
+    'label': device.label,
+    'groupId': device.groupId,
+  });
+  final label = device.label.toLowerCase();
+  final bool speaker;
+  final bool earpiece;
+  if (label.contains('speakerphone') || label.contains('speaker')) {
+    speaker = true;
+    earpiece = false;
+  } else if (label.contains('earpiece') || label.contains('receiver')) {
+    speaker = false;
+    earpiece = true;
+  } else {
+    // BT / wired headset.
+    // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
+    // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
+    // auto-route to the connected BT/wired device by OS priority.
+    speaker = false;
+    earpiece = false;
+  }
+
+  // Already on this output: switching again would only reconfigure the audio
+  // session for nothing.
+  final alreadySelected = speaker
+      ? DaakiaAudioRouting.uiSpeakerphoneOn
+      : !DaakiaAudioRouting.uiSpeakerphoneOn &&
+            DaakiaAudioRouting.uiEarpieceChoice == earpiece;
+  if (alreadySelected) return;
+
+  // Update the tick and button icon right away. The switch itself blocks the
+  // platform thread while iOS reconfigures audio (up to ~1s), so start it
+  // after the sheet has finished closing; otherwise the close animation is
+  // what freezes.
+  DaakiaAudioRouting.uiSpeakerphoneOn = speaker;
+  DaakiaAudioRouting.uiEarpieceChoice = earpiece;
+  DaakiaAudioRouting.uiRevision.value++;
+  await Future.delayed(const Duration(milliseconds: 300));
+  await DaakiaAudioRouting.setSpeakerphoneOn(
+    speaker,
+    forceSpeakerOutput: speaker,
+  );
+  DaakiaAudioRouting.uiRevision.value++;
 }
 
 class AudioOutputSheet extends StatefulWidget {
