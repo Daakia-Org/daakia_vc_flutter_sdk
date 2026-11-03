@@ -25,6 +25,7 @@ import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
 import '../../presentation/dialog/lobby_dialogs.dart';
 import '../../presentation/dialog/media_permission_dialog.dart';
+import '../../presentation/widgets/mic_level_indicator.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/audio_routing.dart';
 import '../../rtc/room.dart';
@@ -1455,6 +1456,12 @@ class _PreJoinState extends State<PreJoinScreen> {
                         ),
                       ),
                     ),
+                    // Live mic level, so the user can check the mic before
+                    // joining.
+                    if (_enableAudio && _audioTrack != null) ...[
+                      MicLevelIndicator(track: _audioTrack),
+                      const SizedBox(width: 12),
+                    ],
                     _MediaToggleButton(
                       isOn: _enableAudio,
                       onIcon: Icons.mic_rounded,
