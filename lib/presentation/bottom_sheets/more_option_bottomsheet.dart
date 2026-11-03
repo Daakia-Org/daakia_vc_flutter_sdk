@@ -18,11 +18,16 @@ import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
 import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
+import '../pages/device_test_page.dart';
 import '../pages/permission_request_page.dart';
 import '../pages/transcription_screen.dart';
 
 class MoreOptionBottomSheet extends StatefulWidget {
-  const MoreOptionBottomSheet({super.key});
+  /// Opens the meeting's audio output picker, for the device test page. Null
+  /// where the output can't be switched.
+  final Future<void> Function()? onChangeAudioOutput;
+
+  const MoreOptionBottomSheet({super.key, this.onChangeAudioOutput});
 
   @override
   State<StatefulWidget> createState() {
@@ -187,6 +192,13 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                     Navigator.pop(context);
                     showPermissionBottomSheet(viewModel);
                   }),
+              // Test microphone, speaker and camera
+              buildOption(context,
+                  icon: Icons.settings_voice,
+                  text: 'Test Devices', onTap: () {
+                Navigator.pop(context);
+                showDeviceTestPage(viewModel);
+              }),
               // Live Stream
               buildOption(
                 context,
@@ -213,6 +225,15 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
         fullscreenDialog: true)).then((_) {
       viewModel.isParticipantPageOpen = false;
     });
+  }
+
+  void showDeviceTestPage(RtcViewmodel viewModel) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => DeviceTestPage(
+              viewModel: viewModel,
+              onChangeAudioOutput: widget.onChangeAudioOutput,
+            ),
+        fullscreenDialog: true));
   }
 
   void showEmojiDialog(RtcViewmodel viewModel) {

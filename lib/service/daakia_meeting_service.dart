@@ -46,6 +46,25 @@ class DaakiaMeetingService {
     }
   }
 
+  /// Plays the device test sound on the call's own audio route and volume,
+  /// without changing any audio session or routing state. Completes when the
+  /// sound ends: true if it played to the end, false if it was stopped.
+  /// Throws a [PlatformException] if it couldn't play.
+  static Future<bool> playTestSound() async {
+    if (!Platform.isIOS && !Platform.isAndroid) return false;
+    return await _channel.invokeMethod<bool>('playTestSound') ?? false;
+  }
+
+  /// Stops the device test sound, if playing.
+  static Future<void> stopTestSound() async {
+    if (!Platform.isIOS && !Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod<void>('stopTestSound');
+    } catch (e) {
+      debugPrint('stopTestSound failed: $e');
+    }
+  }
+
   /// Must be called once (e.g. in RoomPage.initState) before any [start] call
   /// so that notification button presses from Android are dispatched back here.
   static void initialize() {

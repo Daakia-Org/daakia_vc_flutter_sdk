@@ -198,7 +198,11 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
         color: Color(0xFF1E1E1E),
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: SafeArea(
+      // ListTiles paint their ink on the nearest Material; without this one
+      // that is below the container's colour and the tap ripple is hidden.
+      child: Material(
+        type: MaterialType.transparency,
+        child: SafeArea(
         top: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -257,6 +261,7 @@ class _AudioOutputSheetState extends State<AudioOutputSheet> {
             const SizedBox(height: 8),
           ],
         ),
+      ),
       ),
     );
   }

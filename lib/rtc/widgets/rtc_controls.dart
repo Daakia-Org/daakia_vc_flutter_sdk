@@ -296,8 +296,13 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     if (confirmed && mounted) await viewModel.disconnectAudio();
   }
 
-  void _showAudioOutputSheet(RtcViewmodel viewModel) {
-    Utils.showAdaptiveSheet<void>(
+  /// [allowDisconnect] false leaves out the "Disconnect Audio" row, for the
+  /// device test page.
+  Future<void> _showAudioOutputSheet(
+    RtcViewmodel viewModel, {
+    bool allowDisconnect = true,
+  }) {
+    return Utils.showAdaptiveSheet<void>(
       context,
       // The device list grows with whatever is paired.
       scrollable: true,
@@ -309,10 +314,12 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         speakerphoneOn: _speakerphoneOn,
         initialDevices: _audioOutputDevices,
         selectedDevice: _selectedOutputDevice,
-        onDisconnectAudio: () {
-          Navigator.pop(ctx);
-          _confirmDisconnectAudio(viewModel);
-        },
+        onDisconnectAudio: allowDisconnect
+            ? () {
+                Navigator.pop(ctx);
+                _confirmDisconnectAudio(viewModel);
+              }
+            : null,
         onDeviceSelected: (device) async {
           Navigator.pop(ctx);
           DaakiaAudioRouting.diag('sheetTap', {
@@ -644,7 +651,19 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       context,
       // No scrollable: the sheet body is already a scroll view of its own.
       builder: (BuildContext context) {
-        return const MoreOptionBottomSheet();
+        final viewModel = context.read<RtcViewmodel>();
+        return MoreOptionBottomSheet(
+          // The device test page offers the same output picker as the
+          // speaker button.
+          onChangeAudioOutput: AudioManager.instance.canSwitchSpeakerphone
+              ? () async {
+                  if (mounted) {
+                    await _showAudioOutputSheet(viewModel,
+                        allowDisconnect: false);
+                  }
+                }
+              : null,
+        );
       },
     );
   }

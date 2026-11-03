@@ -2,9 +2,12 @@ import Flutter
 import UIKit
 import AVFoundation
 
-public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
+public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin, AVAudioPlayerDelegate {
     private var channel: FlutterMethodChannel?
     private var isInterrupted = false
+    private var registrar: FlutterPluginRegistrar?
+    private var testSoundPlayer: AVAudioPlayer?
+    private var testSoundResult: FlutterResult?
 
     // `.allowBluetooth` (Bluetooth HFP). Xcode 26+ deprecates the name in favour
     // of `.allowBluetoothHFP`, which older SDKs don't have; the raw value is the
@@ -18,6 +21,7 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         )
         let instance = DaakiaVcFlutterSdkPlugin()
         instance.channel = ch
+        instance.registrar = registrar
         registrar.addMethodCallDelegate(instance, channel: ch)
     }
 
@@ -34,6 +38,11 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
             result(nil)
         case "getAudioRoute":
             result(DaakiaVcFlutterSdkPlugin.audioRouteSnapshot())
+        case "playTestSound":
+            playTestSound(result: result)
+        case "stopTestSound":
+            finishTestSound(completed: false)
+            result(nil)
         case "updateMuteState":
             // iOS keeps the audio session alive regardless of mute state — no-op.
             result(nil)
@@ -53,6 +62,57 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
         default:
             result(FlutterMethodNotImplemented)
         }
+    }
+
+    // Device test sound. Plays inside the audio session LiveKit has already set
+    // up for the call, so it takes the call's route and volume. It must not
+    // touch AVAudioSession (category, mode, override or activation): any of
+    // those would disturb the live call's audio. Replies when playback ends,
+    // with true if it played to the end.
+    private func playTestSound(result: @escaping FlutterResult) {
+        finishTestSound(completed: false)
+        guard let registrar = registrar else {
+            result(FlutterError(code: "TEST_SOUND", message: "registrar unavailable", details: nil))
+            return
+        }
+        let key = registrar.lookupKey(forAsset: "assets/sounds/device_test.m4a",
+                                      fromPackage: "daakia_vc_flutter_sdk")
+        guard let path = Bundle.main.path(forResource: key, ofType: nil) else {
+            result(FlutterError(code: "TEST_SOUND", message: "test sound asset not found", details: nil))
+            return
+        }
+        do {
+            let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+            player.delegate = self
+            guard player.play() else {
+                result(FlutterError(code: "TEST_SOUND", message: "playback did not start", details: nil))
+                return
+            }
+            testSoundPlayer = player
+            testSoundResult = result
+        } catch {
+            result(FlutterError(code: "TEST_SOUND", message: error.localizedDescription, details: nil))
+        }
+    }
+
+    private func finishTestSound(completed: Bool) {
+        let player = testSoundPlayer
+        let pending = testSoundResult
+        testSoundPlayer = nil
+        testSoundResult = nil
+        player?.delegate = nil
+        player?.stop()
+        pending?(completed)
+    }
+
+    public func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        guard player === testSoundPlayer else { return }
+        finishTestSound(completed: flag)
+    }
+
+    public func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        guard player === testSoundPlayer else { return }
+        finishTestSound(completed: false)
     }
 
     // Copies a file into the app's Documents/Downloads directory (the only
