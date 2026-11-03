@@ -166,8 +166,8 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
   }
 
   /// Stops the test track and releases the mic recorder it started (see
-  /// [DaakiaAudioRouting.releaseMicRecorder]), unless the meeting's own mic is
-  /// live and still needs it.
+  /// [DaakiaAudioRouting.releaseMicRecorder]), unless the meeting's own mic
+  /// still needs it.
   Future<void> _closeAudioTrack(LocalAudioTrack track) async {
     try {
       await track.stop();
@@ -175,9 +175,18 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     } catch (e) {
       debugPrint('Device test: could not close the microphone: $e');
     }
-    if (_liveMicTrack != null || _vm.isAudioDisconnected) return;
+    if (_hasPublishedMic || _vm.isAudioDisconnected) return;
     await DaakiaAudioRouting.releaseMicRecorder();
   }
+
+  /// The meeting has a mic track out, muted or not. Muting only disables it
+  /// and keeps the recorder running so unmuting is instant; switching the
+  /// recorder off under it left the user unheard after unmuting.
+  bool get _hasPublishedMic =>
+      _participant?.audioTrackPublications.any(
+        (pub) => pub.source == TrackSource.microphone && pub.track != null,
+      ) ??
+      false;
 
   void _visualize(LocalAudioTrack track) {
     if (identical(track, _visualizedTrack)) return;
