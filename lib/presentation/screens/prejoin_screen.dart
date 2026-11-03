@@ -60,7 +60,7 @@ class PreJoinScreen extends StatefulWidget {
   }
 }
 
-class _PreJoinState extends State<PreJoinScreen> {
+class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
   bool isHostVerified = false;
   String hostToken = "";
 
@@ -132,6 +132,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void initState() {
+    WidgetsBinding.instance.addObserver(this);
     clearLiveKitTokenUnlessFor(widget.meetingId);
     _subscription =
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
@@ -175,6 +176,7 @@ class _PreJoinState extends State<PreJoinScreen> {
           widget.basicMeetingDetails?.isCommonPassword == true);
 
   Future<void> _initializeMediaState() async {
+    await _refreshPermissionState();
     try {
       final devices = await Hardware.instance.enumerateDevices();
       if (!mounted) return;
@@ -278,6 +280,67 @@ class _PreJoinState extends State<PreJoinScreen> {
   Future<bool> _hasPermission(Permission permission) async {
     final status = await permission.status;
     return status.isGranted || status.isLimited;
+  }
+
+  // Mic/camera access not granted yet (never asked, denied, or turned off in
+  // Settings). Shown up front on the toggles and in a banner, so the user
+  // isn't left to find out by tapping.
+  bool _micPermissionMissing = false;
+  bool _cameraPermissionMissing = false;
+
+  bool get _showMicPermissionWarning =>
+      _micPermissionMissing && !_isMicDisabledByHost;
+  bool get _showCameraPermissionWarning =>
+      _cameraPermissionMissing && !_isCameraDisabledByHost;
+
+  Future<void> _refreshPermissionState() async {
+    final mic = await _hasPermission(Permission.microphone);
+    final camera = await _hasPermission(Permission.camera);
+    if (!mounted) return;
+    if (mic == !_micPermissionMissing && camera == !_cameraPermissionMissing) {
+      return;
+    }
+    setState(() {
+      _micPermissionMissing = !mic;
+      _cameraPermissionMissing = !camera;
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have just granted (or revoked) access in Settings.
+    if (state == AppLifecycleState.resumed) unawaited(_refreshPermissionState());
+  }
+
+  /// The banner's "Allow" action: asks for whatever is missing and turns on
+  /// what was granted, since that's what the user was trying to do.
+  Future<void> _requestMissingPermissions() async {
+    if (_showMicPermissionWarning &&
+        await _ensureMediaPermission(context, MediaPermission.microphone)) {
+      _enableAudio = true;
+      await _setEnableAudio(true);
+    }
+    if (!mounted) return;
+    if (_showCameraPermissionWarning &&
+        await _ensureMediaPermission(context, MediaPermission.camera)) {
+      _enableVideo = true;
+      await _setEnableVideo(true);
+    }
+    await _refreshPermissionState();
+  }
+
+  String? get _permissionWarningMessage {
+    if (_showMicPermissionWarning && _showCameraPermissionWarning) {
+      return 'Allow microphone and camera access so others can hear and see '
+          'you.';
+    }
+    if (_showMicPermissionWarning) {
+      return 'Allow microphone access so others can hear you.';
+    }
+    if (_showCameraPermissionWarning) {
+      return 'Allow camera access so others can see you.';
+    }
+    return null;
   }
 
   Future<void> _startAutoJoinIfRequired() async {
@@ -1467,8 +1530,11 @@ class _PreJoinState extends State<PreJoinScreen> {
                       onIcon: Icons.mic_rounded,
                       offIcon: Icons.mic_off_rounded,
                       lockedByHost: _isMicDisabledByHost,
+                      needsPermission: _showMicPermissionWarning,
                       tooltip: _isMicDisabledByHost
                           ? 'Microphone disabled by host'
+                          : _showMicPermissionWarning
+                          ? 'Allow microphone access'
                           : (_enableAudio
                                 ? 'Turn off microphone'
                                 : 'Turn on microphone'),
@@ -1480,8 +1546,11 @@ class _PreJoinState extends State<PreJoinScreen> {
                       onIcon: Icons.videocam_rounded,
                       offIcon: Icons.videocam_off_rounded,
                       lockedByHost: _isCameraDisabledByHost,
+                      needsPermission: _showCameraPermissionWarning,
                       tooltip: _isCameraDisabledByHost
                           ? 'Camera disabled by host'
+                          : _showCameraPermissionWarning
+                          ? 'Allow camera access'
                           : (_enableVideo
                                 ? 'Turn off camera'
                                 : 'Turn on camera'),
@@ -1571,12 +1640,13 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   Future<void> _toggleVideo() async {
-    if (!Platform.isIOS) {
+    if (!Platform.isIOS || _cameraPermissionMissing) {
       final granted = await checkAndRequestPermissions(
         context,
         checkForAudio: false,
       );
-      if (!granted) return;
+      unawaited(_refreshPermissionState());
+      if (!granted || !mounted) return;
     }
     setState(() {
       _enableVideo = !_enableVideo;
@@ -1585,12 +1655,13 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   Future<void> _toggleAudio() async {
-    if (!Platform.isIOS) {
+    if (!Platform.isIOS || _micPermissionMissing) {
       final granted = await checkAndRequestPermissions(
         context,
         checkForCamera: false,
       );
-      if (!granted) return;
+      unawaited(_refreshPermissionState());
+      if (!granted || !mounted) return;
     }
     setState(() {
       _enableAudio = !_enableAudio;
@@ -1607,9 +1678,23 @@ class _PreJoinState extends State<PreJoinScreen> {
           message: _hostMediaRestrictionMessage!,
         ),
       ],
+      if (_permissionWarningMessage != null) ...[
+        const SizedBox(height: 16),
+        _StatusBanner(
+          icon: Icons.warning_amber_rounded,
+          message: _permissionWarningMessage!,
+          warning: true,
+          actionLabel: 'Allow',
+          onTap: _requestMissingPermissions,
+        ),
+      ],
       // "Check your camera and mic" is pointless advice when the host is the
-      // one holding them off, so it's hidden until the API sends a real message.
-      if (!_isDefaultAlertSuppressed && alertMessage.trim().isNotEmpty) ...[
+      // one holding them off, or while access is missing (the banner above
+      // says what to do), so it's hidden until the API sends a real message.
+      if (!_isDefaultAlertSuppressed &&
+          !(alertMessage == _defaultAlertMessage &&
+              _permissionWarningMessage != null) &&
+          alertMessage.trim().isNotEmpty) ...[
         const SizedBox(height: 16),
         _StatusBanner(
           icon: Icons.info_outline_rounded,
@@ -2061,6 +2146,7 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _subscription?.cancel();
     _participantTimer?.cancel();
     _nameController?.dispose();
@@ -2458,6 +2544,7 @@ class _MediaToggleButton extends StatelessWidget {
     required this.onIcon,
     required this.offIcon,
     required this.lockedByHost,
+    this.needsPermission = false,
     required this.tooltip,
     required this.onPressed,
   });
@@ -2466,6 +2553,10 @@ class _MediaToggleButton extends StatelessWidget {
   final IconData onIcon;
   final IconData offIcon;
   final bool lockedByHost;
+
+  /// Access to the device isn't granted: shows a warning badge, the usual
+  /// "fix me" cue on call apps, so it's visible before the user taps.
+  final bool needsPermission;
   final String tooltip;
   final VoidCallback onPressed;
 
@@ -2512,6 +2603,26 @@ class _MediaToggleButton extends StatelessWidget {
               ),
             ),
           ),
+          if (needsPermission && !lockedByHost)
+            const Positioned(
+              right: -3,
+              top: -3,
+              child: IgnorePointer(
+                child: CircleAvatar(
+                  radius: 9,
+                  backgroundColor: Color(0xFFF5A524),
+                  child: Text(
+                    '!',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
           if (lockedByHost)
             const Positioned(
               right: -2,
@@ -2538,19 +2649,35 @@ class _StatusBanner extends StatelessWidget {
     required this.icon,
     required this.message,
     this.emphasized = false,
+    this.warning = false,
+    this.actionLabel,
+    this.onTap,
   });
+
+  static const _warningColor = Color(0xFFB45309);
 
   final IconData icon;
   final String message;
   final bool emphasized;
 
+  /// Amber: something the user has to fix (e.g. missing device access).
+  final bool warning;
+
+  /// Short call to action shown after the message; the whole banner is tappable.
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
   @override
   Widget build(BuildContext context) {
-    final color = emphasized ? themeColor : Colors.black54;
-    return Container(
+    final accent = warning ? _warningColor : themeColor;
+    final highlighted = emphasized || warning;
+    final color = highlighted ? accent : Colors.black54;
+    final banner = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: emphasized
+        color: warning
+            ? const Color(0xFFF5A524).withValues(alpha: 0.14)
+            : emphasized
             ? themeColor.withValues(alpha: 0.08)
             : Colors.black.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(12),
@@ -2568,15 +2695,32 @@ class _StatusBanner extends StatelessWidget {
               ),
             ),
             TextSpan(text: message),
+            if (actionLabel != null)
+              TextSpan(
+                text: '  $actionLabel',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
           ],
         ),
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: emphasized ? themeColor : Colors.black87,
+          color: highlighted ? accent : Colors.black87,
           fontSize: 13.5,
           height: 1.35,
-          fontWeight: emphasized ? FontWeight.w500 : FontWeight.normal,
+          fontWeight: highlighted ? FontWeight.w500 : FontWeight.normal,
         ),
+      ),
+    );
+    if (onTap == null) return banner;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: banner,
       ),
     );
   }
