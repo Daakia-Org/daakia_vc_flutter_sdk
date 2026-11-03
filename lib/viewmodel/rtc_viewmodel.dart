@@ -587,9 +587,8 @@ class RtcViewmodel extends ChangeNotifier {
   bool isMovingToLobby(String identity) => _movingToLobby.contains(identity);
 
   /// Whether this host / co-host may send [participant] back to the lobby.
-  /// Mirrors the web's `canMoveParticipantToLobby`, including its gate on
-  /// participants using the mobile apps, which the web lifts once the apps
-  /// handle being moved; lift both together.
+  /// Mirrors the web's `canMoveParticipantToLobby`. Participants on the
+  /// mobile apps are included, since the apps handle being moved.
   bool canMoveToLobby(Participant participant) {
     final local = room.localParticipant;
     if (local == null || participant.identity == local.identity) return false;
@@ -600,8 +599,7 @@ class RtcViewmodel extends ChangeNotifier {
         Utils.isCoHost(participant.metadata)) {
       return false;
     }
-    final platform = Utils.extractClientPlatform(participant.metadata);
-    return platform != 'android' && platform != 'ios';
+    return true;
   }
 
   void moveToLobby(Participant participant) {
