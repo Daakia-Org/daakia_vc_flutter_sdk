@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -44,9 +45,25 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
 
   // ---- Microphone
   LocalAudioTrack? _testMicTrack; // local only, never published
+  // iOS: the engine mute was lifted for a private test (see _syncMic).
+  bool _privateMicTest = false;
   _LoadState _micState = _LoadState.loading;
   AudioVisualizer? _visualizer;
   LocalAudioTrack? _visualizedTrack;
+  // Native track the meter is attached to. The same LocalAudioTrack can be
+  // given a new one (e.g. when the meeting mic restarts), which leaves a meter
+  // on the old one silent.
+  String? _visualizedTrackId;
+  LocalAudioTrack? _lastVisualizedTrack;
+  String? _lastVisualizedTrackId;
+  DateTime _lastMeterEvent = DateTime.now();
+  Timer? _meterWatchdog;
+  Timer? _outputSettleTimer;
+  // Re-attaches the watchdog may still try before waiting for a real change
+  // (new mic track, output switch): re-attaching can't bring back audio that
+  // isn't being captured, and churning the native visualizer isn't free.
+  int _meterRetriesLeft = _maxMeterRetries;
+  static const _maxMeterRetries = 3;
   double _level = 0;
   bool _micHeard = false;
 
@@ -72,6 +89,18 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     _syncMic();
     _syncCamera();
     unawaited(_checkCanFlip());
+    // The meter reports continuously, even in silence. If it goes quiet the
+    // audio pipeline under it was rebuilt (output switch, route change), so
+    // attach it again.
+    _meterWatchdog = Timer.periodic(const Duration(seconds: 1), (_) {
+      final track = _visualizedTrack;
+      if (track == null || _disposed || _meterRetriesLeft <= 0) return;
+      if (DateTime.now().difference(_lastMeterEvent) >
+          const Duration(milliseconds: 2500)) {
+        _meterRetriesLeft--;
+        _reattachMeter();
+      }
+    });
   }
 
   @override
@@ -80,9 +109,19 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     _participant?.removeListener(_onMeetingChanged);
     _vm.removeListener(_onMeetingChanged);
     DaakiaAudioRouting.uiRevision.removeListener(_onOutputChanged);
+    _meterWatchdog?.cancel();
+    _outputSettleTimer?.cancel();
     _stopVisualizer();
     _releaseTestMic();
     _releaseTestCamera();
+    if (_privateMicTest) {
+      _privateMicTest = false;
+      unawaited(
+        DaakiaAudioRouting.endPrivateMicTest(
+          meetingMuted: _hasPublishedMic && _liveMicTrack == null,
+        ),
+      );
+    }
     if (_playing) unawaited(DaakiaMeetingService.stopTestSound());
     super.dispose();
   }
@@ -119,10 +158,26 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     final live = _liveMicTrack;
     if (live != null) {
       // Unmuted meanwhile: the live track takes over.
+      if (_privateMicTest) {
+        _privateMicTest = false;
+        unawaited(DaakiaAudioRouting.endPrivateMicTest(meetingMuted: false));
+      }
       _releaseTestMic();
       _micState = _LoadState.ready;
       _visualize(live);
       return;
+    }
+    // iOS, muted in the meeting: let the private test mic hear (see
+    // DaakiaAudioRouting.beginPrivateMicTest).
+    if (_iosMutedInMeeting && !_privateMicTest) {
+      _privateMicTest = true;
+      await DaakiaAudioRouting.beginPrivateMicTest();
+      if (_disposed) return;
+      Future.delayed(const Duration(milliseconds: 600), () {
+        if (_privateMicTest && !_disposed) {
+          unawaited(DaakiaAudioRouting.reassertPrivateMicTest());
+        }
+      });
     }
     if (_testMicTrack != null) {
       _visualize(_testMicTrack!);
@@ -182,6 +237,103 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
   /// The meeting has a mic track out, muted or not. Muting only disables it
   /// and keeps the recorder running so unmuting is instant; switching the
   /// recorder off under it left the user unheard after unmuting.
+  bool _togglingMeetingMic = false;
+
+  /// Turns the meeting mic on or off from here, with the same checks as the
+  /// meeting's own mic button. Only this switch ever changes what the meeting
+  /// hears; the test itself never does.
+  Future<void> _setMeetingMic(bool on) async {
+    if (_togglingMeetingMic || _vm.isAudioInterrupted) return;
+    if (on) {
+      final allowed =
+          _vm.isHost() ||
+          _vm.isCoHost() ||
+          _vm.isAudioPermissionEnable ||
+          _vm.isMicPermissionGranted;
+      if (!allowed) {
+        _showSnack('The host has not granted you microphone permission');
+        return;
+      }
+    }
+    setState(() => _togglingMeetingMic = true);
+    try {
+      if (on) {
+        await _vm.enableAudio();
+      } else {
+        await _vm.disableAudio();
+      }
+    } catch (_) {
+      _showSnack(
+        on
+            ? "Couldn't turn on your microphone. Try again."
+            : "Couldn't turn off your microphone. Try again.",
+      );
+    } finally {
+      if (mounted) setState(() => _togglingMeetingMic = false);
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// Meeting mic on/off. A switch keeps the same size in both states, so the
+  /// card doesn't shift when it flips.
+  Widget _buildMeetingMicRow() {
+    final live = _liveMicTrack != null;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            live ? Icons.mic_rounded : Icons.mic_off_rounded,
+            color: live ? _ok : Colors.white60,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Mic in meeting',
+                  style: TextStyle(color: Colors.white, fontSize: 14),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  live
+                      ? 'Others can hear you'
+                      : "You're muted. Others can't hear you",
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: live,
+            activeTrackColor: _ok,
+            onChanged: _togglingMeetingMic ? null : _setMeetingMic,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// iOS mutes the whole audio engine input while the meeting mic is muted, so
+  /// the private test needs that mute lifted while it runs.
+  bool get _iosMutedInMeeting =>
+      Platform.isIOS && _hasPublishedMic && _liveMicTrack == null;
+
   bool get _hasPublishedMic =>
       _participant?.audioTrackPublications.any(
         (pub) => pub.source == TrackSource.microphone && pub.track != null,
@@ -189,9 +341,20 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
       false;
 
   void _visualize(LocalAudioTrack track) {
-    if (identical(track, _visualizedTrack)) return;
+    if (identical(track, _visualizedTrack) &&
+        track.mediaStreamTrack.id == _visualizedTrackId) {
+      return;
+    }
     _stopVisualizer();
+    if (!identical(track, _lastVisualizedTrack) ||
+        track.mediaStreamTrack.id != _lastVisualizedTrackId) {
+      _meterRetriesLeft = _maxMeterRetries; // a different track: fresh budget
+    }
+    _lastVisualizedTrack = track;
+    _lastVisualizedTrackId = track.mediaStreamTrack.id;
     _visualizedTrack = track;
+    _visualizedTrackId = track.mediaStreamTrack.id;
+    _lastMeterEvent = DateTime.now();
     final visualizer = createVisualizer(
       track,
       options: const AudioVisualizerOptions(barCount: 7, centeredBands: false),
@@ -199,6 +362,7 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     _visualizer = visualizer;
     visualizer.events.on<AudioVisualizerEvent>((e) {
       if (!mounted || !identical(_visualizer, visualizer)) return;
+      _lastMeterEvent = DateTime.now();
       var peak = 0.0;
       for (final v in e.event) {
         if (v is num) peak = math.max(peak, v.toDouble());
@@ -215,10 +379,20 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
     });
   }
 
+  /// Attaches the meter afresh to the track it is showing.
+  void _reattachMeter() {
+    final track = _visualizedTrack;
+    if (track == null || _disposed) return;
+    _stopVisualizer();
+    _visualize(track);
+    if (_privateMicTest) unawaited(DaakiaAudioRouting.reassertPrivateMicTest());
+  }
+
   void _stopVisualizer() {
     final visualizer = _visualizer;
     _visualizer = null;
     _visualizedTrack = null;
+    _visualizedTrackId = null;
     _level = 0;
     if (visualizer == null) return;
     unawaited(() async {
@@ -308,7 +482,15 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
   }
 
   void _onOutputChanged() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    setState(() {});
+    _meterRetriesLeft = _maxMeterRetries;
+    // Switching the output reconfigures the audio session; give the meter a
+    // fresh hook once it has settled.
+    _outputSettleTimer?.cancel();
+    _outputSettleTimer = Timer(const Duration(milliseconds: 800), () {
+      if (mounted) _reattachMeter();
+    });
   }
 
   // ==================================================================== Camera
@@ -493,21 +675,37 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
   }
 
   Widget _buildPrivacyNote() {
-    return Row(
-      children: [
-        const Icon(Icons.lock_outline_rounded, color: Colors.white54, size: 16),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            _usingLiveMic
-                ? "You're unmuted, so others can hear you. The camera preview "
-                      'and test sound stay on your device.'
-                : "Only you can see and hear these tests. You stay muted in "
-                      'the meeting.',
-            style: const TextStyle(color: Colors.white60, fontSize: 13),
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 13 * 1.35 * 2),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.lock_outline_rounded,
+            color: Colors.white54,
+            size: 16,
           ),
-        ),
-      ],
+          const SizedBox(width: 8),
+          Expanded(
+            // Two lines tall either way, so flipping the meeting mic doesn't
+            // shift the page.
+            child: Text(
+              _usingLiveMic
+                  ? "You're unmuted, so others can hear you. The camera preview "
+                        'and test sound stay on your device.'
+                  : 'Only you can see and hear these tests. Others hear nothing '
+                        'unless you unmute.',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              strutStyle: const StrutStyle(fontSize: 13, height: 1.35),
+              style: const TextStyle(
+                color: Colors.white60,
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -754,6 +952,10 @@ class _DeviceTestPageState extends State<DeviceTestPage> {
           if (active) ...[
             const SizedBox(height: 14),
             _LevelMeter(level: _level, activeColor: _ok),
+          ],
+          if (!_vm.isAudioDisconnected) ...[
+            const SizedBox(height: 14),
+            _buildMeetingMicRow(),
           ],
         ],
       ),

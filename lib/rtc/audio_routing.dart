@@ -205,6 +205,59 @@ class DaakiaAudioRouting {
   /// silence one.
   static Future<void> releaseMicRecorder() => Native.stopLocalRecording();
 
+  // Mute mode in effect before a private mic test switched it (iOS).
+  static MicrophoneMuteMode? _muteModeBeforeTest;
+
+  /// iOS only. While the meeting mic is muted, WebRTC mutes the whole audio
+  /// engine input, so a local-only test mic would hear nothing. This lifts that
+  /// mute for the test; the meeting's own track stays disabled and sends
+  /// silence. The mute mode is switched to the silent input-mixer one first:
+  /// the default voice-processing mode plays the system mute chime on every
+  /// change and re-mutes after an output switch.
+  static Future<void> beginPrivateMicTest() async {
+    if (!_isIos) return;
+    try {
+      final manager = AudioManager.instance;
+      final mode = await manager.getMicrophoneMuteMode();
+      if (mode != MicrophoneMuteMode.inputMixer &&
+          mode != MicrophoneMuteMode.unknown) {
+        _muteModeBeforeTest ??= mode;
+        await manager.setMicrophoneMuteMode(MicrophoneMuteMode.inputMixer);
+      }
+      await rtc.Helper.setMicrophoneMuted(false);
+    } catch (e) {
+      diag('privateMicTestError', {'phase': 'begin', 'error': '$e'});
+    }
+  }
+
+  /// Lifts the engine mute again during a private test: WebRTC re-applies it
+  /// when the meeting mic is (re)muted, possibly after [beginPrivateMicTest]
+  /// ran. Silent in the input-mixer mode the test switched to.
+  static Future<void> reassertPrivateMicTest() async {
+    if (!_isIos) return;
+    try {
+      await rtc.Helper.setMicrophoneMuted(false);
+    } catch (e) {
+      diag('privateMicTestError', {'phase': 'reassert', 'error': '$e'});
+    }
+  }
+
+  /// Undoes [beginPrivateMicTest]: mutes the engine input again if the
+  /// meeting mic is still muted, and restores the previous mute mode.
+  static Future<void> endPrivateMicTest({required bool meetingMuted}) async {
+    if (!_isIos) return;
+    try {
+      if (meetingMuted) await rtc.Helper.setMicrophoneMuted(true);
+      final mode = _muteModeBeforeTest;
+      _muteModeBeforeTest = null;
+      if (mode != null) {
+        await AudioManager.instance.setMicrophoneMuteMode(mode);
+      }
+    } catch (e) {
+      diag('privateMicTestError', {'phase': 'end', 'error': '$e'});
+    }
+  }
+
   // Audio-output picker state for the current meeting. Kept here rather than
   // in RtcControls' State because RtcControls is rebuilt from scratch whenever
   // the meeting layout switches between portrait and landscape; keeping it in
