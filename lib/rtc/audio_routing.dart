@@ -195,8 +195,16 @@ class DaakiaAudioRouting {
     }
   }
 
-  /// Starts enforcing the meeting's iOS routing policy. Call when the meeting
-  /// screen is created. No-op on Android.
+  /// Switches off the native mic recorder that starting a [LocalAudioTrack]
+  /// switches on. Stopping the track doesn't do it: for a published track the
+  /// call's sender releases the recorder on mute, but a track that was never
+  /// published (pre-join preview, device test) has no sender, so the mic would
+  /// stay open and the OS mic-in-use indicator lit.
+  ///
+  /// Only call this when no live mic still needs the recorder; it would
+  /// silence one.
+  static Future<void> releaseMicRecorder() => Native.stopLocalRecording();
+
   // Audio-output picker state for the current meeting. Kept here rather than
   // in RtcControls' State because RtcControls is rebuilt from scratch whenever
   // the meeting layout switches between portrait and landscape; keeping it in
@@ -213,6 +221,8 @@ class DaakiaAudioRouting {
     uiInitialRouteApplied = false;
   }
 
+  /// Starts enforcing the meeting's iOS routing policy. Call when the meeting
+  /// screen is created. No-op on Android.
   static void attach() {
     _resetUiState();
     _androidMicId = null;
