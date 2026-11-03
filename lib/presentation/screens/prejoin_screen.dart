@@ -26,6 +26,7 @@ import '../../presentation/dialog/join_failure_dialog.dart';
 import '../../presentation/dialog/lobby_dialogs.dart';
 import '../../presentation/dialog/media_permission_dialog.dart';
 import '../../resources/colors/color.dart';
+import '../../rtc/audio_routing.dart';
 import '../../rtc/room.dart';
 import '../../service/daakia_vc_logger.dart';
 import '../../utils/join_failure.dart';
@@ -420,8 +421,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (_enableAudio) {
       await _changeLocalAudioTrack();
     } else {
-      await _audioTrack?.stop();
-      _audioTrack = null;
+      await _stopPreviewMic();
     }
     if (mounted) setState(() {});
   }
@@ -438,7 +438,22 @@ class _PreJoinState extends State<PreJoinScreen> {
         stopAudioCaptureOnMute: false,
       ));
       await _audioTrack!.start();
+    } else {
+      await DaakiaAudioRouting.releaseMicRecorder();
     }
+  }
+
+  /// Stops the preview mic and turns the recorder off with it; stopping the
+  /// track alone leaves the mic open (see
+  /// [DaakiaAudioRouting.releaseMicRecorder]).
+  Future<void> _stopPreviewMic() async {
+    final track = _audioTrack;
+    _audioTrack = null;
+    if (track == null) return;
+    try {
+      await track.stop();
+    } catch (_) {}
+    await DaakiaAudioRouting.releaseMicRecorder();
   }
 
   Future<void> _setEnableVideo(bool value) async {
@@ -1184,13 +1199,10 @@ class _PreJoinState extends State<PreJoinScreen> {
   /// peer connection. Whether or not the publish got that far is a race, so
   /// always let them go here and rebuild from intent instead.
   Future<void> _discardLocalMedia() async {
-    try {
-      await _audioTrack?.stop();
-    } catch (_) {}
+    await _stopPreviewMic();
     try {
       await _videoTrack?.stop();
     } catch (_) {}
-    _audioTrack = null;
     _videoTrack = null;
     _enableAudio = false;
     _enableVideo = false;
@@ -2059,6 +2071,9 @@ class _PreJoinState extends State<PreJoinScreen> {
       try {
         await audioTrack?.stop();
       } catch (_) {}
+      // The meeting route has returned by now (this screen pushed it and is
+      // only disposed afterwards), so no live mic needs the recorder.
+      if (audioTrack != null) await DaakiaAudioRouting.releaseMicRecorder();
       try {
         await videoTrack?.stop();
       } catch (_) {}
