@@ -33,8 +33,9 @@ class _InvitedParticipantWidgetState extends State<InvitedParticipantWidget> {
 
   Future<void> _remindAll(List<String> remainingAttendees) async {
     setState(() => _isRemindAllLoading = true);
-    final success =
-        await widget.viewModel.remindAllParticipants(emails: remainingAttendees);
+    final success = await widget.viewModel.remindAllParticipants(
+      emails: remainingAttendees,
+    );
     if (!mounted) return;
     setState(() {
       _isRemindAllLoading = false;
@@ -53,72 +54,78 @@ class _InvitedParticipantWidgetState extends State<InvitedParticipantWidget> {
         .where((attendee) => !_remindedAttendees.contains(attendee))
         .toList();
     final canRemindAll = !_isRemindAllLoading && remainingAttendees.isNotEmpty;
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Participants Not Joined (${invitedList.length})',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+    // A sliver: the participants page builds rows only as they scroll in.
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Participants Not Joined (${invitedList.length})',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            Row(
-              children: [
-                ElevatedButton(
-                  onPressed: canRemindAll
-                      ? () => _remindAll(remainingAttendees)
-                      : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: themeColor,
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: themeColor.withValues(alpha: 0.4),
-                    disabledForegroundColor: Colors.white70,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  ElevatedButton(
+                    onPressed: canRemindAll
+                        ? () => _remindAll(remainingAttendees)
+                        : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: themeColor,
+                      foregroundColor: Colors.white,
+                      disabledBackgroundColor: themeColor.withValues(
+                        alpha: 0.4,
+                      ),
+                      disabledForegroundColor: Colors.white70,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
+                    child: _isRemindAllLoading
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Remind All'),
+                  ),
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        isExpanded = !isExpanded;
+                      });
+                    },
+                    icon: Icon(
+                      isExpanded
+                          ? Icons.arrow_drop_down_sharp
+                          : Icons.arrow_right_sharp,
+                      color: Colors.white,
                     ),
                   ),
-                  child: _isRemindAllLoading
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Text('Remind All'),
-                ),
-                IconButton(
-                  onPressed: () {
-                    setState(() {
-                      isExpanded = !isExpanded;
-                    });
-                  },
-                  icon: Icon(
-                    isExpanded
-                        ? Icons.arrow_drop_down_sharp
-                        : Icons.arrow_right_sharp,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
         if (isExpanded)
-          ListView.builder(
-            shrinkWrap: true,
-            padding: EdgeInsets.zero,
-            physics: const NeverScrollableScrollPhysics(),
+          SliverList.builder(
             itemCount: invitedList.length,
             itemBuilder: (context, index) {
               final invitee = invitedList[index];
@@ -151,7 +158,9 @@ class _InvitedParticipantWidgetState extends State<InvitedParticipantWidget> {
                               width: 16,
                               height: 16,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : Icon(
                               isReminded
