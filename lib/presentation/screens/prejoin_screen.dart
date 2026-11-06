@@ -25,6 +25,7 @@ import '../../presentation/dialog/host_verification_dialog.dart';
 import '../../presentation/dialog/join_failure_dialog.dart';
 import '../../presentation/dialog/lobby_dialogs.dart';
 import '../../presentation/dialog/media_permission_dialog.dart';
+import '../../presentation/widgets/email_verification_card.dart';
 import '../../presentation/widgets/mic_level_indicator.dart';
 import '../../resources/colors/color.dart';
 import '../../rtc/audio_routing.dart';
@@ -92,10 +93,26 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
   /// join, and the stop callback held by the join flow points at a disposed
   /// button.
   final _joinButtonKey = GlobalKey();
+
+  /// The email verification card, so a blocked join can scroll it into view.
+  final _emailCardKey = GlobalKey();
+
+  /// Set when the email card already shows the reason a join or password
+  /// check was refused, so no snackbar repeats it. With the keyboard up in
+  /// landscape, a snackbar would cover the email field it points to.
+  bool _emailErrorShownInline = false;
   var _enableAudio = false;
   var _enableVideo = false;
 
   var _isCoHostVerified = false;
+
+  /// Email verification for meetings with `email_verification_required`;
+  /// null when the meeting doesn't need it.
+  EmailVerificationController? _emailVerification;
+
+  /// Set when the server refused a join or advanced password for a missing
+  /// verified email, so even a logged-in user is asked to verify.
+  bool _forceEmailVerification = false;
 
   TextEditingController? _nameController;
   // Rotation swaps the portrait/landscape trees and remounts the fields, so
@@ -138,6 +155,13 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
     unawaited(_initializeMediaState());
     setUserName();
+    if (widget.basicMeetingDetails?.emailVerificationRequired == 1) {
+      _emailVerification = EmailVerificationController(
+        meetingUid: widget.meetingId,
+        onVerified: _onEmailVerified,
+      );
+      unawaited(_emailVerification!.restoreSaved());
+    }
     // Schedule verifyCoHost after widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await verifyCoHost();
@@ -174,6 +198,80 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
       widget.basicMeetingDetails?.meetingConfig?.isGuestMode == 1 &&
       (widget.basicMeetingDetails?.isStandardPassword == true ||
           widget.basicMeetingDetails?.isCommonPassword == true);
+
+  // The host app passes the user's login token as hostToken; it is empty when
+  // nobody is logged in. A logged-in user joins with their account email.
+  bool get _isLoggedIn =>
+      widget.configuration?.vcConfig?.hostToken?.isNotEmpty == true;
+
+  /// Whether this participant must verify an email before joining: the
+  /// meeting asks for it, they aren't host or co-host, and they aren't logged
+  /// in (or the server rejected the login).
+  bool get _needsEmailVerification =>
+      _emailVerification != null &&
+      !widget.isHost &&
+      !_shouldBypassParticipantChecks &&
+      (!_isLoggedIn || _forceEmailVerification);
+
+  bool get _isEmailVerificationPending =>
+      _needsEmailVerification && _emailVerification?.isVerified != true;
+
+  /// The verified email and token to send, or null when none applies.
+  ({String email, String token})? get _verifiedEmail {
+    final verification = _emailVerification;
+    if (!_needsEmailVerification || verification?.isVerified != true) {
+      return null;
+    }
+    return (
+      email: verification!.verifiedEmail!,
+      token: verification.emailToken!,
+    );
+  }
+
+  void _onEmailVerified(String email) {
+    if (!mounted) return;
+    setState(() {
+      // The guest and password flows see the same email.
+      if (_guestEmail.isEmpty) {
+        _guestEmail = email;
+        _guestEmailController.text = email;
+      }
+    });
+  }
+
+  /// The server wants a (new) verified email: drop the saved one and show the
+  /// verification step again.
+  void _requireEmailVerificationAgain(String? message) {
+    final verification = _emailVerification;
+    if (verification == null) return;
+    _participantTimer?.cancel();
+    _emailErrorShownInline = true;
+    unawaited(verification.reset(message: message));
+    if (mounted) {
+      setState(() => _forceEmailVerification = true);
+      _scrollEmailCardIntoView();
+    }
+  }
+
+  /// Join was tapped before the email was verified: say so in the card and
+  /// bring the card into view.
+  void _promptEmailVerification() {
+    _emailVerification
+        ?.showError("Please verify your email to join this meeting");
+    _scrollEmailCardIntoView();
+  }
+
+  void _scrollEmailCardIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cardContext = _emailCardKey.currentContext;
+      if (cardContext == null || !cardContext.mounted) return;
+      Scrollable.ensureVisible(
+        cardContext,
+        duration: const Duration(milliseconds: 250),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      );
+    });
+  }
 
   Future<void> _initializeMediaState() async {
     await _refreshPermissionState();
@@ -404,6 +502,9 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
         (widget.configuration?.vcConfig?.hostToken?.isEmpty ?? true)) {
       return "Host verification is required. Please provide host token in configuration or disable skipPreJoinPage.";
     }
+    if (_isEmailVerificationPending) {
+      return "This meeting requires email verification. Disable skipPreJoinPage for this meeting type.";
+    }
     if (!widget.isHost &&
         widget.basicMeetingDetails?.isStandardPassword == true) {
       return "This meeting requires password verification. Disable skipPreJoinPage for this meeting type.";
@@ -615,6 +716,15 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
         body["email"] = candidateEmail;
       }
     }
+    // Meetings with email verification: the verified email and its token.
+    // Sent on every join call, including the lobby polls. Same fields as web.
+    final verifiedEmail = _verifiedEmail;
+    if (verifiedEmail != null) {
+      body["email"] = verifiedEmail.email;
+      body["email_token"] = verifiedEmail.token;
+      customMetadata["identifier"] = verifiedEmail.email;
+      customMetadata["participant_email"] = verifiedEmail.email;
+    }
     body["custom_metadata"] = customMetadata;
     final cacheData = StorageHelper();
     var tokenFromCache = false;
@@ -643,6 +753,11 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
+      onFailureResponse: (response) {
+        if (response.data?.emailVerificationRequired == true) {
+          _requireEmailVerificationAgain(response.message);
+        }
+      },
       onSuccess: (response) {
         if (response?.data == null) {
           if (mounted) {
@@ -692,6 +807,10 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
           isNeedToCancelApiCall = true;
           stopLoading.call();
         });
+        if (_emailErrorShownInline) {
+          _emailErrorShownInline = false;
+          return;
+        }
         unawaited(_showJoinApiError(message,
             stopLoading: stopLoading, isParticipant: isParticipant));
       },
@@ -869,8 +988,10 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
       "meeting_uid": widget.meetingId,
       "display_name": name.trim(),
     };
-    if (_participantEmail != null && _participantEmail!.isNotEmpty) {
-      body["email"] = _participantEmail;
+    // The verified email first, so the host's lobby list matches the report.
+    final lobbyEmail = _verifiedEmail?.email ?? _participantEmail;
+    if (lobbyEmail != null && lobbyEmail.isNotEmpty) {
+      body["email"] = lobbyEmail;
     }
     if (_joinAsGuest && _isGuestModeAvailable) {
       body["is_guest"] = true;
@@ -1747,6 +1868,15 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
           ),
         ],
         const SizedBox(height: 24),
+        if (_needsEmailVerification) ...[
+          EmailVerificationCard(
+            key: _emailCardKey,
+            controller: _emailVerification!,
+            fieldDecoration: ({required label, required icon}) =>
+                _fieldDecoration(label: label, icon: icon),
+          ),
+          const SizedBox(height: 12),
+        ],
         TextFormField(
           controller: _nameController ?? TextEditingController(),
           onTapOutside: Utils.dismissKeyboardOnTapOutside,
@@ -1871,6 +2001,10 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
                     context,
                     message: "Please enter your name",
                   );
+                  return;
+                }
+                if (_isEmailVerificationPending) {
+                  _promptEmailVerification();
                   return;
                 }
                 if (!widget.isHost &&
@@ -2152,6 +2286,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     _nameController?.dispose();
     _passwordController.dispose();
     _guestEmailController.dispose();
+    _emailVerification?.dispose();
     // Leaving this screen without joining must release the camera and mic —
     // otherwise the device's in-use indicator stays lit after the user backs
     // out, which reads as the SDK spying on them. On the join path these were
@@ -2376,6 +2511,11 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
       getFeaturesAndJoinMeeting(stopLoading);
       return;
     }
+    if (!widget.isHost && _isEmailVerificationPending) {
+      if (mounted) _promptEmailVerification();
+      stopLoading();
+      return;
+    }
     if (widget.isHost) {
       getFeaturesAndJoinMeeting(stopLoading);
     } else if (_joinAsGuest && _isGuestModeAvailable) {
@@ -2390,7 +2530,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
         stopLoading();
         return;
       }
-      _participantEmail = _guestEmail;
+      _participantEmail = _verifiedEmail?.email ?? _guestEmail;
       // Same as the standard lobby flow: register the guest via addToLobby
       // to get a server-issued lobby_request_id, then poll join with it
       // until the host accepts/rejects.
@@ -2483,10 +2623,19 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
 
   void verifyPasswordProtectedMeeting(Function stopLoading) {
     networkRequestHandlerWithMessage(
-      apiCall: () => apiClient.verifyMeetingPassword({
+      apiCall: () => apiClient.verifyMeetingPassword(
+          widget.configuration?.vcConfig?.hostToken ?? "", {
         "password": password,
-        "meeting_uid": widget.meetingId
+        "meeting_uid": widget.meetingId,
+        // With email verification on, the code must belong to this email.
+        if (_verifiedEmail != null) "email_token": _verifiedEmail!.token,
       }),
+      onFailureResponse: (response) {
+        // email_mismatch needs nothing extra: the server's message is shown.
+        if (response.data?.emailVerificationRequired == true) {
+          _requireEmailVerificationAgain(response.message);
+        }
+      },
       onSuccess: (response) {
         if (response?.data?.passwordVerified == true) {
           _participantEmail = response?.data?.participantEmail;
@@ -2510,6 +2659,10 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     stopLoading();
     if (_shouldSkipPreJoin && mounted) {
       setState(() {});
+    }
+    if (_emailErrorShownInline) {
+      _emailErrorShownInline = false;
+      return;
     }
     Utils.showSnackBar(context, message: message);
   }

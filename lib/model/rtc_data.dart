@@ -12,6 +12,10 @@ class RtcData {
   String? requestId;
   String? currentSessionUid;
 
+  /// Set when the join was refused because the meeting needs a verified
+  /// email and none (or an invalid/expired one) was sent.
+  bool? emailVerificationRequired;
+
   RtcData(
       {accessToken,
         meetingUid,
@@ -36,6 +40,8 @@ class RtcData {
     isRejected = JsonParser.toBool(json['is_rejected']);
     requestId = json['request_id'];
     currentSessionUid = json['current_session_uid'];
+    emailVerificationRequired =
+        JsonParser.toBool(json['email_verification_required']);
   }
 
   Map<String, dynamic> toJson() {

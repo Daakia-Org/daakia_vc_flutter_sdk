@@ -129,16 +129,22 @@ Future<void> networkRequestHandler<T>({
 }
 
 /// Generic API request handler with message
+///
+/// [onFailureResponse] sees the full response of a refused call (`success`
+/// not 1) before [onError] gets its message, for callers that need the
+/// refusal's `data` flags.
 Future<void> networkRequestHandlerWithMessage<T>({
   required Future<BaseResponse<T>> Function() apiCall,
   Function(BaseResponse<T>?)? onSuccess,
   Function(String)? onError,
+  void Function(BaseResponse<T>)? onFailureResponse,
 }) async {
   try {
     final response = await apiCall();
     if (response.success == Constant.successResCheckValue) {
       onSuccess?.call(response);
     } else {
+      onFailureResponse?.call(response);
       onError?.call(response.message ?? "Unknown error occurred.");
     }
   } catch (e) {
