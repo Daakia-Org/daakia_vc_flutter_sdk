@@ -118,7 +118,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // Coalesces rapid-fire track add/remove events (e.g. both sides repeatedly
   // toggling screen share) into a single rebuild instead of one per event,
   // to reduce main-thread churn during toggle storms.
-  Timer? _sortParticipantsDebounceTimer;
+  // See [_scheduleSortParticipants].
+  Timer? _sortParticipantsTimer;
+
+  /// What the last sort showed, see [_layoutSignature].
+  List<Object?> _lastLayoutSignature = const [];
 
   // Groups the mic / camera / participant-list changes that arrive as three
   // separate actions when the host toggles Workshop mode into one notice.
@@ -405,7 +409,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _inactivityWatcher = null;
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
-    _sortParticipantsDebounceTimer?.cancel();
+    _sortParticipantsTimer?.cancel();
     _workshopNotice.dispose();
     // always dispose listener
     (() async {
@@ -582,7 +586,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       });
       viewModel?.addParticipantToConsentList(event.participant);
       viewModel?.sendPrivateChatHistory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
       _updateInactivityWatcher();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
@@ -597,7 +601,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _livekitProviderKey.currentState?.viewModel
           .reportInviteeJoinedStatus(event.participant, joined: false);
       _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
       _updateInactivityWatcher();
     })
     ..on<RoomRecordingStatusChanged>((event) {
@@ -668,7 +672,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<TrackUnsubscribedEvent>((_) => _scheduleSortParticipants())
     ..on<TrackE2EEStateEvent>(_onE2EEStateEvent)
     ..on<ParticipantNameUpdatedEvent>((event) {
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<ParticipantMetadataUpdatedEvent>((event) {
       // Our role lives in our metadata, so a co-host change from any client
@@ -1255,7 +1259,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   void _onRoomDidUpdate() {
-    _sortParticipants();
+    _scheduleSortParticipants();
     _syncNotificationMuteState();
   }
 
@@ -1281,15 +1285,59 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  /// The room notifies on nearly every change (who is speaking, audio levels,
+  /// mutes, metadata), and in a big meeting that is many times a second.
+  /// Re-sorting on each one keeps the main thread busy, which in a large
+  /// meeting means dropped frames, ANRs and late keep-alives. Instead, the
+  /// first change starts a short timer and everything that arrives before it
+  /// fires is handled by one sort. This is a throttle, not a debounce: a
+  /// debounce restarts on every change, so while people keep talking it would
+  /// never fire at all.
+  static const _sortInterval = Duration(milliseconds: 250);
+
   void _scheduleSortParticipants() {
-    _sortParticipantsDebounceTimer?.cancel();
-    _sortParticipantsDebounceTimer =
-        Timer(const Duration(milliseconds: 200), () {
+    if (_sortParticipantsTimer?.isActive ?? false) return;
+    _sortParticipantsTimer = Timer(_sortInterval, () {
       if (mounted) _sortParticipants();
     });
   }
 
+  /// Everything the meeting screen and the participants page show for each
+  /// track, in order: position, identity, share or camera, name, role, mic
+  /// and camera state. Speaking state and audio levels are left out on
+  /// purpose. Tiles listen to their own participant for those, so a change
+  /// in who is talking only costs a refresh when it actually moves someone.
+  List<Object?> _layoutSignature(List<ParticipantTrack> tracks) {
+    final signature = <Object?>[];
+    for (final t in tracks) {
+      final p = t.participant;
+      signature
+        ..add(p.identity)
+        ..add(t.type)
+        ..add(p.name)
+        ..add(p.metadata)
+        ..add(p.isMicrophoneEnabled())
+        ..add(p.isCameraEnabled())
+        ..add(_receivedVideoMask(p));
+    }
+    return signature;
+  }
+
+  /// One bit per video publication: set when its track has arrived and is
+  /// not muted. The stage decides zoom and the no-video placeholder from
+  /// this, and a track can arrive well after the camera was switched on.
+  int _receivedVideoMask(Participant p) {
+    var mask = 0;
+    var bit = 1;
+    for (final v in p.videoTrackPublications) {
+      if (v.track != null && !v.muted) mask |= bit;
+      bit <<= 1;
+    }
+    return mask;
+  }
+
   void _sortParticipants() {
+    _sortParticipantsTimer?.cancel();
     final viewmodel = _livekitProviderKey.currentState?.viewModel;
     List<ParticipantTrack> userMediaTracks = [];
     List<ParticipantTrack> screenTracks = [];
@@ -1374,15 +1422,22 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     }
 
-    // Update the participant tracks
-    setState(() {
-      participantTracks = [
-        ...screenTracks, // Screen shares always first
-        if (pinnedTrack != null) pinnedTrack, // Then pinned participant
-        ...userMediaTracks, // Then remaining participants
-      ];
-    });
-    viewmodel?.coHostCount = coHostCount;
+    final sorted = [
+      ...screenTracks, // Screen shares always first
+      if (pinnedTrack != null) pinnedTrack, // Then pinned participant
+      ...userMediaTracks, // Then remaining participants
+    ];
+    if (viewmodel != null && viewmodel.coHostCount != coHostCount) {
+      viewmodel.coHostCount = coHostCount;
+    }
+
+    // Nothing anyone can see has changed: skip the rebuild here and the
+    // refresh of everything that listens to the meeting state.
+    final signature = _layoutSignature(sorted);
+    if (listEquals(signature, _lastLayoutSignature)) return;
+    _lastLayoutSignature = signature;
+
+    setState(() => participantTracks = sorted);
     viewmodel?.addParticipant(participantTracks);
   }
 
