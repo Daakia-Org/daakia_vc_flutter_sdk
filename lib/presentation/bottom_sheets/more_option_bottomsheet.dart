@@ -18,6 +18,7 @@ import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
 import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
+import '../pages/device_test_page.dart';
 import '../pages/permission_request_page.dart';
 import '../pages/transcription_screen.dart';
 
@@ -187,6 +188,13 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                     Navigator.pop(context);
                     showPermissionBottomSheet(viewModel);
                   }),
+              // Test microphone, speaker and camera
+              buildOption(context,
+                  icon: Icons.settings_voice,
+                  text: 'Test Devices', onTap: () {
+                Navigator.pop(context);
+                showDeviceTestPage(viewModel);
+              }),
               // Live Stream
               buildOption(
                 context,
@@ -213,6 +221,12 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
         fullscreenDialog: true)).then((_) {
       viewModel.isParticipantPageOpen = false;
     });
+  }
+
+  void showDeviceTestPage(RtcViewmodel viewModel) {
+    Navigator.of(context).push(MaterialPageRoute<void>(
+        builder: (_) => DeviceTestPage(viewModel: viewModel),
+        fullscreenDialog: true));
   }
 
   void showEmojiDialog(RtcViewmodel viewModel) {
