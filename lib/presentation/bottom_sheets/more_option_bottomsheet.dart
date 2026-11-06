@@ -16,6 +16,7 @@ import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
+import 'layout_bottomsheet.dart';
 import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
 import '../pages/permission_request_page.dart';
@@ -67,6 +68,20 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                       viewModel.getUnreadCountPrivateChat()), onTap: () {
                 Navigator.pop(context);
                 showChatBottomSheet(viewModel);
+              }),
+              // Layout: only while watching someone else's share, and not
+              // while the whiteboard holds the stage (same as web).
+              buildOption(context,
+                  icon: Icons.view_quilt_outlined,
+                  text: 'Layout',
+                  isVisible: viewModel.canChooseSpotlight, onTap: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                Utils.showAdaptiveSheet<void>(
+                  navigator.context,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => LayoutBottomSheet(viewModel: viewModel),
+                );
               }),
               // Recording Section
               buildOption(context,

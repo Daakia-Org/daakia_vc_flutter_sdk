@@ -25,6 +25,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/spotlight_card.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
@@ -1678,9 +1679,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       body: SafeArea(
                         child: Container(
                           color: Colors.black,
-                          child: _isLandscape(context)
-                              ? _buildLandscapeLayout(context)
-                              : _buildPortraitLayout(context),
+                          // Rebuilds only when Spotlight turns on or off,
+                          // not on every meeting-state change.
+                          child: Selector<RtcViewmodel, bool>(
+                            selector: (_, vm) => vm.isSpotlightActive,
+                            builder: (context, spotlight, _) =>
+                                _isLandscape(context)
+                                    ? _buildLandscapeLayout(context,
+                                        spotlight: spotlight)
+                                    : _buildPortraitLayout(context,
+                                        spotlight: spotlight),
+                          ),
                         ),
                       ),
                     ),
@@ -1755,11 +1764,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       ? participantTracks[index]
       : participantTracks[index + 1];
 
-  Widget _buildPortraitLayout(BuildContext context) {
+  Widget _buildPortraitLayout(BuildContext context, {bool spotlight = false}) {
     return Column(
       children: [
-        Expanded(child: _buildStageArea(context, isLandscape: false)),
-        if (_hasFilmstrip)
+        Expanded(
+          child: _buildStageArea(context,
+              isLandscape: false, spotlight: spotlight),
+        ),
+        // Spotlight replaces the filmstrip with one floating card.
+        if (_hasFilmstrip && !spotlight)
           SizedBox(
             height: _filmstripPortraitHeight,
             child: _buildFilmstrip(
@@ -1780,7 +1793,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildLandscapeLayout(BuildContext context) {
+  Widget _buildLandscapeLayout(BuildContext context, {bool spotlight = false}) {
     // Keep the rail a proportion of the width so it stays a thumbnail strip on
     // a phone and doesn't balloon into a second stage on a tablet.
     final railWidth =
@@ -1789,8 +1802,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(child: _buildStageArea(context, isLandscape: true)),
-        if (_hasFilmstrip)
+        Expanded(
+          child: _buildStageArea(context,
+              isLandscape: true, spotlight: spotlight),
+        ),
+        if (_hasFilmstrip && !spotlight)
           SizedBox(
             width: railWidth,
             child: _buildFilmstrip(
@@ -1812,7 +1828,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// The speaker / screen share / whiteboard surface plus everything that
   /// floats on top of it. Overlays are anchored to the stage (not the whole
   /// screen) so they never drift over the filmstrip or the controls rail.
-  Widget _buildStageArea(BuildContext context, {required bool isLandscape}) {
+  Widget _buildStageArea(BuildContext context,
+      {required bool isLandscape, bool spotlight = false}) {
     // The stage is the stack's only non-positioned child and StackFit.expand
     // makes it fill: a Stack sizes itself from its non-positioned children, so
     // if every child were positioned (or the only unpositioned one collapsed to
@@ -1821,6 +1838,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       fit: StackFit.expand,
       children: [
         _buildStage(),
+        // Spotlight's floating speaker card. Under the status pills and
+        // reactions so those stay visible above it.
+        if (spotlight &&
+            participantTracks.isNotEmpty &&
+            participantTracks.first.type == ParticipantTrackType.kScreenShare &&
+            _livekitProviderKey.currentState != null)
+          Positioned.fill(
+            child: SpotlightCardLayer(
+              room: widget.room,
+              viewModel: _livekitProviderKey.currentState!.viewModel,
+              tracks: participantTracks,
+              share: participantTracks.first,
+            ),
+          ),
         // Status pills (workshop / recording) share one centred block at the
         // top of the stage. Both top corners of the speaker tile are already
         // taken — hand raise / zoom-reset on the left, the quick-actions "⋮" on
