@@ -1445,6 +1445,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
 
     setState(() => participantTracks = sorted);
+    final live = {
+      for (final t in sorted) '${t.participant.identity}|${t.type.name}'
+    };
+    _filmstripTileKeys.removeWhere((id, _) => !live.contains(id));
     if (viewmodel != null) {
       _lastLayoutSignature = signature;
       viewmodel.addParticipant(participantTracks);
@@ -1684,11 +1688,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                           child: Selector<RtcViewmodel, bool>(
                             selector: (_, vm) => vm.isSpotlightActive,
                             builder: (context, spotlight, _) =>
-                                _isLandscape(context)
-                                    ? _buildLandscapeLayout(context,
-                                        spotlight: spotlight)
-                                    : _buildPortraitLayout(context,
-                                        spotlight: spotlight),
+                                _buildMeetingLayout(context,
+                                    isLandscape: _isLandscape(context),
+                                    spotlight: spotlight),
                           ),
                         ),
                       ),
@@ -1764,62 +1766,61 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       ? participantTracks[index]
       : participantTracks[index + 1];
 
-  Widget _buildPortraitLayout(BuildContext context, {bool spotlight = false}) {
-    return Column(
-      children: [
-        Expanded(
-          child: _buildStageArea(context,
-              isLandscape: false, spotlight: spotlight),
-        ),
-        // Spotlight replaces the filmstrip with one floating card.
-        if (_hasFilmstrip && !spotlight)
-          SizedBox(
-            height: _filmstripPortraitHeight,
-            child: _buildFilmstrip(
-              axis: Axis.horizontal,
-              tileWidth: _filmstripPortraitTileWidth,
-              tileHeight: _filmstripPortraitHeight,
-            ),
-          ),
-        if (widget.room.localParticipant != null)
-          SafeArea(
-            top: false,
-            child: RtcControls(
-              widget.room,
-              widget.room.localParticipant!,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildLandscapeLayout(BuildContext context, {bool spotlight = false}) {
+  /// One layout for both orientations. Portrait stacks stage, filmstrip and
+  /// controls top to bottom; landscape lines them up left to right.
+  ///
+  /// It is one [Flex] whose direction flips, not a Column in portrait and a
+  /// Row in landscape, so that rotating updates the existing video tiles
+  /// instead of throwing them away and creating new ones. Recreating every
+  /// tile on rotation made the video plugin create and dispose renderers all
+  /// at once, which can deadlock its graphics lock and freeze the app (ANR).
+  /// The keyed children keep each piece matched even when the filmstrip
+  /// comes and goes.
+  Widget _buildMeetingLayout(BuildContext context,
+      {required bool isLandscape, bool spotlight = false}) {
     // Keep the rail a proportion of the width so it stays a thumbnail strip on
     // a phone and doesn't balloon into a second stage on a tablet.
     final railWidth =
         (MediaQuery.of(context).size.width * 0.18).clamp(130.0, 190.0);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Flex(
+      direction: isLandscape ? Axis.horizontal : Axis.vertical,
+      crossAxisAlignment: isLandscape
+          ? CrossAxisAlignment.stretch
+          : CrossAxisAlignment.center,
       children: [
         Expanded(
+          key: const ValueKey('stage'),
           child: _buildStageArea(context,
-              isLandscape: true, spotlight: spotlight),
+              isLandscape: isLandscape, spotlight: spotlight),
         ),
+        // Spotlight replaces the filmstrip with one floating card.
         if (_hasFilmstrip && !spotlight)
           SizedBox(
-            width: railWidth,
+            key: const ValueKey('filmstrip'),
+            width: isLandscape ? railWidth : null,
+            height: isLandscape ? null : _filmstripPortraitHeight,
             child: _buildFilmstrip(
-              axis: Axis.vertical,
-              tileWidth: railWidth,
-              tileHeight: railWidth * 2 / 3,
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+              tileWidth: isLandscape ? railWidth : _filmstripPortraitTileWidth,
+              tileHeight:
+                  isLandscape ? railWidth * 2 / 3 : _filmstripPortraitHeight,
             ),
           ),
         if (widget.room.localParticipant != null)
-          RtcControls(
-            widget.room,
-            widget.room.localParticipant!,
-            axis: Axis.vertical,
+          SafeArea(
+            key: const ValueKey('controls'),
+            // Portrait keeps the bar clear of the bottom inset; the landscape
+            // rail sat flush before, so it keeps doing that.
+            left: !isLandscape,
+            top: false,
+            right: !isLandscape,
+            bottom: !isLandscape,
+            child: RtcControls(
+              widget.room,
+              widget.room.localParticipant!,
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+            ),
           ),
       ],
     );
@@ -2021,13 +2022,24 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             height: tileHeight,
             child: ParticipantWidget.widgetFor(
               track,
-              key: ValueKey(track.participant.identity),
+              key: _filmstripTileKey(track),
             ),
           ),
         );
       },
     );
   }
+
+  /// One key per person (and per share) in the filmstrip, kept across
+  /// rebuilds. Rotation flips the strip's scroll direction, and with a plain
+  /// key every tile was thrown away and created again, along with its video
+  /// renderer (see [_buildMeetingLayout] for why that freezes the app). A
+  /// global key lets Flutter carry the existing tile over instead.
+  final Map<String, GlobalKey> _filmstripTileKeys = {};
+
+  GlobalKey _filmstripTileKey(ParticipantTrack track) => _filmstripTileKeys
+      .putIfAbsent('${track.participant.identity}|${track.type.name}',
+          () => GlobalKey());
 
   Future<bool> _showExitConfirmationDialog(BuildContext context) {
     final viewModel = _livekitProviderKey.currentState?.viewModel;
