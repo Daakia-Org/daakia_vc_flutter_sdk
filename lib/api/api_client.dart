@@ -72,8 +72,12 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  /// [token] is the user's login token (empty when not logged in). With
+  /// email verification on, the backend matches the advanced password's
+  /// invitee against the account email it reads from this token, as on web.
   @POST("v2.0/meeting/verify/password")
   Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
+    @Header("Authorization") String token,
     @Body() Map<String, dynamic> body,
   );
 

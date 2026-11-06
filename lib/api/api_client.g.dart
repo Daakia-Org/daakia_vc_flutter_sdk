@@ -183,11 +183,13 @@ class _RestClient implements RestClient {
 
   @override
   Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
+    String token,
     Map<String, dynamic> body,
   ) async {
     final _extra = <String, dynamic>{};
     final queryParameters = <String, dynamic>{};
-    final _headers = <String, dynamic>{};
+    final _headers = <String, dynamic>{r'Authorization': token};
+    _headers.removeWhere((k, v) => v == null);
     final _data = <String, dynamic>{};
     _data.addAll(body);
     final _options = _setStreamType<BaseResponse<EventPasswordProtectedData>>(
