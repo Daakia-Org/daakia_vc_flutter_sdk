@@ -184,6 +184,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     WidgetsBindingCompatible.instance?.addPostFrameCallback((_) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       viewModel?.context = context;
+      // The sort in initState ran before the meeting state existed; hand it
+      // the list now rather than waiting for the next room change.
+      _sortParticipants();
       if (!fastConnection) {
         _askPublish();
       }
@@ -1432,13 +1435,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
 
     // Nothing anyone can see has changed: skip the rebuild here and the
-    // refresh of everything that listens to the meeting state.
+    // refresh of everything that listens to the meeting state. The first
+    // sort runs before the meeting state exists, so a sort only counts as
+    // delivered once the meeting state has received it.
     final signature = _layoutSignature(sorted);
-    if (listEquals(signature, _lastLayoutSignature)) return;
-    _lastLayoutSignature = signature;
+    if (viewmodel != null && listEquals(signature, _lastLayoutSignature)) {
+      return;
+    }
 
     setState(() => participantTracks = sorted);
-    viewmodel?.addParticipant(participantTracks);
+    if (viewmodel != null) {
+      _lastLayoutSignature = signature;
+      viewmodel.addParticipant(participantTracks);
+    }
   }
 
   final GlobalKey<RtcProviderState> _livekitProviderKey =
