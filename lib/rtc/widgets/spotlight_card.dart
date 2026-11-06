@@ -48,6 +48,10 @@ class _SpotlightCardLayerState extends State<SpotlightCardLayer> {
   /// Height of the hide tab that sits on the card's top edge.
   static const _handleHeight = 24.0;
 
+  /// Bottom corners sit this far up so the card stays clear of the share's
+  /// "… is presenting" name bar along the bottom of the stage.
+  static const _bottomClearance = 44.0;
+
   final _tracker = SpotlightSpeakerTracker();
   Timer? _timer;
   String? _shownIdentity;
@@ -152,7 +156,7 @@ class _SpotlightCardLayerState extends State<SpotlightCardLayer> {
     final top = corner == 0 || corner == 1;
     return Offset(
       left ? _margin : stage.width - card.width - _margin,
-      top ? _margin : stage.height - card.height - _margin,
+      top ? _margin : stage.height - card.height - _bottomClearance,
     );
   }
 
