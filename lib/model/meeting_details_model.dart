@@ -29,6 +29,10 @@ class MeetingDetailsModel {
   int? meetingId;
   int? hostPinVerificationRequired;
 
+  /// 1 when non-host participants who aren't logged in must verify their
+  /// email with a one-time code before joining.
+  int? emailVerificationRequired;
+
   MeetingDetailsModel(
       {this.eventMode,
         this.eventType,
@@ -57,6 +61,7 @@ class MeetingDetailsModel {
         this.currentSessionUid,
         this.meetingId,
         this.hostPinVerificationRequired,
+        this.emailVerificationRequired,
       });
 
   MeetingDetailsModel.fromJson(Map<String, dynamic> json) {
@@ -96,6 +101,8 @@ class MeetingDetailsModel {
     meetingId = json['meeting_id'];
     hostPinVerificationRequired =
         JsonParser.toFlagInt(json['host_pin_verification_required']);
+    emailVerificationRequired =
+        JsonParser.toFlagInt(json['email_verification_required']);
   }
 
   Map<String, dynamic> toJson() {
@@ -133,6 +140,7 @@ class MeetingDetailsModel {
     }
     data['meeting_id'] = meetingId;
     data['host_pin_verification_required'] = hostPinVerificationRequired;
+    data['email_verification_required'] = emailVerificationRequired;
     return data;
   }
 }

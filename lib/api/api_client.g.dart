@@ -216,6 +216,74 @@ class _RestClient implements RestClient {
   }
 
   @override
+  Future<BaseResponse<ParticipantEmailOtpData>> sendParticipantEmailOtp(
+    Map<String, dynamic> body,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    final _headers = <String, dynamic>{};
+    final _data = <String, dynamic>{};
+    _data.addAll(body);
+    final _options = _setStreamType<BaseResponse<ParticipantEmailOtpData>>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            'v2.0/rtc/meeting/participant-email/send-otp',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BaseResponse<ParticipantEmailOtpData> _value;
+    try {
+      _value = BaseResponse<ParticipantEmailOtpData>.fromJson(
+        _result.data!,
+        (json) =>
+            ParticipantEmailOtpData.fromJson(json as Map<String, dynamic>),
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
+  Future<BaseResponse<ParticipantEmailOtpData>> verifyParticipantEmailOtp(
+    Map<String, dynamic> body,
+  ) async {
+    final _extra = <String, dynamic>{};
+    final queryParameters = <String, dynamic>{};
+    final _headers = <String, dynamic>{};
+    final _data = <String, dynamic>{};
+    _data.addAll(body);
+    final _options = _setStreamType<BaseResponse<ParticipantEmailOtpData>>(
+      Options(method: 'POST', headers: _headers, extra: _extra)
+          .compose(
+            _dio.options,
+            'v2.0/rtc/meeting/participant-email/verify-otp',
+            queryParameters: queryParameters,
+            data: _data,
+          )
+          .copyWith(baseUrl: _combineBaseUrls(_dio.options.baseUrl, baseUrl)),
+    );
+    final _result = await _dio.fetch<Map<String, dynamic>>(_options);
+    late BaseResponse<ParticipantEmailOtpData> _value;
+    try {
+      _value = BaseResponse<ParticipantEmailOtpData>.fromJson(
+        _result.data!,
+        (json) =>
+            ParticipantEmailOtpData.fromJson(json as Map<String, dynamic>),
+      );
+    } on Object catch (e, s) {
+      errorLogger?.logError(e, s, _options, response: _result);
+      rethrow;
+    }
+    return _value;
+  }
+
+  @override
   Future<BaseResponse<RtcData>> addParticipantToLobby(
     Map<String, dynamic> body,
   ) async {

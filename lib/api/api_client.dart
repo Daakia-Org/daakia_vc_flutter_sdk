@@ -26,6 +26,7 @@ import '../model/host_controls_data.dart';
 import '../model/host_token_model.dart';
 import '../model/invited_participant.dart';
 import '../model/meeting_details_model.dart';
+import '../model/participant_email_otp_data.dart';
 import '../model/recording_dispatch_data.dart';
 import '../model/remote_participant_consent_model.dart';
 import '../model/rtc_data.dart';
@@ -73,6 +74,20 @@ abstract class RestClient {
 
   @POST("v2.0/meeting/verify/password")
   Future<BaseResponse<EventPasswordProtectedData>> verifyMeetingPassword(
+    @Body() Map<String, dynamic> body,
+  );
+
+  /// Emails a one-time code to a participant of a meeting with
+  /// `email_verification_required`. No login needed.
+  @POST("v2.0/rtc/meeting/participant-email/send-otp")
+  Future<BaseResponse<ParticipantEmailOtpData>> sendParticipantEmailOtp(
+    @Body() Map<String, dynamic> body,
+  );
+
+  /// Checks the code; on success returns the `email_token` the join and
+  /// advanced-password calls expect.
+  @POST("v2.0/rtc/meeting/participant-email/verify-otp")
+  Future<BaseResponse<ParticipantEmailOtpData>> verifyParticipantEmailOtp(
     @Body() Map<String, dynamic> body,
   );
 
