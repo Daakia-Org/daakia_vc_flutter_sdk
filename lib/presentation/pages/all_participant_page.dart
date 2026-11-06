@@ -43,25 +43,28 @@ class AllParticipantPage extends StatelessWidget {
           padding: EdgeInsets.symmetric(
             vertical: isTypingInLandscape ? 4.0 : 20.0,
           ),
-          child: SingleChildScrollView(
+          // One lazily built scroll view: every section is a sliver, so
+          // only the rows on screen are built, even with a thousand people.
+          child: CustomScrollView(
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LobbyRequestWidget(viewModel: viewModel),
-                  RaisedHandParticipantWidget(viewModel: viewModel),
-                  JoinedParticipantWidget(viewModel: viewModel),
-                  if (viewModel.invitedParticipantList.isNotEmpty &&
-                      (viewModel.isHost() || viewModel.isCoHost()))
-                    InvitedParticipantWidget(viewModel: viewModel),
-                  if (viewModel.pendingParticipantList.isNotEmpty &&
-                      (viewModel.isHost() || viewModel.isCoHost()))
-                    PendingAttendanceWidget(viewModel: viewModel),
-                ],
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                sliver: SliverMainAxisGroup(
+                  slivers: [
+                    LobbyRequestWidget(viewModel: viewModel),
+                    RaisedHandParticipantWidget(viewModel: viewModel),
+                    JoinedParticipantWidget(viewModel: viewModel),
+                    if (viewModel.invitedParticipantList.isNotEmpty &&
+                        (viewModel.isHost() || viewModel.isCoHost()))
+                      InvitedParticipantWidget(viewModel: viewModel),
+                    if (viewModel.pendingParticipantList.isNotEmpty &&
+                        (viewModel.isHost() || viewModel.isCoHost()))
+                      PendingAttendanceWidget(viewModel: viewModel),
+                  ],
+                ),
               ),
-            ),
+            ],
           ),
         ),
       ),

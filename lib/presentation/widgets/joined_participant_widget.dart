@@ -25,61 +25,65 @@ class _JoinedParticipantWidgetState extends State<JoinedParticipantWidget> {
       final name = participant.participant.name.toLowerCase();
       return name.contains(_searchQuery.toLowerCase());
     }).toList();
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Participants (${allParticipants.length})',
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+    // A sliver: the participants page builds rows only as they scroll in.
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Participants (${allParticipants.length})',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (Utils.isHost(
+                        widget.viewModel.room.localParticipant?.metadata,
+                      ) ||
+                      Utils.isCoHost(
+                        widget.viewModel.room.localParticipant?.metadata,
+                      ))
+                    IconButton(
+                      onPressed: () {
+                        showParticipantDialog(context, widget.viewModel);
+                      },
+                      icon: const Icon(Icons.more_vert, color: Colors.white),
+                    ),
+                ],
               ),
-            ),
-            if (Utils.isHost(
-                    widget.viewModel.room.localParticipant?.metadata) ||
-                Utils.isCoHost(
-                    widget.viewModel.room.localParticipant?.metadata))
-              IconButton(
-                onPressed: () {
-                  showParticipantDialog(context, widget.viewModel);
-                },
-                icon: const Icon(
-                  Icons.more_vert,
-                  color: Colors.white,
+              // 🔍 Search Field
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                child: TextField(
+                  onTapOutside: Utils.dismissKeyboardOnTapOutside,
+                  textInputAction: TextInputAction.search,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: InputDecoration(
+                    hintText: 'Search participant...',
+                    hintStyle: const TextStyle(color: Colors.white54),
+                    prefixIcon: const Icon(Icons.search, color: Colors.white),
+                    filled: true,
+                    fillColor: Colors.white10,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (query) {
+                    setState(() {
+                      _searchQuery = query;
+                    });
+                  },
                 ),
               ),
-          ],
-        ),
-        // 🔍 Search Field
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          child: TextField(
-            onTapOutside: Utils.dismissKeyboardOnTapOutside,
-            textInputAction: TextInputAction.search,
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: 'Search participant...',
-              hintStyle: const TextStyle(color: Colors.white54),
-              prefixIcon: const Icon(Icons.search, color: Colors.white),
-              filled: true,
-              fillColor: Colors.white10,
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8),
-                borderSide: BorderSide.none,
-              ),
-            ),
-            onChanged: (query) {
-              setState(() {
-                _searchQuery = query;
-              });
-            },
+            ],
           ),
         ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
+        SliverList.builder(
           itemCount: filteredParticipants.length,
           itemBuilder: (context, index) {
             var participant = filteredParticipants[index];
@@ -100,13 +104,14 @@ class _JoinedParticipantWidgetState extends State<JoinedParticipantWidget> {
 
   void showParticipantDialog(BuildContext context, RtcViewmodel viewModel) {
     showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return ParticipantDialogControls(
-            participant: viewModel.participant,
-            viewModel: viewModel,
-            isForIndividual: false,
-          );
-        });
+      context: context,
+      builder: (BuildContext context) {
+        return ParticipantDialogControls(
+          participant: viewModel.participant,
+          viewModel: viewModel,
+          isForIndividual: false,
+        );
+      },
+    );
   }
 }

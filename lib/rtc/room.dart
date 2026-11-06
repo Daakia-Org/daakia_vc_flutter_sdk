@@ -25,6 +25,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/spotlight_card.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
@@ -118,7 +119,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // Coalesces rapid-fire track add/remove events (e.g. both sides repeatedly
   // toggling screen share) into a single rebuild instead of one per event,
   // to reduce main-thread churn during toggle storms.
-  Timer? _sortParticipantsDebounceTimer;
+  // See [_scheduleSortParticipants].
+  Timer? _sortParticipantsTimer;
+
+  /// What the last sort showed, see [_layoutSignature].
+  List<Object?> _lastLayoutSignature = const [];
 
   // Groups the mic / camera / participant-list changes that arrive as three
   // separate actions when the host toggles Workshop mode into one notice.
@@ -180,6 +185,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     WidgetsBindingCompatible.instance?.addPostFrameCallback((_) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
       viewModel?.context = context;
+      // The sort in initState ran before the meeting state existed; hand it
+      // the list now rather than waiting for the next room change.
+      _sortParticipants();
       if (!fastConnection) {
         _askPublish();
       }
@@ -405,7 +413,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _inactivityWatcher = null;
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
-    _sortParticipantsDebounceTimer?.cancel();
+    _sortParticipantsTimer?.cancel();
     _workshopNotice.dispose();
     // always dispose listener
     (() async {
@@ -582,7 +590,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       });
       viewModel?.addParticipantToConsentList(event.participant);
       viewModel?.sendPrivateChatHistory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
       _updateInactivityWatcher();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
@@ -597,7 +605,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _livekitProviderKey.currentState?.viewModel
           .reportInviteeJoinedStatus(event.participant, joined: false);
       _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
       _updateInactivityWatcher();
     })
     ..on<RoomRecordingStatusChanged>((event) {
@@ -668,7 +676,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<TrackUnsubscribedEvent>((_) => _scheduleSortParticipants())
     ..on<TrackE2EEStateEvent>(_onE2EEStateEvent)
     ..on<ParticipantNameUpdatedEvent>((event) {
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
     ..on<ParticipantMetadataUpdatedEvent>((event) {
       // Our role lives in our metadata, so a co-host change from any client
@@ -1255,7 +1263,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   void _onRoomDidUpdate() {
-    _sortParticipants();
+    _scheduleSortParticipants();
     _syncNotificationMuteState();
   }
 
@@ -1281,15 +1289,59 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  /// The room notifies on nearly every change (who is speaking, audio levels,
+  /// mutes, metadata), and in a big meeting that is many times a second.
+  /// Re-sorting on each one keeps the main thread busy, which in a large
+  /// meeting means dropped frames, ANRs and late keep-alives. Instead, the
+  /// first change starts a short timer and everything that arrives before it
+  /// fires is handled by one sort. This is a throttle, not a debounce: a
+  /// debounce restarts on every change, so while people keep talking it would
+  /// never fire at all.
+  static const _sortInterval = Duration(milliseconds: 250);
+
   void _scheduleSortParticipants() {
-    _sortParticipantsDebounceTimer?.cancel();
-    _sortParticipantsDebounceTimer =
-        Timer(const Duration(milliseconds: 200), () {
+    if (_sortParticipantsTimer?.isActive ?? false) return;
+    _sortParticipantsTimer = Timer(_sortInterval, () {
       if (mounted) _sortParticipants();
     });
   }
 
+  /// Everything the meeting screen and the participants page show for each
+  /// track, in order: position, identity, share or camera, name, role, mic
+  /// and camera state. Speaking state and audio levels are left out on
+  /// purpose. Tiles listen to their own participant for those, so a change
+  /// in who is talking only costs a refresh when it actually moves someone.
+  List<Object?> _layoutSignature(List<ParticipantTrack> tracks) {
+    final signature = <Object?>[];
+    for (final t in tracks) {
+      final p = t.participant;
+      signature
+        ..add(p.identity)
+        ..add(t.type)
+        ..add(p.name)
+        ..add(p.metadata)
+        ..add(p.isMicrophoneEnabled())
+        ..add(p.isCameraEnabled())
+        ..add(_receivedVideoMask(p));
+    }
+    return signature;
+  }
+
+  /// One bit per video publication: set when its track has arrived and is
+  /// not muted. The stage decides zoom and the no-video placeholder from
+  /// this, and a track can arrive well after the camera was switched on.
+  int _receivedVideoMask(Participant p) {
+    var mask = 0;
+    var bit = 1;
+    for (final v in p.videoTrackPublications) {
+      if (v.track != null && !v.muted) mask |= bit;
+      bit <<= 1;
+    }
+    return mask;
+  }
+
   void _sortParticipants() {
+    _sortParticipantsTimer?.cancel();
     final viewmodel = _livekitProviderKey.currentState?.viewModel;
     List<ParticipantTrack> userMediaTracks = [];
     List<ParticipantTrack> screenTracks = [];
@@ -1374,16 +1426,33 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     }
 
-    // Update the participant tracks
-    setState(() {
-      participantTracks = [
-        ...screenTracks, // Screen shares always first
-        if (pinnedTrack != null) pinnedTrack, // Then pinned participant
-        ...userMediaTracks, // Then remaining participants
-      ];
-    });
-    viewmodel?.coHostCount = coHostCount;
-    viewmodel?.addParticipant(participantTracks);
+    final sorted = [
+      ...screenTracks, // Screen shares always first
+      if (pinnedTrack != null) pinnedTrack, // Then pinned participant
+      ...userMediaTracks, // Then remaining participants
+    ];
+    if (viewmodel != null && viewmodel.coHostCount != coHostCount) {
+      viewmodel.coHostCount = coHostCount;
+    }
+
+    // Nothing anyone can see has changed: skip the rebuild here and the
+    // refresh of everything that listens to the meeting state. The first
+    // sort runs before the meeting state exists, so a sort only counts as
+    // delivered once the meeting state has received it.
+    final signature = _layoutSignature(sorted);
+    if (viewmodel != null && listEquals(signature, _lastLayoutSignature)) {
+      return;
+    }
+
+    setState(() => participantTracks = sorted);
+    final live = {
+      for (final t in sorted) '${t.participant.identity}|${t.type.name}'
+    };
+    _filmstripTileKeys.removeWhere((id, _) => !live.contains(id));
+    if (viewmodel != null) {
+      _lastLayoutSignature = signature;
+      viewmodel.addParticipant(participantTracks);
+    }
   }
 
   final GlobalKey<RtcProviderState> _livekitProviderKey =
@@ -1614,9 +1683,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       body: SafeArea(
                         child: Container(
                           color: Colors.black,
-                          child: _isLandscape(context)
-                              ? _buildLandscapeLayout(context)
-                              : _buildPortraitLayout(context),
+                          // Rebuilds only when Spotlight turns on or off,
+                          // not on every meeting-state change.
+                          child: Selector<RtcViewmodel, bool>(
+                            selector: (_, vm) => vm.isSpotlightActive,
+                            builder: (context, spotlight, _) =>
+                                _buildMeetingLayout(context,
+                                    isLandscape: _isLandscape(context),
+                                    spotlight: spotlight),
+                          ),
                         ),
                       ),
                     ),
@@ -1691,55 +1766,61 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       ? participantTracks[index]
       : participantTracks[index + 1];
 
-  Widget _buildPortraitLayout(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(child: _buildStageArea(context, isLandscape: false)),
-        if (_hasFilmstrip)
-          SizedBox(
-            height: _filmstripPortraitHeight,
-            child: _buildFilmstrip(
-              axis: Axis.horizontal,
-              tileWidth: _filmstripPortraitTileWidth,
-              tileHeight: _filmstripPortraitHeight,
-            ),
-          ),
-        if (widget.room.localParticipant != null)
-          SafeArea(
-            top: false,
-            child: RtcControls(
-              widget.room,
-              widget.room.localParticipant!,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildLandscapeLayout(BuildContext context) {
+  /// One layout for both orientations. Portrait stacks stage, filmstrip and
+  /// controls top to bottom; landscape lines them up left to right.
+  ///
+  /// It is one [Flex] whose direction flips, not a Column in portrait and a
+  /// Row in landscape, so that rotating updates the existing video tiles
+  /// instead of throwing them away and creating new ones. Recreating every
+  /// tile on rotation made the video plugin create and dispose renderers all
+  /// at once, which can deadlock its graphics lock and freeze the app (ANR).
+  /// The keyed children keep each piece matched even when the filmstrip
+  /// comes and goes.
+  Widget _buildMeetingLayout(BuildContext context,
+      {required bool isLandscape, bool spotlight = false}) {
     // Keep the rail a proportion of the width so it stays a thumbnail strip on
     // a phone and doesn't balloon into a second stage on a tablet.
     final railWidth =
         (MediaQuery.of(context).size.width * 0.18).clamp(130.0, 190.0);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Flex(
+      direction: isLandscape ? Axis.horizontal : Axis.vertical,
+      crossAxisAlignment: isLandscape
+          ? CrossAxisAlignment.stretch
+          : CrossAxisAlignment.center,
       children: [
-        Expanded(child: _buildStageArea(context, isLandscape: true)),
-        if (_hasFilmstrip)
+        Expanded(
+          key: const ValueKey('stage'),
+          child: _buildStageArea(context,
+              isLandscape: isLandscape, spotlight: spotlight),
+        ),
+        // Spotlight replaces the filmstrip with one floating card.
+        if (_hasFilmstrip && !spotlight)
           SizedBox(
-            width: railWidth,
+            key: const ValueKey('filmstrip'),
+            width: isLandscape ? railWidth : null,
+            height: isLandscape ? null : _filmstripPortraitHeight,
             child: _buildFilmstrip(
-              axis: Axis.vertical,
-              tileWidth: railWidth,
-              tileHeight: railWidth * 2 / 3,
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+              tileWidth: isLandscape ? railWidth : _filmstripPortraitTileWidth,
+              tileHeight:
+                  isLandscape ? railWidth * 2 / 3 : _filmstripPortraitHeight,
             ),
           ),
         if (widget.room.localParticipant != null)
-          RtcControls(
-            widget.room,
-            widget.room.localParticipant!,
-            axis: Axis.vertical,
+          SafeArea(
+            key: const ValueKey('controls'),
+            // Portrait keeps the bar clear of the bottom inset; the landscape
+            // rail sat flush before, so it keeps doing that.
+            left: !isLandscape,
+            top: false,
+            right: !isLandscape,
+            bottom: !isLandscape,
+            child: RtcControls(
+              widget.room,
+              widget.room.localParticipant!,
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+            ),
           ),
       ],
     );
@@ -1748,7 +1829,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// The speaker / screen share / whiteboard surface plus everything that
   /// floats on top of it. Overlays are anchored to the stage (not the whole
   /// screen) so they never drift over the filmstrip or the controls rail.
-  Widget _buildStageArea(BuildContext context, {required bool isLandscape}) {
+  Widget _buildStageArea(BuildContext context,
+      {required bool isLandscape, bool spotlight = false}) {
     // The stage is the stack's only non-positioned child and StackFit.expand
     // makes it fill: a Stack sizes itself from its non-positioned children, so
     // if every child were positioned (or the only unpositioned one collapsed to
@@ -1757,6 +1839,20 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       fit: StackFit.expand,
       children: [
         _buildStage(),
+        // Spotlight's floating speaker card. Under the status pills and
+        // reactions so those stay visible above it.
+        if (spotlight &&
+            participantTracks.isNotEmpty &&
+            participantTracks.first.type == ParticipantTrackType.kScreenShare &&
+            _livekitProviderKey.currentState != null)
+          Positioned.fill(
+            child: SpotlightCardLayer(
+              room: widget.room,
+              viewModel: _livekitProviderKey.currentState!.viewModel,
+              tracks: participantTracks,
+              share: participantTracks.first,
+            ),
+          ),
         // Status pills (workshop / recording) share one centred block at the
         // top of the stage. Both top corners of the speaker tile are already
         // taken — hand raise / zoom-reset on the left, the quick-actions "⋮" on
@@ -1926,13 +2022,24 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             height: tileHeight,
             child: ParticipantWidget.widgetFor(
               track,
-              key: ValueKey(track.participant.identity),
+              key: _filmstripTileKey(track),
             ),
           ),
         );
       },
     );
   }
+
+  /// One key per person (and per share) in the filmstrip, kept across
+  /// rebuilds. Rotation flips the strip's scroll direction, and with a plain
+  /// key every tile was thrown away and created again, along with its video
+  /// renderer (see [_buildMeetingLayout] for why that freezes the app). A
+  /// global key lets Flutter carry the existing tile over instead.
+  final Map<String, GlobalKey> _filmstripTileKeys = {};
+
+  GlobalKey _filmstripTileKey(ParticipantTrack track) => _filmstripTileKeys
+      .putIfAbsent('${track.participant.identity}|${track.type.name}',
+          () => GlobalKey());
 
   Future<bool> _showExitConfirmationDialog(BuildContext context) {
     final viewModel = _livekitProviderKey.currentState?.viewModel;

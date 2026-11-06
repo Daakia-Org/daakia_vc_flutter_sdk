@@ -14,60 +14,67 @@ class LobbyRequestWidget extends StatefulWidget {
 class _LobbyRequestWidgetState extends State<LobbyRequestWidget> {
   @override
   Widget build(BuildContext context) {
-    return Visibility(
-      visible: widget.viewModel.getLobbyRequestList().isNotEmpty,
-      child: Column(
-        children: [
-          const Text(
-            'Waiting in Lobby',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 10.0),
-          ListView.builder(
-            shrinkWrap: true,
-            // Let the list take only the space it needs
-            physics: const NeverScrollableScrollPhysics(),
-            // Disable inner scrolling
-            itemCount: widget.viewModel.getLobbyRequestList().length,
-            itemBuilder: (context, index) {
-              var lobbyRequest = widget.viewModel.getLobbyRequestList()[index];
-              return ParticipantTile(
-                participant: lobbyRequest.identity,
-                isForLobby: true,
-                lobbyRequest: lobbyRequest,
-              );
-            },
-          ),
-          const SizedBox(height: 10.0),
-          Center(
-            child: TextButton(
-              onPressed: () {
-                widget.viewModel.acceptParticipant(
-                  request: widget.viewModel.getLobbyRequestList()[0],
-                  accept: true,
-                  acceptAll: true,
-                );
-              },
-              child: const Text(
-                'Accept All',
+    final requests = widget.viewModel.getLobbyRequestList();
+    if (requests.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
+    // A sliver: the participants page builds rows only as they scroll in.
+    return SliverMainAxisGroup(
+      slivers: [
+        const SliverToBoxAdapter(
+          child: Column(
+            children: [
+              Text(
+                'Waiting in Lobby',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 20.0,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-            ),
+              SizedBox(height: 10.0),
+            ],
           ),
-          const Divider(
-            color: Colors.white,
-            thickness: 1.0,
+        ),
+        SliverList.builder(
+          itemCount: requests.length,
+          itemBuilder: (context, index) {
+            var lobbyRequest = widget.viewModel.getLobbyRequestList()[index];
+            return ParticipantTile(
+              participant: lobbyRequest.identity,
+              isForLobby: true,
+              lobbyRequest: lobbyRequest,
+            );
+          },
+        ),
+        SliverToBoxAdapter(
+          child: Column(
+            children: [
+              const SizedBox(height: 10.0),
+              Center(
+                child: TextButton(
+                  onPressed: () {
+                    widget.viewModel.acceptParticipant(
+                      request: widget.viewModel.getLobbyRequestList()[0],
+                      accept: true,
+                      acceptAll: true,
+                    );
+                  },
+                  child: const Text(
+                    'Accept All',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20.0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const Divider(color: Colors.white, thickness: 1.0),
+              const SizedBox(height: 20.0),
+            ],
           ),
-          const SizedBox(height: 20.0),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
