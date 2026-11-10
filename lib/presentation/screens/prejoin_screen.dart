@@ -8,6 +8,7 @@ import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
+import 'package:daakia_vc_flutter_sdk/utils/camera_quality.dart';
 import 'package:daakia_vc_flutter_sdk/utils/device_id_provider.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -138,10 +139,15 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
   LocalVideoTrack? _videoTrack;
   MediaDevice? _selectedVideoDevice;
   MediaDevice? _selectedAudioDevice;
-  final VideoParameters _selectedVideoParameters =
-      VideoParametersPresets.h720_169;
 
   LocalAudioTrack? _audioTrack;
+
+  /// True while the meeting screen covers this one. The camera track moves
+  /// into the meeting, so the preview here stops drawing it: nobody can see
+  /// it, and on Android a renderer drawing into a texture that is never shown
+  /// can lock up every other video renderer in the app, freezing the meeting
+  /// as it opens.
+  bool _meetingCoversPreview = false;
 
   Features? features;
 
@@ -639,11 +645,10 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     }
 
     if (_enableVideo && _selectedVideoDevice != null) {
-      _videoTrack =
-          await LocalVideoTrack.createCameraTrack(CameraCaptureOptions(
-        deviceId: _selectedVideoDevice!.deviceId,
-        params: _selectedVideoParameters,
-      ));
+      final cameraQuality = await CameraQuality.resolve();
+      _videoTrack = await LocalVideoTrack.createCameraTrack(
+          cameraQuality.captureOptions(
+              deviceId: _selectedVideoDevice!.deviceId));
       await _videoTrack!.start();
     }
   }
@@ -1089,6 +1094,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     final wantedVideo = _enableVideo;
 
     Object? lastError;
+    final cameraQuality = await CameraQuality.resolve();
 
     // Two passes. The first publishes whatever the user set up on this screen.
     // If it was the media path that failed, the second drops the local mic and
@@ -1097,7 +1103,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     // often enough to get in. Being in the meeting muted beats not getting in.
     for (var attempt = 0; attempt < 2; attempt++) {
       final withoutMedia = attempt == 1;
-      final room = _buildRoom();
+      final room = _buildRoom(cameraQuality);
       // Create a Listener before connecting
       final listener = room.createListener();
 
@@ -1208,12 +1214,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
-  Room _buildRoom() {
-    var cameraEncoding = const VideoEncoding(
-      maxBitrate: 5 * 1000 * 1000,
-      maxFramerate: 30,
-    );
-
+  Room _buildRoom(CameraQuality cameraQuality) {
     var screenEncoding = const VideoEncoding(
       maxBitrate: 3 * 1000 * 1000,
       maxFramerate: 15,
@@ -1239,19 +1240,13 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
           autoGainControl: true,
           stopAudioCaptureOnMute: false,
         ),
-        defaultCameraCaptureOptions: const CameraCaptureOptions(
-            maxFrameRate: 30,
-            params: VideoParameters(
-              dimensions: VideoDimensions(1280, 720),
-            )),
+        defaultCameraCaptureOptions: cameraQuality.captureOptions(),
         defaultScreenShareCaptureOptions: const ScreenShareCaptureOptions(
             useiOSBroadcastExtension: true,
             params: VideoParameters(
               dimensions: VideoDimensionsPresets.h1080_169,
             )),
-        defaultVideoPublishOptions: VideoPublishOptions(
-          simulcast: false,
-          videoEncoding: cameraEncoding,
+        defaultVideoPublishOptions: cameraQuality.publishOptions(
           screenShareEncoding: screenEncoding,
         ),
       ),
@@ -1312,6 +1307,13 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     }
 
     final navigator = Navigator.of(context);
+    // Release the preview renderer before the meeting creates its own.
+    setState(() => _meetingCoversPreview = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) {
+      await _disposeRoom(room, listener);
+      return null;
+    }
     final result = await navigator.push<Object?>(
       MaterialPageRoute(
           builder: (_) => RoomPage(room, listener, meetingDetails,
@@ -1319,6 +1321,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
               sdkConfiguration: widget.configuration,
               joinNotice: joinedWithoutMedia ? _weakConnectionNotice : null)),
     );
+    if (mounted) setState(() => _meetingCoversPreview = false);
     if (result is MovedToLobby && mounted) return result;
     if (mounted && navigator.canPop()) {
       navigator.pop();
@@ -1596,7 +1599,8 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildPreview() {
-    final showVideo = _videoTrack != null && _enableVideo;
+    final showVideo =
+        _videoTrack != null && _enableVideo && !_meetingCoversPreview;
     return ClipRRect(
       borderRadius: BorderRadius.circular(20),
       child: ColoredBox(
@@ -1610,7 +1614,7 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
                 renderMode: VideoRenderMode.auto,
                 fit: VideoViewFit.cover,
               )
-            else
+            else if (!_meetingCoversPreview)
               _buildCameraOffPlaceholder(),
             // Scrim so the name and buttons stay readable over bright video.
             Positioned(
