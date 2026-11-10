@@ -2646,6 +2646,36 @@ class RtcViewmodel extends ChangeNotifier {
   /// The Spotlight card is folded away to a small tab.
   bool spotlightCollapsed = false;
 
+  // Grid: when nobody is sharing, everyone in equal tiles, a page at a time,
+  // instead of one big speaker with a strip. Same lifetime as Spotlight:
+  // this device only, for the rest of the meeting, and it comes back by
+  // itself when a share or the whiteboard ends.
+
+  bool _gridSelected = false;
+
+  bool get gridSelected => _gridSelected;
+
+  set gridSelected(bool value) {
+    if (value == _gridSelected) return;
+    _gridSelected = value;
+    notifyListeners();
+  }
+
+  /// Anyone, us included, is sharing.
+  bool get isAnyoneSharing => _participantTracks
+      .any((t) => t.type == ParticipantTrackType.kScreenShare);
+
+  /// Grid is offered when nothing else holds the stage: no share (same as
+  /// web's phone layout, which greys out Standard during one) and no
+  /// whiteboard.
+  bool get canChooseGrid => !isAnyoneSharing && !_isWhiteboardOpen;
+
+  /// Grid is what the screen shows right now.
+  bool get isGridActive => _gridSelected && canChooseGrid;
+
+  /// There is a layout choice to make right now.
+  bool get canChooseLayout => canChooseSpotlight || canChooseGrid;
+
   //===============================[Pin Chat]===============================
   RemoteActivityData? _pinnedPublicChat;
 

@@ -69,17 +69,20 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 Navigator.pop(context);
                 showChatBottomSheet(viewModel);
               }),
-              // Layout: only while watching someone else's share, and not
-              // while the whiteboard holds the stage (same as web).
+              // Layout: Grid or Speaker when nobody shares, Gallery or
+              // Spotlight while watching someone else's share. Hidden while
+              // you share or the whiteboard holds the stage (same as web).
               buildOption(context,
                   icon: Icons.view_quilt_outlined,
                   text: 'Layout',
-                  isVisible: viewModel.canChooseSpotlight, onTap: () {
+                  isVisible: viewModel.canChooseLayout, onTap: () {
                 final navigator = Navigator.of(context);
                 navigator.pop();
                 Utils.showAdaptiveSheet<void>(
                   navigator.context,
                   backgroundColor: Colors.transparent,
+                  // Room to scroll in landscape or on a short screen.
+                  scrollable: true,
                   builder: (_) => LayoutBottomSheet(viewModel: viewModel),
                 );
               }),
