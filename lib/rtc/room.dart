@@ -286,10 +286,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // subsequent RoomAttemptReconnectEvents for the same outage are no-ops,
   // which also prevents stacked timers from firing out of order.
   Timer? _reconnectShowDelayTimer;
-  // Safety net only, in case a reconnected/disconnected event is ever missed.
-  // LiveKit's own reconnectAttemptsExceeded disconnect is the authoritative
-  // give-up signal. Kept comfortably longer than LiveKit's worst-case backoff
-  // window (~44s across 10 attempts) plus per-attempt connection timeouts.
+  // Reconnect watchdog, see _armReconnectWatchdog.
   Timer? _reconnectFallbackTimer;
 
   // When the last reconnect attempt started. A DUPLICATE_IDENTITY disconnect
@@ -309,10 +306,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   void onReconnectStart() {
     _lastReconnectAttemptAt = DateTime.now();
+    _armReconnectWatchdog();
     // Already showing (or about to show) the banner for this outage.
     if (_isReconnecting || _reconnectShowDelayTimer != null) return;
 
-    _reconnectFallbackTimer?.cancel();
     _reconnectShowDelayTimer = Timer(const Duration(milliseconds: 800), () {
       _reconnectShowDelayTimer = null;
       if (!mounted) return;
@@ -321,15 +318,89 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         _isConnected = false;
       });
     });
+  }
 
-    _reconnectFallbackTimer = Timer(const Duration(seconds: 90), () {
-      _reconnectFallbackTimer = null;
-      if (mounted && _isReconnecting) {
-        setState(() {
-          _isReconnecting = false;
-        });
+  /// Shared start of every way the meeting ends unexpectedly. Returns false
+  /// when the ending was already handled.
+  bool _beginMeetingEnd(String? reason) {
+    _resetReconnectUiState();
+    // The "Reconnecting…" banner is drawn over the notification overlay, so
+    // leaving it up would hide the disconnect message shown below.
+    if (mounted && (_isReconnecting || _isConnected)) {
+      setState(() {
+        _isReconnecting = false;
+        _isConnected = false;
+      });
+    }
+    _isProgrammaticPop = true;
+    // Down before anything below pops the meeting, or the pop would close
+    // the prompt instead.
+    _stopInactivityWatcher();
+    DatadogDisconnectLogger.logDisconnectEvent(
+        meetingId: widget.meetingDetails.meetingUid,
+        room: widget.room,
+        reason: reason);
+    // LiveKit can report more than one disconnect for the same ending: a
+    // kick during a reconnect is followed by joinFailure from the rejoin
+    // still in flight. Handling it again would replace the message the user
+    // just got and schedule a second pop, which can close the host app's
+    // screen underneath the meeting.
+    if (_disconnectHandled) return false;
+    _disconnectHandled = true;
+    _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
+    clearMemory(_livekitProviderKey.currentState?.viewModel);
+    return true;
+  }
+
+  /// Re-armed by every reconnect attempt. LiveKit can stop retrying without
+  /// telling us: when the server drops the session (a leave such as
+  /// DUPLICATE_IDENTITY) while a full reconnect is running, the room ignores
+  /// that disconnect because it expects the reconnect to finish, and the
+  /// reconnect then gives up quietly because the engine is closed. The user is
+  /// left in a meeting that looks live but is gone. A gap this long with no
+  /// new attempt and no reconnected/disconnected event means that happened.
+  /// One attempt plus its backoff stays well under it.
+  static const _reconnectStallTimeout = Duration(seconds: 60);
+
+  void _armReconnectWatchdog() {
+    _reconnectFallbackTimer?.cancel();
+    _reconnectFallbackTimer =
+        Timer(_reconnectStallTimeout, _onReconnectStalled);
+  }
+
+  void _onReconnectStalled() {
+    _reconnectFallbackTimer = null;
+    if (!mounted || _disconnectHandled) return;
+    // connectionState alone can't be trusted here: in the stuck case it still
+    // reads connected (the abandoned rejoin left a socket open) while the
+    // engine has already shut down for good. LiveKit marks isClosed internal,
+    // but it is the only signal that the session can no longer recover.
+    // ignore: invalid_use_of_internal_member
+    final engineClosed = widget.room.engine.isClosed;
+    if (!engineClosed &&
+        widget.room.connectionState == ConnectionState.connected) {
+      // Reconnected, the event was just missed: only clear the banner.
+      if (_isReconnecting) {
+        setState(() => _isReconnecting = false);
       }
-    });
+      return;
+    }
+    DaakiaVcLogger.logWarning(
+      'Reconnect stalled, meeting ended as connection lost',
+      attributes: {
+        'meetingId': widget.meetingDetails.meetingUid,
+        'connectionState': widget.room.connectionState.name,
+        'engineClosed': engineClosed,
+        'secondsSinceReconnectAttempt': _lastReconnectAttemptAt == null
+            ? null
+            : DateTime.now().difference(_lastReconnectAttemptAt!).inSeconds,
+      },
+    );
+    if (!_beginMeetingEnd('reconnectStalled')) return;
+    // Release the camera, mic and server session now rather than when the
+    // user taps Leave. The disconnect event this sends is already handled.
+    unawaited(widget.room.disconnect());
+    _showDuplicateIdentityDialog(connectionDropped: true);
   }
 
   void onReconnectSuccess() {
@@ -439,32 +510,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // The outer null-guard that was here made the `case null` in the switch
       // unreachable — any unexpected disconnect (network drop, server kill
       // without a reason) would leave the page open and the service running.
-      _resetReconnectUiState();
-      // The "Reconnecting…" banner is drawn over the notification overlay, so
-      // leaving it up would hide the disconnect message shown below.
-      if (mounted && (_isReconnecting || _isConnected)) {
-        setState(() {
-          _isReconnecting = false;
-          _isConnected = false;
-        });
-      }
-      _isProgrammaticPop = true;
-      // Down before anything below pops the meeting, or the pop would close
-      // the prompt instead.
-      _stopInactivityWatcher();
-      DatadogDisconnectLogger.logDisconnectEvent(
-          meetingId: widget.meetingDetails.meetingUid,
-          room: widget.room,
-          reason: event.reason?.name);
-      // LiveKit can report more than one disconnect for the same ending: a
-      // kick during a reconnect is followed by joinFailure from the rejoin
-      // still in flight. Handling it again would replace the message the user
-      // just got and schedule a second pop, which can close the host app's
-      // screen underneath the meeting.
-      if (_disconnectHandled) return;
-      _disconnectHandled = true;
-      _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
-      clearMemory(_livekitProviderKey.currentState?.viewModel);
+      if (!_beginMeetingEnd(event.reason?.name)) return;
       if (_isInactivityEnd(event.reason)) {
         _finishInactivityEnd(_livekitProviderKey.currentState?.viewModel);
         return;
