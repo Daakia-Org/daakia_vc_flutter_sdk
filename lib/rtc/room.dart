@@ -218,7 +218,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       _initializeWebViewController();
       viewModel?.getWhiteboardData();
       viewModel?.getAttendanceListForParticipant();
-      viewModel?.fetchInvitedParticipants(silent: true);
+      viewModel?.onLocalMetadataChanged();
       if (viewModel?.meetingDetails.features?.isRecordingConsentAllowed() ==
           true) {
         viewModel?.checkSessionStatus(
@@ -673,8 +673,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<ParticipantMetadataUpdatedEvent>((event) {
       // Our role lives in our metadata, so a co-host change from any client
       // lands here even when we miss the makeCoHost/removeCoHost message.
+      final viewModel = _livekitProviderKey.currentState?.viewModel;
       if (event.participant is LocalParticipant) {
         _notifyWhiteboardPermissionChanged();
+        viewModel?.onLocalMetadataChanged();
+      } else {
+        // A joiner's email can arrive after they connect.
+        viewModel?.refreshInvitedParticipantFilter();
       }
       // A role change anywhere can move who watches for inactivity.
       _updateInactivityWatcher();
