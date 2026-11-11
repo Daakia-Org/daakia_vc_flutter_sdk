@@ -2,9 +2,11 @@ package io.daakia.daakia_vc_flutter_sdk
 
 import android.content.ContentValues
 import android.content.Context
+import android.media.AudioAttributes
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Environment
 import android.os.Handler
@@ -25,6 +27,9 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
     private var audioDevicesChannel: MethodChannel? = null
     private var audioDeviceEvents: EventChannel? = null
     private var audioDeviceCallback: AudioDeviceCallback? = null
+    private var flutterAssets: FlutterPlugin.FlutterAssets? = null
+    private var testSoundPlayer: MediaPlayer? = null
+    private var testSoundResult: MethodChannel.Result? = null
 
     companion object {
         // Channel of the engine that started the meeting service. Notification
@@ -48,6 +53,7 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         context = binding.applicationContext
+        flutterAssets = binding.flutterAssets
         channel = MethodChannel(binding.binaryMessenger, "io.daakia/meeting_service")
         channel!!.setMethodCallHandler(this)
 
@@ -240,6 +246,11 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
                 result.success(null)
             }
             "getAudioRoute" -> result.success(audioRouteSnapshot())
+            "playTestSound" -> playTestSound(result)
+            "stopTestSound" -> {
+                finishTestSound(completed = false)
+                result.success(null)
+            }
             "getDeviceId" -> {
                 // ANDROID_ID: unique per device + app signing key + user, and it
                 // survives a reinstall. Used only to tell this device's own
@@ -303,7 +314,58 @@ class DaakiaVcFlutterSdkPlugin : FlutterPlugin, MethodChannel.MethodCallHandler 
         return dest.absolutePath
     }
 
+    // Device test sound. Played as voice-communication audio so it takes the
+    // same route and volume as the meeting itself, and deliberately leaves the
+    // audio mode, speakerphone, communication device and audio focus alone:
+    // those belong to the live call. Replies when playback ends, with true if
+    // it played to the end.
+    private fun playTestSound(result: MethodChannel.Result) {
+        finishTestSound(completed = false)
+        val assetPath = flutterAssets?.getAssetFilePathByName(
+            "assets/sounds/device_test.m4a",
+            "daakia_vc_flutter_sdk"
+        ) ?: return result.error("TEST_SOUND", "asset lookup unavailable", null)
+        val player = MediaPlayer()
+        try {
+            player.setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            context.assets.openFd(assetPath).use { fd ->
+                player.setDataSource(fd.fileDescriptor, fd.startOffset, fd.length)
+            }
+            player.setOnCompletionListener { finishTestSound(completed = true) }
+            player.setOnErrorListener { _, _, _ ->
+                finishTestSound(completed = false)
+                true
+            }
+            player.prepare()
+            testSoundPlayer = player
+            testSoundResult = result
+            player.start()
+        } catch (e: Exception) {
+            player.release()
+            if (testSoundPlayer === player) {
+                testSoundPlayer = null
+                testSoundResult = null
+            }
+            result.error("TEST_SOUND", e.message, null)
+        }
+    }
+
+    private fun finishTestSound(completed: Boolean) {
+        val player = testSoundPlayer
+        val pending = testSoundResult
+        testSoundPlayer = null
+        testSoundResult = null
+        player?.release()
+        pending?.success(completed)
+    }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
+        finishTestSound(completed = false)
         channel?.setMethodCallHandler(null)
         stopAudioDeviceWatch()
         audioDevicesChannel?.setMethodCallHandler(null)
