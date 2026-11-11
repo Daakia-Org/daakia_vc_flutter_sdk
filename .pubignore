@@ -15,3 +15,10 @@ example/windows/flutter/generated_plugins.cmake
 
 # Local test harness (not part of the SDK)
 scripts/test_duplicate_identity.sh
+
+# .pubignore replaces .gitignore for pub, so repeat the root-level local files
+# it ignores (a root build/ from a local iOS build otherwise ships ~40 MB)
+build/
+CLAUDE.md
+graphify-out
+sentry.properties

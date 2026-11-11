@@ -9,10 +9,9 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ✅ **Android**  | ✅ **iOS**
 
 ## Latest Release
-**v4.5.2** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
-
-**Next: v4.6.0-SNAPSHOT (unreleased)** - Needs Flutter 3.41.6+ / Dart 3.11+ and Android API 24+. See the
-[CHANGELOG](CHANGELOG.md) for what's coming.
+**v4.6.0** - Needs Flutter 3.41.6+ / Dart 3.11+, Android API 24+ and compileSdk 37. See
+[CHANGELOG.md](CHANGELOG.md) for detailed release notes and the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460)
+for upgrading from v4.5.x.
 
 # How to use
 
