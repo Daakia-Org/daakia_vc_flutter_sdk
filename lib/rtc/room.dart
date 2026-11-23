@@ -833,10 +833,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.askToUnmuteMic:
+        final asker = askerLabel(remoteData.identity?.name);
         final result = viewModel?.isAudioDisconnected == true
-            ? await confirmUnmuteWithAudioOff(context)
+            ? await confirmUnmuteWithAudioOff(context,
+                requesterName: remoteData.identity?.name)
             : await context.showPermissionAskDialog(
-                "Host is asking you to turn on your mic");
+                "$asker is asking you to turn on your mic");
         if (result != true) break;
         try {
           await viewModel?.enableAudio();
@@ -848,7 +850,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.askToUnmuteCamera:
         final result = await context.showPermissionAskDialog(
-            "Host is asking you to turn on your camera");
+            "${askerLabel(remoteData.identity?.name)} is asking you to turn on "
+            "your camera");
         if (result != true) break;
         try {
           await viewModel?.enableVideo();
