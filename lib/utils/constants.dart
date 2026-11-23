@@ -22,6 +22,7 @@ class Constant {
   static const String attendanceId = "ATTENDANCE_ID";
   static const String attendanceRole = "ATTENDANCE_ROLE";
   static const String hostToken = "HOST_TOKEN";
+  static const String attendanceOwner = "ATTENDANCE_OWNER";
   static const String guestUserName = "GUEST_USER_NAME";
   static const String emailVerificationPrefix = "MEETING_EMAIL_VERIFICATION_";
   static const String deviceId = "DEVICE_ID";

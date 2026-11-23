@@ -737,7 +737,8 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
         if (await cacheData.getAttendanceId() != "" &&
-            await _cachedAttendanceMatchesJoin(cacheData)) {
+            await _cachedAttendanceMatchesJoin(cacheData) &&
+            await _savedAttendanceUsable(cacheData)) {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
             final cachedToken = await cacheData.getHostToken() ?? "";
@@ -2597,6 +2598,19 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
         cachedRole == AttendanceRole.cohost;
   }
 
+  /// Whether the attendance saved for rejoining may be reused for this join:
+  /// it must belong to the signed-in account, and the session it was made in
+  /// must still be running. Once that session has ended (status 3) the saved
+  /// attendance is dropped, or a new join would come back as co-host and skip
+  /// the password and email checks.
+  Future<bool> _savedAttendanceUsable(StorageHelper cacheData) async {
+    if (widget.basicMeetingDetails?.conferenceStatusId == 3) {
+      await cacheData.clearMeetingAttendance();
+      return false;
+    }
+    return cacheData.isAttendanceOwnedBy(widget.configuration?.userEmail);
+  }
+
   Future<bool> shouldAddAttendanceId() async {
     final cacheData = StorageHelper();
     final cachedMeetingUid = await cacheData.getMeetingUid();
@@ -2606,7 +2620,8 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     final shouldReuse = cachedMeetingUid == widget.meetingId &&
         cachedSessionUid == widget.basicMeetingDetails?.currentSessionUid &&
         cachedAttendanceId != "" &&
-        cachedAttendanceRole == AttendanceRole.cohost;
+        cachedAttendanceRole == AttendanceRole.cohost &&
+        await _savedAttendanceUsable(cacheData);
     return shouldReuse;
   }
 

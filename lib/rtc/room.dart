@@ -497,11 +497,14 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             break;
           }
         case DisconnectReason.duplicateIdentity:
+          // Another device took over this attendance.
+          _forgetSavedAttendance();
           _onDuplicateIdentity();
           break;
         case DisconnectReason.roomDeleted:
         case DisconnectReason.roomClosed:
           {
+            _forgetSavedAttendance();
             final viewModel = _livekitProviderKey.currentState?.viewModel;
             // A host ending it gets the same card as a duplicate identity;
             // the meeting closes from the card.
@@ -886,6 +889,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         storageHelper
             .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
         storageHelper.setAttendanceRole(AttendanceRole.cohost);
+        storageHelper.setAttendanceOwner(viewModel?.sdkConfiguration?.userEmail);
         storageHelper.setHostToken(remoteData.token ?? "");
         viewModel?.getAttendanceListForParticipant();
         viewModel?.fetchInvitedParticipants(silent: true);
@@ -2131,6 +2135,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           setState(() {});
         }
       } else if (event is EndMeeting) {
+        // This user ended the meeting for everyone. A plain Leave keeps it,
+        // so a co-host who steps out can come back as co-host, like web.
+        if (viewModel.endedMeetingForAll) _forgetSavedAttendance();
         if (_inactivityAutoClosed) {
           _finishInactivityEnd(viewModel);
           return;
@@ -2791,6 +2798,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   void _finishInactivityEnd(RtcViewmodel? viewModel) {
     if (_inactivityEndStarted) return;
     _inactivityEndStarted = true;
+    _forgetSavedAttendance();
     // Our own disconnect below must not show "You have left the meeting."
     _disconnectHandled = true;
     _stopInactivityWatcher();
@@ -3148,6 +3156,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     } else {
       await DaakiaMeetingService.stop();
     }
+  }
+
+  /// Drops the attendance saved for rejoining once the meeting is over or
+  /// another device has taken it over. A plain Leave, a dropped connection or
+  /// a killed app keep it, so those can rejoin on the same attendance and
+  /// role. The session check alone isn't enough: right after a meeting ends,
+  /// its details still name the ended session, so a fresh join would match it
+  /// and come back as co-host, skipping the password and email checks.
+  void _forgetSavedAttendance() {
+    unawaited(StorageHelper().clearMeetingAttendance());
   }
 
   void clearMemory(RtcViewmodel? viewModel) {
