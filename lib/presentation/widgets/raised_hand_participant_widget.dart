@@ -34,7 +34,7 @@ class _RaisedHandParticipantWidgetState
     // The live Participant is resolved too — the actions menu needs it.
     final participantsByIdentity = {
       for (final track in widget.viewModel.getParticipantList())
-        track.participant.identity: track.participant
+        track.participant.identity: track.participant,
     };
     final raisedEntries = raisedQueue
         .map((e) {
@@ -46,65 +46,85 @@ class _RaisedHandParticipantWidgetState
         .whereType<(RaisedHand, String, Participant?)>()
         .toList();
 
-    if (raisedEntries.isEmpty) return const SizedBox.shrink();
+    if (raisedEntries.isEmpty) {
+      return const SliverToBoxAdapter(child: SizedBox.shrink());
+    }
 
-    return Theme(
-      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        tilePadding: EdgeInsets.zero,
-          title: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Raised Hands',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              // 🔹 Bulk actions (host/cohost only). Outside workshop mode
-              // the menu would hold nothing but "Lower all hands", so the
-              // direct button is kept for that case — no point making the
-              // host open a dialog to reach a single action.
-              if (widget.viewModel.isHost() || widget.viewModel.isCoHost())
-                widget.viewModel.isWebinarModeEnable
-                    ? IconButton(
-                        onPressed: () => _showBulkActions(context),
-                        icon: const Icon(Icons.more_vert, color: Colors.white),
-                        iconSize: 22,
-                        visualDensity: VisualDensity.compact,
-                      )
-                    : GestureDetector(
-                        onTap: _lowerAllHands,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 4),
-                          decoration: BoxDecoration(
-                            color: Colors.red.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.redAccent),
-                          ),
-                          child: const Text(
-                            "Lower all",
-                            style: TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+    // A sliver: the participants page builds rows only as they scroll in.
+    // The header keeps the collapse arrow the old expansion tile had.
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 56),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Raised Hands',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-            ],
-          ),
-        iconColor: Colors.white,
-        collapsedIconColor: Colors.white,
 
-        children: [
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+                      // 🔹 Bulk actions (host/cohost only). Outside workshop mode
+                      // the menu would hold nothing but "Lower all hands", so the
+                      // direct button is kept for that case — no point making the
+                      // host open a dialog to reach a single action.
+                      if (widget.viewModel.isHost() ||
+                          widget.viewModel.isCoHost())
+                        widget.viewModel.isWebinarModeEnable
+                            ? IconButton(
+                                onPressed: () => _showBulkActions(context),
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.white,
+                                ),
+                                iconSize: 22,
+                                visualDensity: VisualDensity.compact,
+                              )
+                            : GestureDetector(
+                                onTap: _lowerAllHands,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Colors.redAccent),
+                                  ),
+                                  child: const Text(
+                                    "Lower all",
+                                    style: TextStyle(
+                                      color: Colors.redAccent,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => setState(() => isExpanded = !isExpanded),
+                  icon: Icon(
+                    isExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (isExpanded)
+          SliverList.builder(
             itemCount: raisedEntries.length,
             itemBuilder: (context, index) {
               final (entry, name, participant) = raisedEntries[index];
@@ -132,7 +152,9 @@ class _RaisedHandParticipantWidgetState
                             child: Text(
                               name,
                               style: const TextStyle(
-                                  color: Colors.white, fontSize: 15),
+                                color: Colors.white,
+                                fontSize: 15,
+                              ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -144,7 +166,9 @@ class _RaisedHandParticipantWidgetState
                             const SizedBox(width: 6),
                             Container(
                               padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 2),
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
                               decoration: BoxDecoration(
                                 color: Colors.white24,
                                 borderRadius: BorderRadius.circular(10),
@@ -167,16 +191,26 @@ class _RaisedHandParticipantWidgetState
                       children: [
                         // 🔹 Raised-hand visual badge (no click)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: Colors.black.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: handRaiseColor, width: 1.2),
+                            border: Border.all(
+                              color: handRaiseColor,
+                              width: 1.2,
+                            ),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              Icon(Icons.front_hand, color: handRaiseColor, size: 16),
+                              Icon(
+                                Icons.front_hand,
+                                color: handRaiseColor,
+                                size: 16,
+                              ),
                               const SizedBox(width: 4),
                               Text(
                                 "${index + 1}",
@@ -195,32 +229,39 @@ class _RaisedHandParticipantWidgetState
                         // while the participant is still in the room).
                         if (participant != null &&
                             hasRaisedHandActions(
-                                participant, widget.viewModel)) ...[
+                              participant,
+                              widget.viewModel,
+                            )) ...[
                           const SizedBox(width: 4),
                           IconButton(
                             onPressed: () => _showParticipantActions(
-                                context, participant, name),
-                            icon: const Icon(Icons.more_vert,
-                                color: Colors.white),
+                              context,
+                              participant,
+                              name,
+                            ),
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: Colors.white,
+                            ),
                             iconSize: 20,
                             visualDensity: VisualDensity.compact,
                           ),
                         ],
                       ],
-                    )
+                    ),
                   ],
                 ),
               );
             },
           ),
-        ],
-      ),
+      ],
     );
   }
 
   void _lowerAllHands() {
-    widget.viewModel
-        .sendAction(ActionModel(action: MeetingActions.stopRaiseHandAll));
+    widget.viewModel.sendAction(
+      ActionModel(action: MeetingActions.stopRaiseHandAll),
+    );
     widget.viewModel.stopHandRaisedForAll();
   }
 
@@ -246,7 +287,10 @@ class _RaisedHandParticipantWidgetState
   /// removal both confirm first, so the menu is popped before either dialog
   /// opens — hence the captured navigator.
   void _showParticipantActions(
-      BuildContext context, Participant participant, String name) {
+    BuildContext context,
+    Participant participant,
+    String name,
+  ) {
     showActionSpecsDialog(
       context: context,
       viewModel: widget.viewModel,
@@ -266,7 +310,10 @@ class _RaisedHandParticipantWidgetState
           final navigator = Navigator.of(dialogContext);
           navigator.pop();
           showRemoveParticipantConfirmDialog(
-              navigator.context, participant, widget.viewModel);
+            navigator.context,
+            participant,
+            widget.viewModel,
+          );
         },
       ),
     );
@@ -294,10 +341,7 @@ class _RaisedHandParticipantWidgetState
             ),
             TextButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text(
-                "Lower",
-                style: TextStyle(color: Colors.red),
-              ),
+              child: const Text("Lower", style: TextStyle(color: Colors.red)),
             ),
           ],
         );

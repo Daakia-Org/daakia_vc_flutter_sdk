@@ -2610,6 +2610,42 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
+  //===============================[Layout]===============================
+  // Spotlight: while watching someone else's screen share, the share stays
+  // full size with one floating card that follows whoever is talking. The
+  // choice only changes this device and lasts for the rest of the meeting,
+  // so it comes back by itself when the next share starts.
+
+  bool _spotlightSelected = false;
+
+  bool get spotlightSelected => _spotlightSelected;
+
+  set spotlightSelected(bool value) {
+    if (value == _spotlightSelected) return;
+    _spotlightSelected = value;
+    notifyListeners();
+  }
+
+  /// Someone other than us is sharing. Only one share runs at a time.
+  bool get isWatchingRemoteShare => _participantTracks.any((t) =>
+      t.type == ParticipantTrackType.kScreenShare &&
+      t.participant is RemoteParticipant);
+
+  /// Spotlight is offered while watching someone else's share, but not while
+  /// the whiteboard is open, because the whiteboard then holds the stage.
+  bool get canChooseSpotlight => isWatchingRemoteShare && !_isWhiteboardOpen;
+
+  /// Spotlight is what the screen shows right now.
+  bool get isSpotlightActive => _spotlightSelected && canChooseSpotlight;
+
+  /// Corner the Spotlight card was last dragged to (0 top-left, 1 top-right,
+  /// 2 bottom-left, 3 bottom-right), or null before the first drag. Kept for
+  /// the meeting so the next share puts the card where the user left it.
+  int? spotlightCorner;
+
+  /// The Spotlight card is folded away to a small tab.
+  bool spotlightCollapsed = false;
+
   //===============================[Pin Chat]===============================
   RemoteActivityData? _pinnedPublicChat;
 

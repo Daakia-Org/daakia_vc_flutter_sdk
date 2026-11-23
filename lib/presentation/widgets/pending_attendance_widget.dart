@@ -18,47 +18,46 @@ class _PendingAttendanceWidgetState extends State<PendingAttendanceWidget> {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Inactive Participants',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
+    // A sliver: the participants page builds rows only as they scroll in.
+    return SliverMainAxisGroup(
+      slivers: [
+        SliverToBoxAdapter(
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Inactive Participants',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  isExpanded = !isExpanded; // Toggle list visibility
-                });
-              },
-              icon: Icon(
-                isExpanded ? Icons.arrow_drop_down_sharp : Icons.arrow_right_sharp,
-                color: Colors.white,
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    isExpanded = !isExpanded; // Toggle list visibility
+                  });
+                },
+                icon: Icon(
+                  isExpanded
+                      ? Icons.arrow_drop_down_sharp
+                      : Icons.arrow_right_sharp,
+                  color: Colors.white,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
         if (isExpanded)
-          ConstrainedBox(
-            constraints: const BoxConstraints(),
-            child: ListView.builder(
-              shrinkWrap: true,
-              padding: EdgeInsets.zero, // important!
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: widget.viewModel.pendingParticipantList.length,
-              itemBuilder: (context, index) {
-                var participant = widget.viewModel.pendingParticipantList[index];
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2.0),
-                  child: CompactParticipantTile(name: participant.screenName),
-                );
-              },
-            ),
+          SliverList.builder(
+            itemCount: widget.viewModel.pendingParticipantList.length,
+            itemBuilder: (context, index) {
+              var participant = widget.viewModel.pendingParticipantList[index];
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2.0),
+                child: CompactParticipantTile(name: participant.screenName),
+              );
+            },
           ),
       ],
     );

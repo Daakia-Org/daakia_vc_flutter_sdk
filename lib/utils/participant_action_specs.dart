@@ -178,7 +178,9 @@ List<ParticipantActionSpec> buildParticipantActionSpecs({
     ParticipantActionSpec(
       icon: isPinned ? Icons.push_pin_outlined : Icons.push_pin,
       label: isPinned ? 'Unpin' : 'Pin to screen',
-      visible: true,
+      // Spotlight keeps the share on the stage, so pinning someone over it
+      // isn't offered there (same as web).
+      visible: !viewModel.isSpotlightActive,
       onTap: () {
         onDismiss();
         viewModel.pinnedParticipantId =
