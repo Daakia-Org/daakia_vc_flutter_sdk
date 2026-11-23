@@ -3771,6 +3771,7 @@ class RtcViewmodel extends ChangeNotifier {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
+    storageHelper.setAttendanceOwner(sdkConfiguration?.userEmail);
     // The host is stored as its own role so pre-join never hands a host's
     // attendance to a participant join (see _cachedAttendanceMatchesJoin).
     storageHelper.setAttendanceRole(Utils.isHost(metadata)

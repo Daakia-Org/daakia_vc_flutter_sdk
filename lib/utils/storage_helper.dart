@@ -57,6 +57,38 @@ class StorageHelper {
   Future<void> setHostToken(String? value) async => await saveData(Constant.hostToken, value ?? "");
   Future<String?> getHostToken() async => await getData(Constant.hostToken);
 
+  /// Who the saved attendance belongs to: the signed-in email the host app
+  /// passed in, or empty for someone who isn't signed in.
+  static String attendanceOwnerFor(String? userEmail) =>
+      userEmail?.trim().toLowerCase() ?? "";
+
+  Future<void> setAttendanceOwner(String? userEmail) async =>
+      await saveData(Constant.attendanceOwner, attendanceOwnerFor(userEmail));
+
+  /// Whether the saved attendance was made by [userEmail], so another account
+  /// on this device never rejoins on someone else's attendance and role.
+  Future<bool> isAttendanceOwnedBy(String? userEmail) async =>
+      (await getData(Constant.attendanceOwner) ?? "") ==
+      attendanceOwnerFor(userEmail);
+
+  /// Forgets the attendance (and co-host token) saved for rejoining. They are
+  /// kept for rejoining after a Leave, a dropped connection or a killed app;
+  /// once the meeting is over, or another device has taken the attendance, a
+  /// later join must start fresh and not come back as co-host on it.
+  Future<void> clearMeetingAttendance() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [
+      Constant.meetingUid,
+      Constant.sessionUid,
+      Constant.attendanceId,
+      Constant.attendanceRole,
+      Constant.hostToken,
+      Constant.attendanceOwner,
+    ]) {
+      await prefs.remove("$_prefix$key");
+    }
+  }
+
   Future<void> setGuestUserName(String? value) async => await saveData(Constant.guestUserName, value ?? "");
   Future<String?> getGuestUserName() async => await getData(Constant.guestUserName);
 
