@@ -1,4 +1,5 @@
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/attachment_picker_sheet.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/widgets/chat_scroll_targets.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/message_bubble.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/material.dart';
@@ -44,6 +45,7 @@ class _ChatState extends State<ChatPage>
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ChatScrollTargets _scrollTargets = ChatScrollTargets();
   final FocusNode _messageFocusNode = FocusNode();
   String? _highlightedMessageId;
 
@@ -95,29 +97,33 @@ class _ChatState extends State<ChatPage>
                         widget.viewModel.getMessageList().length - 1 - index;
                     var message =
                         widget.viewModel.getMessageList()[reversedIndex];
-                    return MessageBubble(
-                      chat: message,
-                      viewModel: widget.viewModel,
-                      isHighlighted: _highlightedMessageId == message.id,
-                      onNavigate: () {
-                        _scrollToMessageById(message.replyMessage?.id);
-                      },
-                      onEdit: () {
-                        final text = message.message ?? "";
-                        messageController.text = text;
+                    return _scrollTargets.wrap(
+                      id: message.id,
+                      index: index,
+                      child: MessageBubble(
+                        chat: message,
+                        viewModel: widget.viewModel,
+                        isHighlighted: _highlightedMessageId == message.id,
+                        onNavigate: () {
+                          _scrollToMessageById(message.replyMessage?.id);
+                        },
+                        onEdit: () {
+                          final text = message.message ?? "";
+                          messageController.text = text;
 
-                        // Wait a frame so the text field updates before selecting
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          messageController.selection = TextSelection(
-                            baseOffset: 0,
-                            extentOffset: text.length,
-                          );
-                          FocusScope.of(context)
-                              .requestFocus(FocusNode()); // clear old focus
-                          FocusScope.of(context)
-                              .requestFocus(_messageFocusNode); // open keyboard
-                        });
-                      },
+                          // Wait a frame so the text field updates before selecting
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            messageController.selection = TextSelection(
+                              baseOffset: 0,
+                              extentOffset: text.length,
+                            );
+                            FocusScope.of(context)
+                                .requestFocus(FocusNode()); // clear old focus
+                            FocusScope.of(context)
+                                .requestFocus(_messageFocusNode); // open keyboard
+                          });
+                        },
+                      ),
                     );
                   },
                 ),
@@ -239,32 +245,31 @@ class _ChatState extends State<ChatPage>
 
   /// Scrolls to a specific message by its [messageId] and highlights it temporarily.
   /// Can be used for pinned messages, reply navigation, or any message jump.
-  void _scrollToMessageById(String? messageId) {
+  Future<void> _scrollToMessageById(String? messageId) async {
     if (messageId == null) return;
     final messages = widget.viewModel.getMessageList();
     final index = messages.indexWhere((msg) => msg.id == messageId);
 
-    if (index != -1) {
-      final reversedIndex = messages.length - 1 - index;
+    if (index == -1) return;
+    // Message heights vary, so scroll until the row itself is on screen.
+    await _scrollTargets.scrollTo(
+      _scrollController,
+      id: messageId,
+      // The list is reversed: the newest message is row 0.
+      index: messages.length - 1 - index,
+    );
+    if (!mounted) return;
+    setState(() {
+      _highlightedMessageId = messageId;
+    });
 
-      setState(() {
-        _highlightedMessageId = messageId;
-      });
-
-      _scrollController.animateTo(
-        reversedIndex * 100.0, // Approximate height per item
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-
-      // Remove highlight after a short delay
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          setState(() {
-            _highlightedMessageId = null;
-          });
-        }
-      });
-    }
+    // Remove highlight after a short delay
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && _highlightedMessageId == messageId) {
+        setState(() {
+          _highlightedMessageId = null;
+        });
+      }
+    });
   }
 }
