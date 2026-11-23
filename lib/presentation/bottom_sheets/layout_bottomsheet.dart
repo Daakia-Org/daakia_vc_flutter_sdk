@@ -38,8 +38,16 @@ class LayoutBottomSheet extends StatelessWidget {
       Navigator.pop(context);
     }
 
-    final firstSelected =
-        forShare ? !viewModel.spotlightSelected : !viewModel.gridSelected;
+    final firstSelected = forShare
+        ? !viewModel.spotlightSelected
+        : !viewModel.gridSelected;
+
+    // Square previews across a landscape screen are taller than the screen,
+    // which pushed the titles and checks out of view. In landscape the cards
+    // keep a portrait-like width and the previews are shorter.
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final previewAspectRatio = isLandscape ? 4 / 3 : 1.0;
 
     return Container(
       width: double.maxFinite,
@@ -51,9 +59,7 @@ class LayoutBottomSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(width: 50, height: 5, color: Colors.white),
-            ),
+            Center(child: Container(width: 50, height: 5, color: Colors.white)),
             const SizedBox(height: 20),
             const Text(
               'Layout',
@@ -64,45 +70,56 @@ class LayoutBottomSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: forShare
-                      ? _LayoutCard(
-                          title: 'Gallery',
-                          subtitle: '+ Content',
-                          selected: firstSelected,
-                          preview: const _GalleryPreview(),
-                          onTap: () => choose(false),
-                        )
-                      : _LayoutCard(
-                          title: 'Speaker',
-                          subtitle: 'Who is talking, big',
-                          selected: firstSelected,
-                          preview: const _SpeakerPreview(),
-                          onTap: () => choose(false),
-                        ),
+            Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: isLandscape ? 480 : double.infinity,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: forShare
-                      ? _LayoutCard(
-                          title: 'Spotlight',
-                          subtitle: 'Speaker + Content',
-                          selected: !firstSelected,
-                          preview: const _SpotlightPreview(),
-                          onTap: () => choose(true),
-                        )
-                      : _LayoutCard(
-                          title: 'Grid',
-                          subtitle: 'Everyone, equal tiles',
-                          selected: !firstSelected,
-                          preview: const _GridPreview(),
-                          onTap: () => choose(true),
-                        ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: forShare
+                          ? _LayoutCard(
+                              title: 'Gallery',
+                              subtitle: '+ Content',
+                              selected: firstSelected,
+                              previewAspectRatio: previewAspectRatio,
+                              preview: const _GalleryPreview(),
+                              onTap: () => choose(false),
+                            )
+                          : _LayoutCard(
+                              title: 'Speaker',
+                              subtitle: 'Who is talking, big',
+                              selected: firstSelected,
+                              previewAspectRatio: previewAspectRatio,
+                              preview: const _SpeakerPreview(),
+                              onTap: () => choose(false),
+                            ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: forShare
+                          ? _LayoutCard(
+                              title: 'Spotlight',
+                              subtitle: 'Speaker + Content',
+                              selected: !firstSelected,
+                              previewAspectRatio: previewAspectRatio,
+                              preview: const _SpotlightPreview(),
+                              onTap: () => choose(true),
+                            )
+                          : _LayoutCard(
+                              title: 'Grid',
+                              subtitle: 'Everyone, equal tiles',
+                              selected: !firstSelected,
+                              previewAspectRatio: previewAspectRatio,
+                              preview: const _GridPreview(),
+                              onTap: () => choose(true),
+                            ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ],
         ),
@@ -118,8 +135,10 @@ class _LayoutCard extends StatelessWidget {
     required this.selected,
     required this.preview,
     required this.onTap,
+    this.previewAspectRatio = 1,
   });
 
+  final double previewAspectRatio;
   final String title;
   final String subtitle;
   final bool selected;
@@ -147,7 +166,7 @@ class _LayoutCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AspectRatio(aspectRatio: 1, child: preview),
+              AspectRatio(aspectRatio: previewAspectRatio, child: preview),
               const SizedBox(height: 10),
               Row(
                 children: [
