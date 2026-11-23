@@ -100,6 +100,12 @@ abstract class RestClient {
     @Body() Map<String, dynamic> body,
   );
 
+  /// Tells the server someone left the lobby before being admitted.
+  @POST("v2.0/rtc/meeting/participant/leaveWaiting")
+  Future<BaseResponse<dynamic>> leaveWaitingLobby(
+    @Body() Map<String, dynamic> body,
+  );
+
   @POST("v2.0/rtc/meeting/update/participantEmail")
   Future<BaseResponse> updateParticipantEmail(
     @Header("x-self-identity") String selfIdentity,
