@@ -46,9 +46,6 @@ class Constant {
   /// platforms fire their warnings within the same tick.
   static const int meetingEndCheckIntervalMs = 10000;
 
-  /// How long the end-of-meeting warning message stays up.
-  static const int meetingEndWarningDurationMs = 12000;
-
   /// How long the end-of-meeting chime keeps looping. Closing the countdown
   /// card stops it sooner; the short message never does.
   static const int meetingEndWarningSoundDurationMs = 60000;
