@@ -26,6 +26,7 @@ import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/spotlight_card.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/meeting_grid.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
@@ -1683,14 +1684,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                       body: SafeArea(
                         child: Container(
                           color: Colors.black,
-                          // Rebuilds only when Spotlight turns on or off,
-                          // not on every meeting-state change.
-                          child: Selector<RtcViewmodel, bool>(
-                            selector: (_, vm) => vm.isSpotlightActive,
-                            builder: (context, spotlight, _) =>
+                          // Rebuilds only when the layout changes, not on
+                          // every meeting-state change.
+                          child: Selector<RtcViewmodel, (bool, bool)>(
+                            selector: (_, vm) =>
+                                (vm.isSpotlightActive, vm.isGridActive),
+                            builder: (context, layout, _) =>
                                 _buildMeetingLayout(context,
                                     isLandscape: _isLandscape(context),
-                                    spotlight: spotlight),
+                                    spotlight: layout.$1,
+                                    grid: layout.$2),
                           ),
                         ),
                       ),
@@ -1777,7 +1780,15 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// The keyed children keep each piece matched even when the filmstrip
   /// comes and goes.
   Widget _buildMeetingLayout(BuildContext context,
-      {required bool isLandscape, bool spotlight = false}) {
+      {required bool isLandscape,
+      bool spotlight = false,
+      bool grid = false}) {
+    // The meeting state hears about a share or the whiteboard a moment after
+    // this page does; never put the grid over either in between.
+    grid = grid &&
+        !_isWhiteBoardEnabled &&
+        !participantTracks
+            .any((t) => t.type == ParticipantTrackType.kScreenShare);
     // Keep the rail a proportion of the width so it stays a thumbnail strip on
     // a phone and doesn't balloon into a second stage on a tablet.
     final railWidth =
@@ -1792,10 +1803,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         Expanded(
           key: const ValueKey('stage'),
           child: _buildStageArea(context,
-              isLandscape: isLandscape, spotlight: spotlight),
+              isLandscape: isLandscape,
+              spotlight: spotlight,
+              grid: grid),
         ),
-        // Spotlight replaces the filmstrip with one floating card.
-        if (_hasFilmstrip && !spotlight)
+        // Spotlight replaces the filmstrip with one floating card; the grid
+        // has its own strip for whoever doesn't fit.
+        if (_hasFilmstrip && !spotlight && !grid)
           SizedBox(
             key: const ValueKey('filmstrip'),
             width: isLandscape ? railWidth : null,
@@ -1830,7 +1844,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   /// floats on top of it. Overlays are anchored to the stage (not the whole
   /// screen) so they never drift over the filmstrip or the controls rail.
   Widget _buildStageArea(BuildContext context,
-      {required bool isLandscape, bool spotlight = false}) {
+      {required bool isLandscape,
+      bool spotlight = false,
+      bool grid = false}) {
     // The stage is the stack's only non-positioned child and StackFit.expand
     // makes it fill: a Stack sizes itself from its non-positioned children, so
     // if every child were positioned (or the only unpositioned one collapsed to
@@ -1838,7 +1854,13 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     return Stack(
       fit: StackFit.expand,
       children: [
-        _buildStage(),
+        grid
+            ? MeetingGrid(
+                key: const ValueKey('grid'),
+                room: widget.room,
+                tracks: participantTracks,
+              )
+            : _buildStage(),
         // Spotlight's floating speaker card. Under the status pills and
         // reactions so those stay visible above it.
         if (spotlight &&

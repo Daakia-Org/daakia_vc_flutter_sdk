@@ -27,6 +27,19 @@ class NoVideoWidget extends StatelessWidget {
           fit: BoxFit.cover,
           width: getSize(isSpeaker),
           height: getSize(isSpeaker),
+          // Initials until the picture has downloaded, then a quick fade,
+          // so the circle is never empty.
+          loadingBuilder: (context, child, progress) => progress == null
+              ? child
+              : _buildInitials(initials, bgColor),
+          frameBuilder: (context, child, frame, wasSynchronouslyLoaded) =>
+              wasSynchronouslyLoaded
+                  ? child
+                  : AnimatedOpacity(
+                      opacity: frame == null ? 0 : 1,
+                      duration: const Duration(milliseconds: 200),
+                      child: child,
+                    ),
           errorBuilder: (_, __, ___) => _buildInitials(initials, bgColor),
         ),
       )

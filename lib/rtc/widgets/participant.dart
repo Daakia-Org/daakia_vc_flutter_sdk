@@ -14,6 +14,7 @@ import 'annotation_overlay.dart';
 import 'no_video.dart';
 import 'participant_info.dart';
 import 'participant_quick_actions.dart';
+import 'video_with_placeholder.dart';
 
 abstract class ParticipantWidget extends StatefulWidget {
   // Convenience method to return relevant widget for participant
@@ -165,6 +166,20 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
   // Widgets to show above the info bar
   List<Widget> extraWidgets(bool isScreenShare) => [];
 
+  /// The camera (or share) is on but its video hasn't reached us yet, for
+  /// example while subscribing. Shown as loading rather than as camera off.
+  bool get _isVideoOnTheWay =>
+      videoPublication != null &&
+      videoPublication!.muted == false &&
+      activeVideoTrack == null;
+
+  Widget _loadingPlaceholder() => VideoLoadingPlaceholder(
+        name: widget.participant.name,
+        userAvatar: Utils.extractUserAvatar(widget.participant.metadata),
+        isSpeaker: widget.isSpeaker,
+        isScreenShare: isScreenShare,
+      );
+
   @override
   Widget build(BuildContext ctx) {
     final viewModel = Provider.of<RtcViewmodel>(context);
@@ -204,19 +219,23 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                 viewModel,
               ),
               child: activeVideoTrack != null && !activeVideoTrack!.muted
-                  ? VideoTrackRenderer(
-                      renderMode: VideoRenderMode.auto,
-                      activeVideoTrack!,
-                      fit: VideoViewFit.contain,
+                  // Keyed by track so a new track gets a fresh renderer and
+                  // shows the loading state again until its first frame.
+                  ? VideoWithPlaceholder(
+                      key: ValueKey(activeVideoTrack!.sid),
+                      track: activeVideoTrack!,
+                      placeholder: _loadingPlaceholder(),
                     )
-                  : isScreenShare && videoPublication != null
-                      ? const _ScreenSharePausedWidget()
-                      : NoVideoWidget(
-                          name: widget.participant.name,
-                          userAvatar: Utils.extractUserAvatar(
-                              widget.participant.metadata),
-                          isSpeaker: widget.isSpeaker,
-                        ),
+                  : _isVideoOnTheWay
+                      ? _loadingPlaceholder()
+                      : isScreenShare && videoPublication != null
+                          ? const _ScreenSharePausedWidget()
+                          : NoVideoWidget(
+                              name: widget.participant.name,
+                              userAvatar: Utils.extractUserAvatar(
+                                  widget.participant.metadata),
+                              isSpeaker: widget.isSpeaker,
+                            ),
             ),
             // Annotation overlay — renders remote strokes + drawing input on screen-share tiles
             if (isScreenShare && videoPublication != null)

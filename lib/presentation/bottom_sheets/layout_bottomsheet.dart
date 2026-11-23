@@ -3,9 +3,14 @@ import 'package:flutter/material.dart';
 import '../../resources/colors/color.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 
-/// Layout picker shown while watching someone else's screen share. Same names
-/// as web: "Gallery + Content" keeps everyone in a strip under the share,
+/// Layout picker.
+///
+/// While watching someone else's screen share it offers web's two share
+/// layouts: "Gallery + Content" keeps everyone in a strip under the share,
 /// "Spotlight" (Speaker + Content) shows one card that follows the talker.
+///
+/// When nobody shares it offers "Speaker" (one big speaker with a strip,
+/// the default) and "Grid" (everyone in equal tiles, a page at a time).
 class LayoutBottomSheet extends StatelessWidget {
   const LayoutBottomSheet({required this.viewModel, super.key});
 
@@ -13,10 +18,28 @@ class LayoutBottomSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    void choose(bool spotlight) {
-      viewModel.spotlightSelected = spotlight;
+    // Rebuilds in place for the switch; also follows the choices changing
+    // underneath it (a share starting while the sheet is open).
+    return ListenableBuilder(
+      listenable: viewModel,
+      builder: (context, _) => _build(context),
+    );
+  }
+
+  Widget _build(BuildContext context) {
+    final forShare = viewModel.canChooseSpotlight;
+
+    void choose(bool second) {
+      if (forShare) {
+        viewModel.spotlightSelected = second;
+      } else {
+        viewModel.gridSelected = second;
+      }
       Navigator.pop(context);
     }
+
+    final firstSelected =
+        forShare ? !viewModel.spotlightSelected : !viewModel.gridSelected;
 
     return Container(
       width: double.maxFinite,
@@ -45,23 +68,39 @@ class LayoutBottomSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: _LayoutCard(
-                    title: 'Gallery',
-                    subtitle: '+ Content',
-                    selected: !viewModel.spotlightSelected,
-                    preview: const _GalleryPreview(),
-                    onTap: () => choose(false),
-                  ),
+                  child: forShare
+                      ? _LayoutCard(
+                          title: 'Gallery',
+                          subtitle: '+ Content',
+                          selected: firstSelected,
+                          preview: const _GalleryPreview(),
+                          onTap: () => choose(false),
+                        )
+                      : _LayoutCard(
+                          title: 'Speaker',
+                          subtitle: 'Who is talking, big',
+                          selected: firstSelected,
+                          preview: const _SpeakerPreview(),
+                          onTap: () => choose(false),
+                        ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: _LayoutCard(
-                    title: 'Spotlight',
-                    subtitle: 'Speaker + Content',
-                    selected: viewModel.spotlightSelected,
-                    preview: const _SpotlightPreview(),
-                    onTap: () => choose(true),
-                  ),
+                  child: forShare
+                      ? _LayoutCard(
+                          title: 'Spotlight',
+                          subtitle: 'Speaker + Content',
+                          selected: !firstSelected,
+                          preview: const _SpotlightPreview(),
+                          onTap: () => choose(true),
+                        )
+                      : _LayoutCard(
+                          title: 'Grid',
+                          subtitle: 'Everyone, equal tiles',
+                          selected: !firstSelected,
+                          preview: const _GridPreview(),
+                          onTap: () => choose(true),
+                        ),
                 ),
               ],
             ),
@@ -108,7 +147,7 @@ class _LayoutCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AspectRatio(aspectRatio: 3 / 4, child: preview),
+              AspectRatio(aspectRatio: 1, child: preview),
               const SizedBox(height: 10),
               Row(
                 children: [
@@ -223,6 +262,88 @@ class _SpotlightPreview extends StatelessWidget {
               ),
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One big speaker, a strip of people under it.
+class _SpeakerPreview extends StatelessWidget {
+  const _SpeakerPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                color: _tileColor,
+                border: Border.all(color: Colors.blue, width: 1.5),
+              ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          SizedBox(
+            height: 22,
+            child: Row(
+              children: [
+                for (var i = 0; i < 3; i++) ...[
+                  if (i > 0) const SizedBox(width: 3),
+                  Expanded(child: Container(color: _tileColor)),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Six equal tiles, two across.
+class _GridPreview extends StatelessWidget {
+  const _GridPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          for (var row = 0; row < 3; row++) ...[
+            if (row > 0) const SizedBox(height: 3),
+            Expanded(
+              child: Row(
+                children: [
+                  for (var col = 0; col < 2; col++) ...[
+                    if (col > 0) const SizedBox(width: 3),
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: _tileColor,
+                          border: row == 0 && col == 0
+                              ? Border.all(color: Colors.blue, width: 1.5)
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
