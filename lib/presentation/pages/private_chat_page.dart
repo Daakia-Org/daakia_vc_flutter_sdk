@@ -8,6 +8,7 @@ import '../../events/rtc_events.dart';
 import '../../utils/constants.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
+import '../widgets/chat_scroll_targets.dart';
 import '../widgets/edit_preview_widget.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/pinned_message_widget.dart';
@@ -69,6 +70,7 @@ class PrivateChantState extends State<PrivateChatPage>
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ChatScrollTargets _scrollTargets = ChatScrollTargets();
   final FocusNode _messageFocusNode = FocusNode();
   String? _highlightedMessageId;
 
@@ -245,30 +247,34 @@ class PrivateChantState extends State<PrivateChatPage>
             var message = widget.viewModel
                 .getPrivateChatForParticipant(widget.viewModel
                     .getPrivateChatIdentity())[reversedIndex];
-            return MessageBubble(
-              chat: message,
-              viewModel: widget.viewModel,
-              isPrivateChat: true,
-              isHighlighted: _highlightedMessageId == message.id,
-              onNavigate: () {
-                _scrollToMessageById(message.replyMessage?.id);
-              },
-              onEdit: () {
-                final text = message.message ?? "";
-                messageController.text = text;
+            return _scrollTargets.wrap(
+              id: message.id,
+              index: index,
+              child: MessageBubble(
+                chat: message,
+                viewModel: widget.viewModel,
+                isPrivateChat: true,
+                isHighlighted: _highlightedMessageId == message.id,
+                onNavigate: () {
+                  _scrollToMessageById(message.replyMessage?.id);
+                },
+                onEdit: () {
+                  final text = message.message ?? "";
+                  messageController.text = text;
 
-                // Wait a frame so the text field updates before selecting
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  messageController.selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: text.length,
-                  );
-                  FocusScope.of(context).requestFocus(
-                      FocusNode()); // clear old focus
-                  FocusScope.of(context).requestFocus(
-                      _messageFocusNode); // open keyboard
-                });
-              },
+                  // Wait a frame so the text field updates before selecting
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    messageController.selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: text.length,
+                    );
+                    FocusScope.of(context).requestFocus(
+                        FocusNode()); // clear old focus
+                    FocusScope.of(context).requestFocus(
+                        _messageFocusNode); // open keyboard
+                  });
+                },
+              ),
             );
           },
         ),
@@ -397,33 +403,32 @@ class PrivateChantState extends State<PrivateChatPage>
 
   /// Scrolls to a specific message by its [messageId] and highlights it temporarily.
   /// Can be used for pinned messages, reply navigation, or any message jump.
-  void _scrollToMessageById(String? messageId) {
+  Future<void> _scrollToMessageById(String? messageId) async {
     if (messageId == null) return;
     final messages = widget.viewModel.getPrivateChatForParticipant(
         widget.viewModel.getPrivateChatIdentity());
     final index = messages.indexWhere((msg) => msg.id == messageId);
 
-    if (index != -1) {
-      final reversedIndex = messages.length - 1 - index;
+    if (index == -1) return;
+    // Message heights vary, so scroll until the row itself is on screen.
+    await _scrollTargets.scrollTo(
+      _scrollController,
+      id: messageId,
+      // The list is reversed: the newest message is row 0.
+      index: messages.length - 1 - index,
+    );
+    if (!mounted) return;
+    setState(() {
+      _highlightedMessageId = messageId;
+    });
 
-      setState(() {
-        _highlightedMessageId = messageId;
-      });
-
-      _scrollController.animateTo(
-        reversedIndex * 100.0, // Approximate height per item
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-
-      // Remove highlight after a short delay
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          setState(() {
-            _highlightedMessageId = null;
-          });
-        }
-      });
-    }
+    // Remove highlight after a short delay
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && _highlightedMessageId == messageId) {
+        setState(() {
+          _highlightedMessageId = null;
+        });
+      }
+    });
   }
 }

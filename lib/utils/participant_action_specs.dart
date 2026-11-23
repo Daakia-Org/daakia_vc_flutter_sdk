@@ -375,23 +375,27 @@ List<ParticipantActionSpec> buildRaisedHandBulkActionSpecs({
   final bool canManage =
       Utils.isHost(myMetadata) || Utils.isCoHost(myMetadata);
 
+  // Once every raised hand has a permission, the action flips to revoking it.
+  final bool allMic = viewModel.allRaisedHandsHaveMic;
+  final bool allVideo = viewModel.allRaisedHandsHaveVideo;
+
   return [
     ParticipantActionSpec(
-      icon: Icons.mic,
-      label: 'Allow mic for all',
+      icon: allMic ? Icons.mic_off : Icons.mic,
+      label: allMic ? 'Revoke mic for all' : 'Allow mic for all',
       visible: canManage && viewModel.isAudioModeEnable,
       onTap: () {
         onDismiss();
-        viewModel.allowMicForRaisedHands();
+        viewModel.setMicForRaisedHands(!allMic);
       },
     ),
     ParticipantActionSpec(
-      icon: Icons.videocam,
-      label: 'Allow video for all',
+      icon: allVideo ? Icons.videocam_off : Icons.videocam,
+      label: allVideo ? 'Revoke video for all' : 'Allow video for all',
       visible: canManage && viewModel.isVideoModeEnable,
       onTap: () {
         onDismiss();
-        viewModel.allowVideoForRaisedHands();
+        viewModel.setVideoForRaisedHands(!allVideo);
       },
     ),
     ParticipantActionSpec(

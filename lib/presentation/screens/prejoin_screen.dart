@@ -1358,9 +1358,26 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
     if (mounted && _movedToLobby) setState(() => _movedToLobby = false);
   }
 
+  /// Whether this meeting lets someone waiting in the lobby leave it, like
+  /// web. Without it the waiting screen has no Leave button.
+  bool get _canLeaveLobbyWait =>
+      widget.basicMeetingDetails?.waitingLeaveEnabled == 1;
+
   void _leaveLobbyWait() {
     isNeedToCancelApiCall = true;
     _participantTimer?.cancel();
+    // Tell the server, so hosts stop seeing this person in the lobby. Sent
+    // without waiting: leaving must not depend on the network.
+    if (lobbyRequestId.isNotEmpty) {
+      final body = <String, dynamic>{
+        "meeting_uid": widget.meetingId,
+        "display_name": name.trim(),
+        "lobby_request_id": lobbyRequestId,
+      };
+      final email = _verifiedEmail?.email ?? _participantEmail;
+      if (email != null && email.isNotEmpty) body["email"] = email;
+      unawaited(apiClient.leaveWaitingLobby(body).then((_) {}, onError: (_) {}));
+    }
     if (Navigator.of(context).canPop()) Navigator.of(context).pop();
   }
 
@@ -2185,13 +2202,15 @@ class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
                     style: TextStyle(
                         color: Colors.black54, fontSize: 14, height: 1.4),
                   ),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: OutlinedButton(
-                      onPressed: _leaveLobbyWait,
-                      child: const Text("Leave"),
+                  if (_canLeaveLobbyWait) ...[
+                    const SizedBox(height: 24),
+                    Center(
+                      child: OutlinedButton(
+                        onPressed: _leaveLobbyWait,
+                        child: const Text("Leave"),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),

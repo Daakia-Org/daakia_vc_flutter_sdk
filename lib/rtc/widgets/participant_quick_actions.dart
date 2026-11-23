@@ -19,10 +19,10 @@ void showParticipantQuickActions(
   Utils.showAdaptiveSheet<void>(
     context,
     backgroundColor: Colors.transparent,
-    forceFullHeight: true,
     // The identity header plus a role-dependent action list can outgrow a
-    // landscape phone.
-    scrollable: true,
+    // landscape phone, so the sheet may take the full height and the action
+    // list scrolls under a fixed header that holds the close button.
+    forceFullHeight: true,
     builder: (_) => ParticipantQuickActionsSheet(
       participant: participant,
       viewModel: viewModel,
@@ -141,7 +141,7 @@ class _ParticipantQuickActionsSheetState
             // Shown prominently so the host can confirm the right person
             // even if tiles shifted while the sheet was opening.
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 14, 4, 10),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -212,23 +212,35 @@ class _ParticipantQuickActionsSheetState
                       ],
                     ),
                   ),
+                  IconButton(
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 ],
               ),
             ),
 
             const Divider(color: Colors.white12, height: 1),
-            const SizedBox(height: 4),
 
             // ── Actions ─────────────────────────────────────────────────────
-            for (final action in actions)
-              _ActionTile(
-                icon: action.icon,
-                label: action.label,
-                visible: action.visible,
-                onTap: action.onTap,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final action in actions)
+                      _ActionTile(
+                        icon: action.icon,
+                        label: action.label,
+                        visible: action.visible,
+                        onTap: action.onTap,
+                      ),
+                  ],
+                ),
               ),
-
-            const SizedBox(height: 8),
+            ),
           ],
         ),
       ),

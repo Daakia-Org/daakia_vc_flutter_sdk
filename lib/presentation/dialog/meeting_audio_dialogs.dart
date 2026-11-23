@@ -30,16 +30,28 @@ Future<bool> showAudioDisconnectedPrompt(BuildContext context) {
   );
 }
 
-/// The host's "turn on your mic" request, while audio is disconnected here.
+/// A host's or co-host's "turn on your mic" request, while audio is
+/// disconnected here. [requesterName] is who asked, when known.
 /// Resolves to true when the user agreed to reconnect and unmute.
-Future<bool> confirmUnmuteWithAudioOff(BuildContext context) {
+Future<bool> confirmUnmuteWithAudioOff(
+  BuildContext context, {
+  String? requesterName,
+}) {
   return showLeaveConfirmationDialog(
     context,
-    title: 'The host is asking you to unmute',
-    message: 'Your audio is disconnected on this device.',
-    confirmLabel: 'Reconnect audio & unmute',
+    title: '${askerLabel(requesterName)} is asking you to turn on your mic',
+    message: 'Your audio is disconnected on this device. Reconnect it to '
+        'unmute.',
+    confirmLabel: 'Reconnect & unmute',
     icon: Icons.mic_rounded,
     accentColor: themeColor,
     cancelLabel: 'Not now',
   );
+}
+
+/// Names who sent a request, falling back to "The host" when the sender's
+/// name isn't known.
+String askerLabel(String? name) {
+  final trimmed = name?.trim() ?? '';
+  return trimmed.isEmpty ? 'The host' : trimmed;
 }

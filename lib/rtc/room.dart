@@ -842,10 +842,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.askToUnmuteMic:
+        final asker = askerLabel(remoteData.identity?.name);
         final result = viewModel?.isAudioDisconnected == true
-            ? await confirmUnmuteWithAudioOff(context)
+            ? await confirmUnmuteWithAudioOff(context,
+                requesterName: remoteData.identity?.name)
             : await context.showPermissionAskDialog(
-                "Host is asking you to turn on your mic");
+                "$asker is asking you to turn on your mic");
         if (result != true) break;
         try {
           await viewModel?.enableAudio();
@@ -857,7 +859,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.askToUnmuteCamera:
         final result = await context.showPermissionAskDialog(
-            "Host is asking you to turn on your camera");
+            "${askerLabel(remoteData.identity?.name)} is asking you to turn on "
+            "your camera");
         if (result != true) break;
         try {
           await viewModel?.enableVideo();
@@ -2955,6 +2958,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   void _handleMeetingEndingSoon(
       RtcViewmodel? viewModel, MeetingEndingSoon event) {
     if (!mounted || viewModel == null) return;
+    // A meeting that stays open past its scheduled end (paid plans without
+    // auto end) isn't ending, so it gets no chime and no warning, like web.
+    if (!viewModel.meetingClosesAtScheduledEnd()) return;
 
     final tier = event.minutesRemaining;
     final isExtendLeader =
@@ -2984,21 +2990,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (event.isFinalWarning && viewModel.shouldPlayMeetingEndSound()) {
       unawaited(_playMeetingEndWarningSound());
     }
-    // Only a meeting that really closes at zero gets the countdown card; one
-    // that stays open keeps the message, as a countdown to nothing would tell
-    // everyone something untrue.
-    if (viewModel.meetingClosesAtScheduledEnd()) {
-      _showMeetingEndingNotice();
-      return;
-    }
-    // The chime is not tied to this message: the notice goes away on its own
-    // timeout or whenever any later notice replaces it, which would cut the
-    // sound short. It runs out on its own cutoff instead.
-    showSnackBar(
-      message: "Meeting will end in $tier minutes.",
-      duration:
-          const Duration(milliseconds: Constant.meetingEndWarningDurationMs),
-    );
+    _showMeetingEndingNotice();
   }
 
   /// Moves the end time out and re-arms the warnings against it.

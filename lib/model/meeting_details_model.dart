@@ -33,6 +33,10 @@ class MeetingDetailsModel {
   /// email with a one-time code before joining.
   int? emailVerificationRequired;
 
+  /// 1 when someone waiting in the lobby may leave it with a Leave button,
+  /// which tells the server they left.
+  int? waitingLeaveEnabled;
+
   MeetingDetailsModel(
       {this.eventMode,
         this.eventType,
@@ -62,6 +66,7 @@ class MeetingDetailsModel {
         this.meetingId,
         this.hostPinVerificationRequired,
         this.emailVerificationRequired,
+        this.waitingLeaveEnabled,
       });
 
   MeetingDetailsModel.fromJson(Map<String, dynamic> json) {
@@ -103,6 +108,7 @@ class MeetingDetailsModel {
         JsonParser.toFlagInt(json['host_pin_verification_required']);
     emailVerificationRequired =
         JsonParser.toFlagInt(json['email_verification_required']);
+    waitingLeaveEnabled = JsonParser.toFlagInt(json['waiting_leave_enabled']);
   }
 
   Map<String, dynamic> toJson() {
@@ -141,6 +147,7 @@ class MeetingDetailsModel {
     data['meeting_id'] = meetingId;
     data['host_pin_verification_required'] = hostPinVerificationRequired;
     data['email_verification_required'] = emailVerificationRequired;
+    data['waiting_leave_enabled'] = waitingLeaveEnabled;
     return data;
   }
 }

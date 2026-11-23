@@ -3458,43 +3458,64 @@ class RtcViewmodel extends ChangeNotifier {
         .toList();
   }
 
-  /// Grants workshop-mode mic permission to everyone who currently has their
-  /// hand raised. Hosts/co-hosts and anyone already granted are skipped, so
-  /// this only fires the calls that actually change something.
-  void allowMicForRaisedHands() {
-    final targets = _raisedHandParticipants
-        .where((participant) =>
-            !Utils.isHost(participant.metadata) &&
-            !Utils.isCoHost(participant.metadata) &&
-            !Utils.isMicEnabled(participant.attributes))
+  /// Raised hands whose workshop-mode media permission a moderator can
+  /// change: hosts and co-hosts always have it, so they are left out.
+  List<Participant> get _raisedHandPermissionTargets => _raisedHandParticipants
+      .where((participant) =>
+          !Utils.isHost(participant.metadata) &&
+          !Utils.isCoHost(participant.metadata))
+      .toList();
+
+  /// Whether everyone with a raised hand already has mic permission, so the
+  /// bulk action should offer to revoke it instead, like web.
+  bool get allRaisedHandsHaveMic {
+    final targets = _raisedHandPermissionTargets;
+    return targets.isNotEmpty &&
+        targets.every((p) => Utils.isMicEnabled(p.attributes));
+  }
+
+  /// Video counterpart of [allRaisedHandsHaveMic].
+  bool get allRaisedHandsHaveVideo {
+    final targets = _raisedHandPermissionTargets;
+    return targets.isNotEmpty &&
+        targets.every((p) => Utils.isVideoEnabled(p.attributes));
+  }
+
+  /// Grants or revokes workshop-mode mic permission for everyone who currently
+  /// has their hand raised. Anyone already in the requested state is skipped,
+  /// so this only fires the calls that actually change something.
+  void setMicForRaisedHands(bool allow) {
+    final targets = _raisedHandPermissionTargets
+        .where((p) => Utils.isMicEnabled(p.attributes) != allow)
         .toList();
 
     if (targets.isEmpty) {
-      sendMessageToUI("All raised hands already have mic permission");
+      sendMessageToUI(allow
+          ? "All raised hands already have mic permission"
+          : "No raised hand has mic permission");
       return;
     }
 
     for (final participant in targets) {
-      updateAudioPermissionForParticipant(participant.identity, true);
+      updateAudioPermissionForParticipant(participant.identity, allow);
     }
   }
 
-  /// Video counterpart of [allowMicForRaisedHands].
-  void allowVideoForRaisedHands() {
-    final targets = _raisedHandParticipants
-        .where((participant) =>
-            !Utils.isHost(participant.metadata) &&
-            !Utils.isCoHost(participant.metadata) &&
-            !Utils.isVideoEnabled(participant.attributes))
+  /// Video counterpart of [setMicForRaisedHands].
+  void setVideoForRaisedHands(bool allow) {
+    final targets = _raisedHandPermissionTargets
+        .where((p) => Utils.isVideoEnabled(p.attributes) != allow)
         .toList();
 
     if (targets.isEmpty) {
-      sendMessageToUI("All raised hands already have video permission");
+      sendMessageToUI(allow
+          ? "All raised hands already have video permission"
+          : "No raised hand has video permission");
       return;
     }
 
     for (final participant in targets) {
-      updateVideoPermissionForParticipant(participant.identity, true);
+      updateVideoPermissionForParticipant(participant.identity, allow);
     }
   }
 
