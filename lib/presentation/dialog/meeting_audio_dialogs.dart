@@ -49,6 +49,23 @@ Future<bool> confirmUnmuteWithAudioOff(
   );
 }
 
+/// Workshop mode: a host or co-host allowed the mic while audio is
+/// disconnected here, so the user can't be heard yet. A dialog rather than a
+/// toast, because a toast is missed on another page (chat, participants).
+/// Resolves to true when the user chose to reconnect and unmute.
+Future<bool> confirmMicGrantedWithAudioOff(BuildContext context) {
+  return showLeaveConfirmationDialog(
+    context,
+    title: 'You can now use your mic',
+    message: 'Your audio is disconnected on this device. Reconnect it to '
+        'unmute.',
+    confirmLabel: 'Reconnect & unmute',
+    icon: Icons.mic_rounded,
+    accentColor: themeColor,
+    cancelLabel: 'Not now',
+  );
+}
+
 /// Names who sent a request, falling back to "The host" when the sender's
 /// name isn't known.
 String askerLabel(String? name) {
