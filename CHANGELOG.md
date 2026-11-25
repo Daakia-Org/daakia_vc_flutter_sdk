@@ -243,11 +243,8 @@
 
 ### 📦 Dependency Updates
 - Dart SDK: `^3.5.3` → `^3.8.0`
-- `flutter_webrtc`: `^1.1.0` → `^1.4.0`
-- `connectivity_plus`: `^6.1.5` → `^7.0.0`
-- `device_info_plus`: `^11.5.0` → `^12.2.0`
-- `datadog_flutter_plugin`: `^2.13.1` → `^2.16.1`
-- Added: `image_picker: ^1.1.2`
+- Upgraded to the **latest library versions**. If your app uses older versions of the same packages, update
+  them to the latest to resolve any conflict.
 
 ---
 
