@@ -22,3 +22,5 @@ build/
 CLAUDE.md
 graphify-out
 sentry.properties
+example/dev_defaults.json
+test/
