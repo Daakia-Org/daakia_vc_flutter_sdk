@@ -21,6 +21,10 @@ After upgrading, run:
 flutter clean && flutter pub get
 ```
 
+The video engine includes a prebuilt native library that is downloaded from github.com the first time the
+app is built, then reused from the build cache. Build machines (including CI) need internet access to
+github.com for that first build.
+
 ### 2. Android
 
 Raise `minSdk` and `compileSdk` in `android/app/build.gradle` (or `build.gradle.kts`):
