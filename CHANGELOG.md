@@ -15,6 +15,10 @@
 - **Builds need internet access.** The video engine includes a prebuilt native library that is downloaded
   from github.com the first time the app is built, then reused from the build cache. Build machines without
   internet access, or behind a firewall that blocks github.com, can't build the app.
+- **Host app setup.** Android needs newer build tools (Android Gradle Plugin 8.11.1, Kotlin 2.2.20, Gradle
+  8.14 and JDK 17 are known to work). iOS needs an `NSLocationWhenInUseUsageDescription` purpose string, and
+  apps built with the iOS 27 SDK must adopt the UIScene life cycle, which moves the screen-sharing setup in
+  `AppDelegate`. See the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
 
 ### 🚀 New Features
 - **Live Whiteboard Collaboration** — Collaborate on the whiteboard live from mobile, with host controls.
@@ -96,7 +100,8 @@
 - **Participant actions:** The quick actions sheet has a close button and scrolls in landscape.
 - **Meeting extension:** Extend is offered once per meeting, like web, including after rejoining or when
   someone extended while you were on the pre-join page.
-- **Dependencies:** `dio` ^5.10.0, `timezone` ^0.9.0.
+- **Dependencies:** Updated to their latest versions. If your app uses older versions of the same packages,
+  update them to the latest to resolve any conflict (see the [Migration Guide](doc/MigrationGuide.md#5-dependency-conflicts-in-your-app)).
 
 ### 🐞 Bug Fixes
 - **Android meeting service:**

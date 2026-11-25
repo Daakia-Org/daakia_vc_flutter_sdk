@@ -145,6 +145,10 @@ All of the following entries **must** be present in your `Info.plist`. Apple wil
   <key>NSPhotoLibraryUsageDescription</key>
   <string>$(PRODUCT_NAME) accesses your photo library to share images in the conference chat</string>
 
+  <!-- Required: a bundled file picker references location APIs; the SDK never asks for location -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>This app does not use your location.</string>
+
   <!-- Required: keep audio running when app is backgrounded -->
   <key>UIBackgroundModes</key>
   <array>
