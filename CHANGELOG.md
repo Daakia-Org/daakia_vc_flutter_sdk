@@ -1,8 +1,7 @@
 # CHANGELOG
 
-## v4.6.0-SNAPSHOT – Unreleased
+## v4.6.0 – (2026-11)
 
-> **Snapshot, not released yet.** The final version number and date are set when this is published.
 > Requires **Flutter 3.41.6+ (Dart SDK ^3.11.0)**, **Android minSdk 24** and **compileSdk 37**. After upgrading, run `flutter clean && flutter pub get`.
 
 ### ⚠️ Migration
@@ -13,6 +12,13 @@
 - **Dependencies updated to their latest versions.** The newer plugins need Flutter 3.41.6+, Dart 3.11+,
   Android minSdk 24 and Android compileSdk 37 (raise both in your app if they are lower). Older versions of
   the same packages in your app may conflict; upgrade them to their latest versions. See the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
+- **Builds need internet access.** The video engine includes a prebuilt native library that is downloaded
+  from github.com the first time the app is built, then reused from the build cache. Build machines without
+  internet access, or behind a firewall that blocks github.com, can't build the app.
+- **Host app setup.** Android needs newer build tools (Android Gradle Plugin 8.11.1, Kotlin 2.2.20, Gradle
+  8.14 and JDK 17 are known to work). iOS needs an `NSLocationWhenInUseUsageDescription` purpose string, and
+  apps built with the iOS 27 SDK must adopt the UIScene life cycle, which moves the screen-sharing setup in
+  `AppDelegate`. See the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
 
 ### 🚀 New Features
 - **Live Whiteboard Collaboration** — Collaborate on the whiteboard live from mobile, with host controls.
@@ -32,6 +38,39 @@
 - **Mic and Audio Output Feedback** — The mic button shows a spinner while switching, is dimmed with a
   "Reconnecting…" message during reconnects, and shows a message if the switch fails.
 - **Remove Participant Confirmation** — Hosts confirm before removing a participant.
+- **Leave and End Confirmations** — Clearer confirmations for leaving and for ending the meeting for everyone,
+  and a moderator's Leave now asks for confirmation too.
+- **Whiteboard Export and Close** — Exported PNG/SVG files are saved to the device's Downloads folder, and users
+  who can manage the whiteboard get a close button that confirms before closing it for everyone.
+- **Inactive Meeting Prompt** — When nobody has their mic, camera or screen share on for the meeting's
+  configured idle time, one person is asked "Still there?" with a 2-minute countdown. If nobody answers, the
+  meeting closes, the same as on web, and people are shown that it ended due to inactivity.
+- **Spotlight Layout** — While someone shares their screen, More → Layout switches between *Gallery + Content*
+  and *Spotlight*. Spotlight keeps the share full size with one floating card that follows whoever is talking;
+  drag the card to any corner or hide it. The shared screen and the presenter's tile are labelled "Presenting".
+- **Grid Layout** — When nobody is sharing, More → Layout offers *Grid* next to *Speaker* (still the default).
+  Up to six people fill the screen in equal tiles and everyone else sits in a scrolling strip (a rail on the
+  right in landscape). Someone in the strip who starts talking moves into the grid. Pinning someone from Grid
+  switches to Speaker with them pinned.
+- **Video Loading State** — Tiles show a shimmer with the person's picture or initials until their video
+  arrives, then the video fades in.
+- **Host Leave Handover** — When a host or co-host leaves while others are still in the meeting, they're told
+  how many people remain. If only participants remain, they can pick a co-host (with search) before leaving.
+- **Meeting Ended Notice** — When the host ends the meeting for everyone, participants see a "Meeting Ended"
+  card with a short countdown instead of a brief message.
+- **Disconnect Audio** — From the speaker button, a device can stay in the meeting with no audio in or out, for
+  example a second device in the same room. An "Audio off" chip shows while it's disconnected, and reconnecting
+  brings audio back with the mic muted. If the mic is allowed in workshop mode while audio is off, a dialog
+  offers to reconnect and unmute.
+- **Move to Lobby** — In lobby-mode meetings, hosts and co-hosts can send a participant (on mobile or web) back
+  to the lobby to wait for admission again. Declined join requests show a clear dialog, waiting requests appear
+  in a banner that groups several people instead of a blocking popup, and hosts see a lobby count.
+- **Email Verification** — Meetings that require it ask participants to verify their email with a one-time code
+  on the pre-join page. A verified email is remembered for the meeting.
+- **Pre-Join Mic Check** — A live mic level on the pre-join page, and a warning and "Allow" banner when mic or
+  camera access is missing. Turning the preview mic off releases the microphone.
+- **Chat Attachment Download** — File attachments in chat get a download button when attachment download is
+  enabled. Android saves to Downloads; iOS opens the share sheet.
 
 ### 🧩 Improvements
 - **Audio routing:** Wired and USB-C headsets are detected like Bluetooth ones, Earpiece is hidden while a
@@ -41,10 +80,28 @@
 - **Audio output picker:** Updates at once and ignores taps on the current output.
 - **Diagnostics:** Added audio diagnostics logging (`audio_diag`). Sentry noise is reduced (no info logs or
   reconnect attempts, only bad-response API errors), and backend type changes are reported.
-- **Resilience:** Type changes in the meeting details payload are tolerated, and API connection errors name the
-  likely cause.
+- **Resilience:** Type changes in the meeting details payload are tolerated, feature and permission flags are
+  accepted as either `true`/`false` or `1`/`0`, and API connection errors name the likely cause.
 - **Chat:** The unread badge is anchored to the chat tab label.
-- **Dependencies:** `dio` ^5.10.0, `timezone` ^0.9.0.
+- **Participants Not Joined:** Invitees joining and leaving are reported, so the list stays up to date.
+- **Recording chimes:** The recording start/stop sounds come from the server configuration and are cached on
+  the device, with built-in sounds as the fallback.
+- **Reactions:** The reaction panel is compact and evenly spaced in portrait and landscape.
+- **Camera quality:** Each camera is sent in three sizes (up to 720p), so viewers receive one that fits their
+  tile and weak connections don't have to pull full-size video. Camera upload drops from up to 5 Mbps to about
+  2.4 Mbps. Android phones with about 3 GB of RAM or less capture at 540p / 24 fps.
+- **Large meetings:** Fewer screen refreshes, and the participants list builds rows as they scroll into view.
+- **Messages while reconnecting:** Chat and other messages sent while reconnecting are delivered once the
+  connection is back, with the right sender name.
+- **Room notices:** Notices (mute, permission changes, recording, captions…) show on top of every page, such as
+  chat or participants, and their action button shows the right label.
+- **Mic and camera prompts:** "Turn on your mic/camera" prompts name who asked.
+- **Raised hands:** The menu offers "Revoke mic/video for all" once everyone has it.
+- **Participant actions:** The quick actions sheet has a close button and scrolls in landscape.
+- **Meeting extension:** Extend is offered once per meeting, like web, including after rejoining or when
+  someone extended while you were on the pre-join page.
+- **Dependencies:** Updated to their latest versions. If your app uses older versions of the same packages,
+  update them to the latest to resolve any conflict (see the [Migration Guide](doc/MigrationGuide.md#5-dependency-conflicts-in-your-app)).
 
 ### 🐞 Bug Fixes
 - **Android meeting service:**
@@ -53,7 +110,11 @@
   - It doesn't start if the meeting was stopped during the permission check.
   - Notification actions now go only to the app instance that started the meeting.
 - **Reconnects:** "Connection Lost" is now shown when a reconnect replaces the user's own session. Only the
-  first disconnect event is handled, and the reconnecting banner is cleared when the meeting ends.
+  first disconnect event is handled, and the reconnecting banner is cleared when the meeting ends. If
+  reconnecting stops making progress for 60 seconds (for example the server ended the session during a
+  rejoin), the meeting ends with "Connection Lost" instead of staying on screen with no audio.
+- **Android freezes:** The app no longer freezes when the phone is rotated during a screen share, or right
+  after joining with the camera on.
 - **Back button:** Now closes the open sheet or page instead of leaving the meeting.
 - **Keyboard:**
   - Pre-join: tapping outside the fields closes the keyboard.
@@ -64,8 +125,40 @@
   - Host email/PIN verification works in landscape and with the keyboard open.
   - Host mic/camera locks are respected.
   - The password is kept on rotation.
+  - The Join button keeps working if the device is rotated while joining.
 - **Meeting end:** Participants can rejoin after a meeting is extended, and `end_date` is used for the meeting
-  end time.
+  end time. Meetings that stay open past their end time no longer play the end-of-meeting chime or show the
+  warning.
+- **Permissions:** All SDK permission requests are queued. A quick double-tap on the mic or camera button no
+  longer throws, a granted permission no longer toggles the device twice, and a request open in the host app
+  is waited for instead of failing.
+- **Rejoining in a different role:** A device that hosted and then rejoined as a participant no longer reuses
+  the host's session, which made the two kick each other out. After a meeting ends, joining it again from the
+  same device no longer comes back as co-host or skips the password and email checks.
+- **Whiteboard:**
+  - iOS: exporting an image no longer replaces the board until rejoining.
+  - Android: Insert image now opens a picker, and cancelling it is treated as a cancel.
+  - The reactions strip no longer blocks taps on the board's top-right edge, including the export dialog's
+    close button.
+- **Rotation:** Bottom sheets resize when the device is rotated, the participant menu scrolls and can be
+  closed, and the chat pages fit landscape and stay usable while typing.
+- **Recording:**
+  - Android: the app no longer crashes when the recording chime can't be downloaded (offline, or the sound
+    host can't be reached).
+  - With recording consent on, the recording starts once everyone agrees, whoever agrees last (including a
+    participant or someone on web).
+  - People who join or rejoin while a meeting is already recording no longer get the consent popup.
+  - The consent list leaves out people who have left the meeting.
+- **Chat history:** Restored chat history keeps the "Edited" label, and deleted messages stay deleted. History
+  sent from mobile now carries both states for web too.
+- **Chat:** Jumping to a pinned or replied message lands on that message, in public and private chat.
+- **Mic and camera:** A message is shown when turning on the mic or camera fails, including after accepting a
+  host's request to turn it on.
+- **Crashes:**
+  - iOS: fixed a rare crash when a video tile is removed while its first frame is being drawn.
+  - Tapping **Open** on a saved transcript's message after closing the transcript screen no longer crashes.
+  - Double-tapping **Remove** in the remove-participant confirmation no longer crashes.
+- **Error responses:** A failed list request with an empty `data` object no longer fails to parse.
 - **Layout:** The screen-share request dialog and bottom sheets stay within short screens. All participant roles
   are shown, and the duplicate Rename option is removed.
 
@@ -150,11 +243,8 @@
 
 ### 📦 Dependency Updates
 - Dart SDK: `^3.5.3` → `^3.8.0`
-- `flutter_webrtc`: `^1.1.0` → `^1.4.0`
-- `connectivity_plus`: `^6.1.5` → `^7.0.0`
-- `device_info_plus`: `^11.5.0` → `^12.2.0`
-- `datadog_flutter_plugin`: `^2.13.1` → `^2.16.1`
-- Added: `image_picker: ^1.1.2`
+- Upgraded to the **latest library versions**. If your app uses older versions of the same packages, update
+  them to the latest to resolve any conflict.
 
 ---
 
