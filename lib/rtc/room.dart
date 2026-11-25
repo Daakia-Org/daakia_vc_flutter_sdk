@@ -1103,14 +1103,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       case MeetingActions.allowMicPermission:
         viewModel?.isMicPermissionGranted = true;
         // Granted while audio is disconnected: they can't be heard until they
-        // reconnect, so say so and offer it right here.
+        // reconnect, so ask right away, over whatever page is open.
         if (viewModel?.isAudioDisconnected == true) {
-          showSnackBar(
-            message:
-                "Your mic permission has been granted. Reconnect audio to speak.",
-            actionText: "Reconnect",
-            actionCallBack: () => viewModel?.joinAudio(),
-          );
+          final reconnect = await confirmMicGrantedWithAudioOff(context);
+          // The permission may have been revoked while the dialog was open.
+          if (!reconnect || viewModel?.isMicPermissionGranted != true) break;
+          try {
+            await viewModel?.enableAudio();
+          } catch (_) {
+            showSnackBar(
+                message: "Couldn't turn on your microphone. Try again.");
+          }
         } else {
           showSnackBar(message: "Your mic permission has been granted");
         }
