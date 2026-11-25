@@ -21,7 +21,7 @@ dependencies:
   json_annotation: ^4.12.0
   dio: ^5.11.1
   loading_btn: ^1.0.3
-  livekit_client: ^2.13.2
+  livekit_client: ^2.14.0
   pretty_dio_logger: ^1.4.0
 
   permission_handler: ^13.0.2
