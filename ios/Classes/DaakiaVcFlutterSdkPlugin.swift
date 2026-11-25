@@ -28,8 +28,8 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
             registerInterruptionObserver()
             result(nil)
         case "stopMeetingService":
-            // Let LiveKit / WebRTC manage teardown — we don't force-deactivate here
-            // because WebRTC's internal ref-counting will handle it on disconnect.
+            // Let the video engine manage teardown — we don't force-deactivate here
+            // because its internal ref-counting will handle it on disconnect.
             unregisterInterruptionObserver()
             result(nil)
         case "getAudioRoute":
@@ -75,9 +75,9 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
     }
 
     // Activates the audio session. Returns true on success, false if still interrupted.
-    // When force=false (the default), skips reconfiguration if LiveKit has already
+    // When force=false (the default), skips reconfiguration if the video engine has already
     // set the session to .playAndRecord — reconfiguring mid-capture disrupts the
-    // WebRTC audio pipeline and causes the mic to go silent despite appearing unmuted.
+    // engine's audio pipeline and causes the mic to go silent despite appearing unmuted.
     // Set force=true only when recovering from a phone-call interruption, where the
     // session must be explicitly reclaimed.
     @discardableResult
@@ -136,8 +136,8 @@ public class DaakiaVcFlutterSdkPlugin: NSObject, FlutterPlugin {
 
     // Called by iOS when a phone call (or other audio interruption) begins or ends.
     // On `.ended` we reactivate AVAudioSession and tell Flutter so it can restart
-    // the LiveKit microphone track — without this, WebRTC never resumes capturing
-    // even though the track is still "enabled" from LiveKit's perspective.
+    // the microphone track — without this, the video engine never resumes capturing
+    // even though the track is still "enabled" from its perspective.
     @objc private func handleAudioInterruption(_ notification: Notification) {
         guard let info = notification.userInfo,
               let typeValue = info[AVAudioSessionInterruptionTypeKey] as? UInt,
