@@ -4,10 +4,12 @@ import 'dart:io';
 import 'package:daakia_vc_flutter_sdk/model/features.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details_model.dart';
+import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/model/rtc_data.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/meeting_manager.dart';
-import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
+import 'package:daakia_vc_flutter_sdk/utils/camera_quality.dart';
+import 'package:daakia_vc_flutter_sdk/utils/device_id_provider.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -18,11 +20,23 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../../api/injection.dart';
 import '../../model/daakia_meeting_configuration.dart';
+import '../../model/meeting_status_model.dart';
 import '../../presentation/bottom_sheets/duplicate_identity_bottomsheet.dart';
+import '../../presentation/dialog/host_verification_dialog.dart';
+import '../../presentation/dialog/join_failure_dialog.dart';
+import '../../presentation/dialog/lobby_dialogs.dart';
+import '../../presentation/dialog/media_permission_dialog.dart';
+import '../../presentation/widgets/email_verification_card.dart';
+import '../../presentation/widgets/mic_level_indicator.dart';
 import '../../resources/colors/color.dart';
+import '../../rtc/audio_routing.dart';
 import '../../rtc/room.dart';
+import '../../service/daakia_vc_logger.dart';
+import '../../utils/join_failure.dart';
+import '../../utils/meeting_end_time.dart';
 import '../../utils/name_input_formatter.dart';
 import '../../utils/utils.dart';
+import '../../utils/permission_request.dart';
 
 @protected
 class PreJoinScreen extends StatefulWidget {
@@ -48,7 +62,7 @@ class PreJoinScreen extends StatefulWidget {
   }
 }
 
-class _PreJoinState extends State<PreJoinScreen> {
+class _PreJoinState extends State<PreJoinScreen> with WidgetsBindingObserver {
   bool isHostVerified = false;
   String hostToken = "";
 
@@ -57,24 +71,66 @@ class _PreJoinState extends State<PreJoinScreen> {
   var name = "";
   var password = "";
   String? _participantEmail;
+  bool _joinAsGuest = false;
+  String _guestEmail = "";
 
   var _obscurePassword = true;
 
-  var alertMessage = 'Please check your audio/video settings';
+  static const _defaultAlertMessage =
+      'Check your camera and mic before you join.';
+
+  var alertMessage = _defaultAlertMessage;
   var isRejected = false;
 
   var isLoading = false;
   var isNeedToCancelApiCall = false;
+
+  /// Set while waiting to be admitted again after a host moved this
+  /// participant from the meeting to the lobby.
+  var _movedToLobby = false;
+
+  /// Keeps the Join button's state (and its spinner) when rotation swaps the
+  /// portrait and landscape bodies. Without it the button is rebuilt idle mid-
+  /// join, and the stop callback held by the join flow points at a disposed
+  /// button.
+  final _joinButtonKey = GlobalKey();
+
+  /// The email verification card, so a blocked join can scroll it into view.
+  final _emailCardKey = GlobalKey();
+
+  /// Set when the email card already shows the reason a join or password
+  /// check was refused, so no snackbar repeats it. With the keyboard up in
+  /// landscape, a snackbar would cover the email field it points to.
+  bool _emailErrorShownInline = false;
   var _enableAudio = false;
   var _enableVideo = false;
 
   var _isCoHostVerified = false;
 
+  /// Email verification for meetings with `email_verification_required`;
+  /// null when the meeting doesn't need it.
+  EmailVerificationController? _emailVerification;
+
+  /// Set when the server refused a join or advanced password for a missing
+  /// verified email, so even a logged-in user is asked to verify.
+  bool _forceEmailVerification = false;
+
   TextEditingController? _nameController;
+  // Rotation swaps the portrait/landscape trees and remounts the fields, so
+  // they need controllers to keep what was typed in sync with [password] /
+  // [_guestEmail].
+  final _passwordController = TextEditingController();
+  final _guestEmailController = TextEditingController();
   bool _isNameEditable = true;
   bool _autoJoinStarted = false;
   String _skipJoinErrorMessage = "";
   bool _initialMediaStateResolved = false;
+
+  // Meeting-level mic/camera locks (webinar/workshop mode). Fetched before the
+  // user can join so a participant can't walk in publishing media the host has
+  // switched off; room.dart re-checks and enforces after the connect.
+  bool _isMicDisabledByHost = false;
+  bool _isCameraDisabledByHost = false;
 
   //============== RTC ===============
   StreamSubscription? _subscription;
@@ -83,10 +139,15 @@ class _PreJoinState extends State<PreJoinScreen> {
   LocalVideoTrack? _videoTrack;
   MediaDevice? _selectedVideoDevice;
   MediaDevice? _selectedAudioDevice;
-  final VideoParameters _selectedVideoParameters =
-      VideoParametersPresets.h720_169;
 
   LocalAudioTrack? _audioTrack;
+
+  /// True while the meeting screen covers this one. The camera track moves
+  /// into the meeting, so the preview here stops drawing it: nobody can see
+  /// it, and on Android a renderer drawing into a texture that is never shown
+  /// can lock up every other video renderer in the app, freezing the meeting
+  /// as it opens.
+  bool _meetingCoversPreview = false;
 
   Features? features;
 
@@ -94,18 +155,31 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void initState() {
+    WidgetsBinding.instance.addObserver(this);
+    clearLiveKitTokenUnlessFor(widget.meetingId);
     _subscription =
         Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
     unawaited(_initializeMediaState());
     setUserName();
+    if (widget.basicMeetingDetails?.emailVerificationRequired == 1) {
+      _emailVerification = EmailVerificationController(
+        meetingUid: widget.meetingId,
+        onVerified: _onEmailVerified,
+      );
+      unawaited(_emailVerification!.restoreSaved());
+    }
     // Schedule verifyCoHost after widget is built
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await verifyCoHost();
       if (!mounted) return;
+      // Prejoin only asks isMeetingEnded(); the warning schedule belongs to the
+      // meeting screen, so no scheduler is started here.
       meetingManager = MeetingManager(
-          endDate: getMeetingEndDate(),
-          endMeetingCallBack: (event) {},
-          context: context);
+          endDate: getMeetingEndDate(), endMeetingCallBack: (event) {});
+      // Awaited: skip-prejoin joins straight away, and joining with the mic on
+      // is exactly what the host controls are supposed to prevent.
+      await _fetchHostMediaRestrictions();
+      if (!mounted) return;
       unawaited(_startAutoJoinIfRequired());
     });
     super.initState();
@@ -121,7 +195,92 @@ class _PreJoinState extends State<PreJoinScreen> {
   bool get _shouldBypassParticipantChecks =>
       _isCoHostVerified || _isConfiguredCoHost;
 
+  // Host and co-host are never subject to the participant mic/camera locks.
+  bool get _isPrivilegedUser => widget.isHost || _shouldBypassParticipantChecks;
+
+  // Guest join is only offered when the meeting is password-protected and the
+  // backend has enabled it for this meeting via meeting_config.is_guest_mode.
+  bool get _isGuestModeAvailable =>
+      widget.basicMeetingDetails?.meetingConfig?.isGuestMode == 1 &&
+      (widget.basicMeetingDetails?.isStandardPassword == true ||
+          widget.basicMeetingDetails?.isCommonPassword == true);
+
+  // The host app passes the user's login token as hostToken; it is empty when
+  // nobody is logged in. A logged-in user joins with their account email.
+  bool get _isLoggedIn =>
+      widget.configuration?.vcConfig?.hostToken?.isNotEmpty == true;
+
+  /// Whether this participant must verify an email before joining: the
+  /// meeting asks for it, they aren't host or co-host, and they aren't logged
+  /// in (or the server rejected the login).
+  bool get _needsEmailVerification =>
+      _emailVerification != null &&
+      !widget.isHost &&
+      !_shouldBypassParticipantChecks &&
+      (!_isLoggedIn || _forceEmailVerification);
+
+  bool get _isEmailVerificationPending =>
+      _needsEmailVerification && _emailVerification?.isVerified != true;
+
+  /// The verified email and token to send, or null when none applies.
+  ({String email, String token})? get _verifiedEmail {
+    final verification = _emailVerification;
+    if (!_needsEmailVerification || verification?.isVerified != true) {
+      return null;
+    }
+    return (
+      email: verification!.verifiedEmail!,
+      token: verification.emailToken!,
+    );
+  }
+
+  void _onEmailVerified(String email) {
+    if (!mounted) return;
+    setState(() {
+      // The guest and password flows see the same email.
+      if (_guestEmail.isEmpty) {
+        _guestEmail = email;
+        _guestEmailController.text = email;
+      }
+    });
+  }
+
+  /// The server wants a (new) verified email: drop the saved one and show the
+  /// verification step again.
+  void _requireEmailVerificationAgain(String? message) {
+    final verification = _emailVerification;
+    if (verification == null) return;
+    _participantTimer?.cancel();
+    _emailErrorShownInline = true;
+    unawaited(verification.reset(message: message));
+    if (mounted) {
+      setState(() => _forceEmailVerification = true);
+      _scrollEmailCardIntoView();
+    }
+  }
+
+  /// Join was tapped before the email was verified: say so in the card and
+  /// bring the card into view.
+  void _promptEmailVerification() {
+    _emailVerification
+        ?.showError("Please verify your email to join this meeting");
+    _scrollEmailCardIntoView();
+  }
+
+  void _scrollEmailCardIntoView() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final cardContext = _emailCardKey.currentContext;
+      if (cardContext == null || !cardContext.mounted) return;
+      Scrollable.ensureVisible(
+        cardContext,
+        duration: const Duration(milliseconds: 250),
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      );
+    });
+  }
+
   Future<void> _initializeMediaState() async {
+    await _refreshPermissionState();
     try {
       final devices = await Hardware.instance.enumerateDevices();
       if (!mounted) return;
@@ -141,8 +300,12 @@ class _PreJoinState extends State<PreJoinScreen> {
     final canEnableVideo =
         _shouldEnableVideoByDefault && await _hasPermission(Permission.camera);
 
-    _enableAudio = canEnableAudio && _selectedAudioDevice != null;
-    _enableVideo = canEnableVideo && _selectedVideoDevice != null;
+    _enableAudio = canEnableAudio &&
+        _selectedAudioDevice != null &&
+        !_isMicDisabledByHost;
+    _enableVideo = canEnableVideo &&
+        _selectedVideoDevice != null &&
+        !_isCameraDisabledByHost;
 
     if (_enableAudio) {
       try {
@@ -163,9 +326,125 @@ class _PreJoinState extends State<PreJoinScreen> {
     }
   }
 
+  /// Reads the meeting's host-control state so the prejoin toggles match what
+  /// the participant will actually be allowed to do in the meeting.
+  ///
+  /// `x-self-identity` is a LiveKit participant identity, which doesn't exist
+  /// yet at this point — the host-control states are meeting-level, so an empty
+  /// identity is enough to read them. Any failure leaves the toggles untouched
+  /// rather than locking the user out of their own mic; the room enforces the
+  /// same states again right after joining.
+  Future<void> _fetchHostMediaRestrictions() async {
+    if (_isPrivilegedUser) return;
+
+    await networkRequestHandler(
+      apiCall: () => apiClient.getHostControls("", widget.meetingId),
+      onSuccess: (data) {
+        if (data == null) return;
+        _isMicDisabledByHost = data.audioPermission;
+        _isCameraDisabledByHost = data.videoPermission;
+      },
+      onError: (_) {},
+    );
+
+    await _applyHostMediaRestrictions();
+  }
+
+  Future<void> _applyHostMediaRestrictions() async {
+    if (_isMicDisabledByHost && _enableAudio) {
+      await _setEnableAudio(false);
+    }
+    if (!mounted) return;
+    if (_isCameraDisabledByHost && _enableVideo) {
+      await _setEnableVideo(false);
+    }
+    if (mounted) setState(() {});
+  }
+
+  bool get _isDefaultAlertSuppressed =>
+      alertMessage == _defaultAlertMessage &&
+      _hostMediaRestrictionMessage != null;
+
+  /// Explains the locked toggles, so a participant doesn't read a greyed-out
+  /// mic as a broken device.
+  String? get _hostMediaRestrictionMessage {
+    if (_isMicDisabledByHost && _isCameraDisabledByHost) {
+      return "The host has disabled the microphone and camera for participants. "
+          "You can still join and ask the host to unlock them.";
+    }
+    if (_isMicDisabledByHost) {
+      return "The host has disabled the microphone for participants.";
+    }
+    if (_isCameraDisabledByHost) {
+      return "The host has disabled the camera for participants.";
+    }
+    return null;
+  }
+
   Future<bool> _hasPermission(Permission permission) async {
     final status = await permission.status;
     return status.isGranted || status.isLimited;
+  }
+
+  // Mic/camera access not granted yet (never asked, denied, or turned off in
+  // Settings). Shown up front on the toggles and in a banner, so the user
+  // isn't left to find out by tapping.
+  bool _micPermissionMissing = false;
+  bool _cameraPermissionMissing = false;
+
+  bool get _showMicPermissionWarning =>
+      _micPermissionMissing && !_isMicDisabledByHost;
+  bool get _showCameraPermissionWarning =>
+      _cameraPermissionMissing && !_isCameraDisabledByHost;
+
+  Future<void> _refreshPermissionState() async {
+    final mic = await _hasPermission(Permission.microphone);
+    final camera = await _hasPermission(Permission.camera);
+    if (!mounted) return;
+    if (mic == !_micPermissionMissing && camera == !_cameraPermissionMissing) {
+      return;
+    }
+    setState(() {
+      _micPermissionMissing = !mic;
+      _cameraPermissionMissing = !camera;
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have just granted (or revoked) access in Settings.
+    if (state == AppLifecycleState.resumed) unawaited(_refreshPermissionState());
+  }
+
+  /// The banner's "Allow" action: asks for whatever is missing and turns on
+  /// what was granted, since that's what the user was trying to do.
+  Future<void> _requestMissingPermissions() async {
+    if (_showMicPermissionWarning &&
+        await _ensureMediaPermission(context, MediaPermission.microphone)) {
+      _enableAudio = true;
+      await _setEnableAudio(true);
+    }
+    if (!mounted) return;
+    if (_showCameraPermissionWarning &&
+        await _ensureMediaPermission(context, MediaPermission.camera)) {
+      _enableVideo = true;
+      await _setEnableVideo(true);
+    }
+    await _refreshPermissionState();
+  }
+
+  String? get _permissionWarningMessage {
+    if (_showMicPermissionWarning && _showCameraPermissionWarning) {
+      return 'Allow microphone and camera access so others can hear and see '
+          'you.';
+    }
+    if (_showMicPermissionWarning) {
+      return 'Allow microphone access so others can hear you.';
+    }
+    if (_showCameraPermissionWarning) {
+      return 'Allow camera access so others can see you.';
+    }
+    return null;
   }
 
   Future<void> _startAutoJoinIfRequired() async {
@@ -229,6 +508,9 @@ class _PreJoinState extends State<PreJoinScreen> {
         (widget.configuration?.vcConfig?.hostToken?.isEmpty ?? true)) {
       return "Host verification is required. Please provide host token in configuration or disable skipPreJoinPage.";
     }
+    if (_isEmailVerificationPending) {
+      return "This meeting requires email verification. Disable skipPreJoinPage for this meeting type.";
+    }
     if (!widget.isHost &&
         widget.basicMeetingDetails?.isStandardPassword == true) {
       return "This meeting requires password verification. Disable skipPreJoinPage for this meeting type.";
@@ -274,9 +556,13 @@ class _PreJoinState extends State<PreJoinScreen> {
     return resolvedName;
   }
 
+  /// See `RtcViewmodel.getMeetingEndDate`. The extension must be included:
+  /// reading only `end_date`, which the extend API never moves, told anyone
+  /// rejoining an extended meeting that it had already ended.
   String? getMeetingEndDate() {
-    return widget.basicMeetingDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        widget.basicMeetingDetails?.endDate;
+    return MeetingEndTime.from(widget.basicMeetingDetails)
+        .end
+        ?.toIso8601String();
   }
 
   void _loadDevices(List<MediaDevice> devices,
@@ -302,14 +588,13 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   Future<void> _setEnableAudio(bool value) async {
-    _enableAudio = value;
+    _enableAudio = value && !_isMicDisabledByHost;
     if (_enableAudio) {
       await _changeLocalAudioTrack();
     } else {
-      await _audioTrack?.stop();
-      _audioTrack = null;
+      await _stopPreviewMic();
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _changeLocalAudioTrack() async {
@@ -324,18 +609,33 @@ class _PreJoinState extends State<PreJoinScreen> {
         stopAudioCaptureOnMute: false,
       ));
       await _audioTrack!.start();
+    } else {
+      await DaakiaAudioRouting.releaseMicRecorder();
     }
   }
 
+  /// Stops the preview mic and turns the recorder off with it; stopping the
+  /// track alone leaves the mic open (see
+  /// [DaakiaAudioRouting.releaseMicRecorder]).
+  Future<void> _stopPreviewMic() async {
+    final track = _audioTrack;
+    _audioTrack = null;
+    if (track == null) return;
+    try {
+      await track.stop();
+    } catch (_) {}
+    await DaakiaAudioRouting.releaseMicRecorder();
+  }
+
   Future<void> _setEnableVideo(bool value) async {
-    _enableVideo = value;
+    _enableVideo = value && !_isCameraDisabledByHost;
     if (_enableVideo) {
       await _changeLocalVideoTrack();
     } else {
       await _videoTrack?.stop();
       _videoTrack = null;
     }
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   Future<void> _changeLocalVideoTrack() async {
@@ -345,17 +645,30 @@ class _PreJoinState extends State<PreJoinScreen> {
     }
 
     if (_enableVideo && _selectedVideoDevice != null) {
-      _videoTrack =
-          await LocalVideoTrack.createCameraTrack(CameraCaptureOptions(
-        deviceId: _selectedVideoDevice!.deviceId,
-        params: _selectedVideoParameters,
-      ));
+      final cameraQuality = await CameraQuality.resolve();
+      _videoTrack = await LocalVideoTrack.createCameraTrack(
+          cameraQuality.captureOptions(
+              deviceId: _selectedVideoDevice!.deviceId));
       await _videoTrack!.start();
     }
   }
 
   String lobbyRequestId = "";
   bool isUserCanJoin = false;
+
+  /// Email to send in the join payload for a non-guest join, or null when none
+  /// is known. Priority: an email verified during the password step
+  /// ([_participantEmail], set by [verifyPasswordProtectedMeeting]), then the
+  /// signed-in user's email supplied by the host app
+  /// ([DaakiaMeetingConfiguration.userEmail]). The guest flow sets its own
+  /// email separately, so this is only consulted for non-guest joins.
+  String? _resolveCandidateJoinEmail() {
+    final verified = _participantEmail?.trim();
+    if (verified != null && verified.isNotEmpty) return verified;
+    final configured = widget.configuration?.userEmail?.trim();
+    if (configured != null && configured.isNotEmpty) return configured;
+    return null;
+  }
 
   void joinMeeting(Function stopLoading, {bool isParticipant = false}) async {
     if (isNeedToCancelApiCall) {
@@ -384,13 +697,48 @@ class _PreJoinState extends State<PreJoinScreen> {
     final Map<String, dynamic> customMetadata =
         Map<String, dynamic>.from(widget.configuration?.metadata ?? {});
     customMetadata["client_platform"] = Utils.getClientPlatform();
+    // Identifies the device, so the backend can tell this device's own
+    // leftover session apart from a real second device (the duplicate-device
+    // checks). Hashed, never the raw platform id: this metadata becomes the
+    // LiveKit participant metadata, which every participant in the room can
+    // read. A host app that already has its own device id can pass it in
+    // metadata and keep it.
+    customMetadata["device_id"] = await _resolveDeviceId();
+    if (_joinAsGuest && _isGuestModeAvailable) {
+      body["email"] = _participantEmail;
+      body["is_guest"] = true;
+      customMetadata["identifier"] = _participantEmail;
+      customMetadata["participant_email"] = _participantEmail;
+      customMetadata["participant_type"] = "guest";
+    } else if (!_joinAsGuest) {
+      // Non-guest joins: forward a candidate user email when we know one, so the
+      // backend can match pre-invited cohosts even when the auth token alone
+      // isn't enough (invite email differs from the account email, or no token).
+      // Top-level only — never in custom_metadata, which becomes LiveKit
+      // participant metadata that every participant in the room can read.
+      final candidateEmail = _resolveCandidateJoinEmail();
+      if (candidateEmail != null && candidateEmail.isNotEmpty) {
+        body["email"] = candidateEmail;
+      }
+    }
+    // Meetings with email verification: the verified email and its token.
+    // Sent on every join call, including the lobby polls. Same fields as web.
+    final verifiedEmail = _verifiedEmail;
+    if (verifiedEmail != null) {
+      body["email"] = verifiedEmail.email;
+      body["email_token"] = verifiedEmail.token;
+      customMetadata["identifier"] = verifiedEmail.email;
+      customMetadata["participant_email"] = verifiedEmail.email;
+    }
     body["custom_metadata"] = customMetadata;
     final cacheData = StorageHelper();
     var tokenFromCache = false;
     if (await cacheData.getMeetingUid() == widget.meetingId) {
       if (await cacheData.getSessionUid() ==
           widget.basicMeetingDetails?.currentSessionUid) {
-        if (await cacheData.getAttendanceId() != "") {
+        if (await cacheData.getAttendanceId() != "" &&
+            await _cachedAttendanceMatchesJoin(cacheData) &&
+            await _savedAttendanceUsable(cacheData)) {
           body["meeting_attendance_uid"] = await cacheData.getAttendanceId();
           if (hostToken.isEmpty) {
             final cachedToken = await cacheData.getHostToken() ?? "";
@@ -411,6 +759,11 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     networkRequestHandlerWithMessage(
       apiCall: () => apiClient.getMeetingJoinDetail(token, body),
+      onFailureResponse: (response) {
+        if (response.data?.emailVerificationRequired == true) {
+          _requireEmailVerificationAgain(response.message);
+        }
+      },
       onSuccess: (response) {
         if (response?.data == null) {
           if (mounted) {
@@ -460,9 +813,63 @@ class _PreJoinState extends State<PreJoinScreen> {
           isNeedToCancelApiCall = true;
           stopLoading.call();
         });
-        if (mounted) Utils.showSnackBar(context, message: message);
+        if (_emailErrorShownInline) {
+          _emailErrorShownInline = false;
+          return;
+        }
+        unawaited(_showJoinApiError(message,
+            stopLoading: stopLoading, isParticipant: isParticipant));
       },
     );
+  }
+
+  /// Reports a failure from the join API.
+  ///
+  /// Backend messages are already written for participants, so they are shown
+  /// as-is — but a transport failure never reaches the backend, and the message
+  /// the API layer synthesises for it ("Can't reach the server…") can't tell the
+  /// user *why*. Probing here upgrades that one case to the full explanation,
+  /// which is the difference between "no internet" and the Wi-Fi that is
+  /// connected but has no internet access.
+  Future<void> _showJoinApiError(
+    String message, {
+    required Function stopLoading,
+    required bool isParticipant,
+  }) async {
+    if (!mounted) return;
+    final failure = await JoinFailure.forNetwork(technicalDetail: message);
+    if (!mounted) return;
+
+    if (failure == null) {
+      Utils.showSnackBar(context, message: message);
+      return;
+    }
+
+    DaakiaVcLogger.logWarning(
+      'Meeting join API failed with no usable connection',
+      attributes: {
+        'meeting_uid': widget.meetingId,
+        'network_status': failure.diagnosis.status.name,
+        'network_transport': failure.diagnosis.transport,
+        'api_message': message,
+      },
+      reportToSentry: false,
+    );
+
+    if (_shouldSkipPreJoin) {
+      setState(() => _skipJoinErrorMessage =
+          '${failure.title}\n\n${failure.summary}');
+      return;
+    }
+
+    final retry = await showJoinFailureDialog(context, failure);
+    if (!retry || !mounted) return;
+
+    // The failing call set this to cancel the attempt; clear it so the retry
+    // isn't short-circuited by its own predecessor.
+    isNeedToCancelApiCall = false;
+    setState(() => isLoading = true);
+    joinMeeting(stopLoading, isParticipant: isParticipant);
   }
 
   bool _isInvalidMeetingDetails(RtcData it) {
@@ -478,17 +885,21 @@ class _PreJoinState extends State<PreJoinScreen> {
         livekitToken: it.accessToken ?? "");
   }
 
-  void _handleRejection(Function stopLoading) {
+  Future<void> _handleRejection(Function stopLoading) async {
     isRejected = true;
+    lobbyRequestId = "";
     if (_shouldSkipPreJoin) {
       _skipJoinErrorMessage = alertMessage;
     }
     stopLoading.call();
-    if (mounted) {
-      setState(() => Utils.showSnackBar(context, message: alertMessage));
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).pop();
-      });
+    if (!mounted) return;
+    // A dialog rather than a snackbar: the screen closes right after, which
+    // took a snackbar with it before it could be read.
+    await showLobbyDeniedDialog(context,
+        useCallTerminology:
+            widget.configuration?.useCallTerminology == true);
+    if (mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
     }
   }
 
@@ -525,7 +936,10 @@ class _PreJoinState extends State<PreJoinScreen> {
         });
   }
 
-  void verifyHost(String email, String pin, Function stopLoading) async {
+  /// [onResult] gets null on success or the error message on failure; when
+  /// given, the error is left to the caller to show instead of a snackbar.
+  void verifyHost(String email, String pin, Function stopLoading,
+      {void Function(String? error)? onResult}) async {
     isLoading = true;
 
     Map<String, dynamic> body = {
@@ -537,6 +951,7 @@ class _PreJoinState extends State<PreJoinScreen> {
     networkRequestHandlerWithMessage(
         apiCall: () => apiClient.verifyHostToken(body),
         onSuccess: (response) {
+          onResult?.call(null);
           if (mounted) {
             Utils.showSnackBar(context, message: response?.message ?? "");
           }
@@ -557,7 +972,9 @@ class _PreJoinState extends State<PreJoinScreen> {
           if (_shouldSkipPreJoin) {
             _skipJoinErrorMessage = message;
           }
-          if (mounted) {
+          if (onResult != null) {
+            onResult(message);
+          } else if (mounted) {
             Utils.showSnackBar(context, message: message);
           }
           setState(() {
@@ -577,6 +994,14 @@ class _PreJoinState extends State<PreJoinScreen> {
       "meeting_uid": widget.meetingId,
       "display_name": name.trim(),
     };
+    // The verified email first, so the host's lobby list matches the report.
+    final lobbyEmail = _verifiedEmail?.email ?? _participantEmail;
+    if (lobbyEmail != null && lobbyEmail.isNotEmpty) {
+      body["email"] = lobbyEmail;
+    }
+    if (_joinAsGuest && _isGuestModeAvailable) {
+      body["is_guest"] = true;
+    }
 
     networkRequestHandler(
         apiCall: () => apiClient.addParticipantToLobby(body),
@@ -602,14 +1027,16 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     _participantTimer?.cancel(); // Cancel any previous timer if exists
 
-    // Set up a timer to repeat every 10 seconds
-    _participantTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+    // Every 5 s, the backend's lobby contract: each poll also refreshes the
+    // request on the host's side, and the web drops a request it hasn't heard
+    // about for 15 s.
+    _participantTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
       if (isNeedToCancelApiCall) {
         stopLoading.call();
         timer.cancel();
         return;
       }
-      if (isUserCanJoin || isRejected || iterations >= 50) {
+      if (isUserCanJoin || isRejected || iterations >= 100) {
         // Stop the timer if the user can join, has been rejected, or after 2 minutes
         // stopLoading();
         timer.cancel();
@@ -625,77 +1052,34 @@ class _PreJoinState extends State<PreJoinScreen> {
   }
 
   void _showVerificationDialog(BuildContext context, Function stopLoading) {
-    final emailController = TextEditingController();
-    final pinController = TextEditingController();
-
     showDialog(
       context: context,
       barrierDismissible: false, // Prevent dismissing by tapping outside
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Verify Email and PIN'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  hintText: 'Enter your email',
-                ),
-                keyboardType: TextInputType.emailAddress, // Email input only
-                textInputAction: TextInputAction.next, // Move to next field
-              ),
-              TextField(
-                controller: pinController,
-                decoration: const InputDecoration(
-                  labelText: 'PIN',
-                  hintText: 'Enter your PIN',
-                ),
-                keyboardType: TextInputType.number,
-                obscureText: true, // Hide the PIN input
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Close the dialog
-                isNeedToCancelApiCall = true;
-                stopLoading.call();
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    Navigator.of(context).pop();
-                  }
-                });
-              },
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () {
-                String email = emailController.text;
-                String pin = pinController.text;
-                if (!Utils.isValidEmail(email)) {
-                  Utils.showSnackBar(context,
-                      message: "Please enter your valid email");
-                  return;
-                }
-                if (pin.isEmpty) {
-                  Utils.showSnackBar(context, message: "Please enter your pin");
-                  return;
-                }
-                verifyHost(email, pin, stopLoading);
-
-                // Close the dialog
-                // Navigator.of(context).pop();
-              },
-              child: const Text('Verify'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => HostVerificationDialog(
+        onVerify: (email, pin) {
+          final result = Completer<String?>();
+          verifyHost(email, pin, stopLoading, onResult: result.complete);
+          return result.future;
+        },
+        onCancel: () {
+          isNeedToCancelApiCall = true;
+          stopLoading.call();
+        },
+      ),
     );
   }
+
+  /// LiveKit's default gives each leg of the connect a single 10s window,
+  /// which is tight for a phone moving between cells or on congested Wi-Fi.
+  static const _connectTimeout = Duration(seconds: 12);
+
+  /// The media-free retry gets longer still: it is the last attempt before the
+  /// user is told they can't join at all.
+  static const _fallbackConnectTimeout = Duration(seconds: 15);
+
+  static const _weakConnectionNotice =
+      'Your connection was weak, so you joined with your microphone and camera '
+      'off. You can turn them on any time.';
 
   void _join(BuildContext context, Function stopLoading,
       {required String livekitUrl, required String livekitToken}) async {
@@ -703,402 +1087,1136 @@ class _PreJoinState extends State<PreJoinScreen> {
 
     setState(() {});
 
-    // var args = widget.args;
+    // Remember what the user actually asked for. A failed attempt takes the
+    // live tracks down with it (see [_discardLocalMedia]), so anything we
+    // rebuild afterwards has to come from their intent, not from the track
+    // objects — those are corpses by then.
+    final wantedAudio = _enableAudio;
+    final wantedVideo = _enableVideo;
 
-    try {
-      //create new room
-      var cameraEncoding = const VideoEncoding(
-        maxBitrate: 5 * 1000 * 1000,
-        maxFramerate: 30,
-      );
+    Object? lastError;
+    final cameraQuality = await CameraQuality.resolve();
 
-      var screenEncoding = const VideoEncoding(
-        maxBitrate: 3 * 1000 * 1000,
-        maxFramerate: 15,
-      );
-
-      // E2EEOptions? e2eeOptions;
-      // if (args.e2ee && args.e2eeKey != null) {
-      //   final keyProvider = await BaseKeyProvider.create();
-      //   e2eeOptions = E2EEOptions(keyProvider: keyProvider);
-      //   await keyProvider.setKey(args.e2eeKey!);
-      // }
-
-      final room = Room(
-        roomOptions: RoomOptions(
-          adaptiveStream: true,
-          dynacast: true,
-          defaultAudioPublishOptions: const AudioPublishOptions(
-            name: 'custom_audio_track_name',
-          ),
-          defaultAudioCaptureOptions: const AudioCaptureOptions(
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-            stopAudioCaptureOnMute: false,
-          ),
-          defaultCameraCaptureOptions: const CameraCaptureOptions(
-              maxFrameRate: 30,
-              params: VideoParameters(
-                dimensions: VideoDimensions(1280, 720),
-              )),
-          defaultScreenShareCaptureOptions: const ScreenShareCaptureOptions(
-              useiOSBroadcastExtension: true,
-              params: VideoParameters(
-                dimensions: VideoDimensionsPresets.h1080_169,
-              )),
-          defaultVideoPublishOptions: VideoPublishOptions(
-            simulcast: false,
-            videoEncoding: cameraEncoding,
-            screenShareEncoding: screenEncoding,
-          ),
-        ),
-      );
+    // Two passes. The first publishes whatever the user set up on this screen.
+    // If it was the media path that failed, the second drops the local mic and
+    // camera: with nothing to publish there is no publisher peer connection to
+    // negotiate and far less to force through a constrained network, which is
+    // often enough to get in. Being in the meeting muted beats not getting in.
+    for (var attempt = 0; attempt < 2; attempt++) {
+      final withoutMedia = attempt == 1;
+      final room = _buildRoom(cameraQuality);
       // Create a Listener before connecting
       final listener = room.createListener();
 
-      await room.prepareConnection(livekitUrl, livekitToken);
+      try {
+        await room.prepareConnection(livekitUrl, livekitToken);
 
-      // Try to connect to the room
-      // This will throw an Exception if it fails for any reason.
-      await room.connect(
-        livekitUrl,
-        livekitToken,
-        fastConnectOptions: FastConnectOptions(
-          microphone: TrackOption(track: _audioTrack),
-          camera: TrackOption(track: _videoTrack),
-        ),
-      );
-
-      //NOTE:: Storing guest name in cache
-      StorageHelper().setGuestUserName(name.trim());
-
-      meetingDetails = MeetingDetails(
-          meetingUid: widget.meetingId,
-          authorizationToken: hostToken,
-          livekitToken: livekitToken,
-          features: features,
-          meetingBasicDetails: widget.basicMeetingDetails,
-          participantEmail: _participantEmail);
-      if (mounted) {
-        final navigator = Navigator.of(this.context);
-        await navigator.push<void>(
-          MaterialPageRoute(
-              builder: (_) => RoomPage(room, listener, meetingDetails, fastConnection: true, sdkConfiguration: widget.configuration)),
+        // Try to connect to the room
+        // This will throw an Exception if it fails for any reason.
+        await room.connect(
+          livekitUrl,
+          livekitToken,
+          connectOptions: _connectOptions(
+              withoutMedia ? _fallbackConnectTimeout : _connectTimeout),
+          fastConnectOptions: withoutMedia
+              ? null
+              : FastConnectOptions(
+                  microphone: TrackOption(track: _audioTrack),
+                  camera: TrackOption(track: _videoTrack),
+                ),
         );
-        if (mounted && navigator.canPop()) {
-          navigator.pop();
+      } catch (error) {
+        if (kDebugMode) {
+          print('Could not connect $error');
         }
+        lastError = error;
+        await _disposeRoom(room, listener);
+        await _discardLocalMedia();
+
+        final shouldFallBack = !withoutMedia &&
+            _isMediaPathFailure(error) &&
+            (wantedAudio || wantedVideo) &&
+            mounted;
+
+        // Not a defect on its own — an attempt we are about to retry, and the
+        // final outcome is logged separately. It's here so a Datadog dashboard
+        // can show how often first attempts fail in the field, which is the
+        // only way to tell a one-off from a systemic ICE/TURN problem.
+        DaakiaVcLogger.logWarning(
+          'Meeting join attempt failed',
+          attributes: {
+            'meeting_uid': widget.meetingId,
+            'attempt': attempt + 1,
+            'without_media': withoutMedia,
+            'will_retry_without_media': shouldFallBack,
+            'error_type': error.runtimeType.toString(),
+            'error': error.toString(),
+          },
+          reportToSentry: false,
+        );
+
+        if (!shouldFallBack) break;
+
+        if (mounted) {
+          Utils.showSnackBar(this.context,
+              message: 'Connection is weak — trying again with your camera '
+                  'and microphone off…');
+        }
+        continue;
       }
-    } catch (error) {
-      if (kDebugMode) {
-        print('Could not connect $error');
+
+      if (withoutMedia) {
+        // A degraded join, not a failure — worth a dashboard line so a rise in
+        // "joined muted" is visible before users start reporting it.
+        DaakiaVcLogger.logWarning(
+          'Joined meeting without local media after a media-path failure',
+          attributes: {
+            'meeting_uid': widget.meetingId,
+            'wanted_audio': wantedAudio,
+            'wanted_video': wantedVideo,
+          },
+          reportToSentry: false,
+        );
       }
-      if (_shouldSkipPreJoin) {
-        _skipJoinErrorMessage = error.toString();
+
+      final movedToLobby = await _enterMeeting(room, listener,
+          livekitToken: livekitToken, joinedWithoutMedia: withoutMedia);
+      if (mounted) {
+        setState(() {
+          stopLoading();
+          isLoading = false;
+        });
       }
-      if (context.mounted) {
-        await context.showErrorDialog(error);
+      // After the stop above, which would otherwise end the wait it starts.
+      if (movedToLobby != null && mounted) {
+        unawaited(_waitInLobbyAfterMove(movedToLobby));
       }
-    } finally {
-      setState(() {
-        stopLoading();
-        isLoading = false;
-      });
+      return;
     }
+
+    // Note we are still "loading" here on purpose. On the pre-join page the
+    // retry lives inside the failure dialog, so leaving the join button in its
+    // loading state behind the dialog means Try Again reuses that spinner
+    // instead of running a join under a button that looks idle.
+    // [_reportJoinFailure] owns stopping it on every path that ends the attempt.
+    await _reportJoinFailure(
+      lastError,
+      livekitUrl: livekitUrl,
+      livekitToken: livekitToken,
+      wantedAudio: wantedAudio,
+      wantedVideo: wantedVideo,
+      stopLoading: stopLoading,
+    );
+  }
+
+  void _stopJoinLoading(Function stopLoading) {
+    isLoading = false;
+    stopLoading();
+    if (mounted) setState(() {});
+  }
+
+  Room _buildRoom(CameraQuality cameraQuality) {
+    var screenEncoding = const VideoEncoding(
+      maxBitrate: 3 * 1000 * 1000,
+      maxFramerate: 15,
+    );
+
+    // E2EEOptions? e2eeOptions;
+    // if (args.e2ee && args.e2eeKey != null) {
+    //   final keyProvider = await BaseKeyProvider.create();
+    //   e2eeOptions = E2EEOptions(keyProvider: keyProvider);
+    //   await keyProvider.setKey(args.e2eeKey!);
+    // }
+
+    return Room(
+      roomOptions: RoomOptions(
+        adaptiveStream: true,
+        dynacast: true,
+        defaultAudioPublishOptions: const AudioPublishOptions(
+          name: 'custom_audio_track_name',
+        ),
+        defaultAudioCaptureOptions: const AudioCaptureOptions(
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          stopAudioCaptureOnMute: false,
+        ),
+        defaultCameraCaptureOptions: cameraQuality.captureOptions(),
+        defaultScreenShareCaptureOptions: const ScreenShareCaptureOptions(
+            useiOSBroadcastExtension: true,
+            params: VideoParameters(
+              dimensions: VideoDimensionsPresets.h1080_169,
+            )),
+        defaultVideoPublishOptions: cameraQuality.publishOptions(
+          screenShareEncoding: screenEncoding,
+        ),
+      ),
+    );
+  }
+
+  /// [Timeouts] has no copyWith, so carry LiveKit's own defaults across and
+  /// override only the window we care about.
+  ConnectOptions _connectOptions(Duration timeout) {
+    const defaults = Timeouts.defaultTimeouts;
+    return ConnectOptions(
+      timeouts: Timeouts(
+        connection: timeout,
+        debounce: defaults.debounce,
+        publish: defaults.publish,
+        subscribe: defaults.subscribe,
+        peerConnection: defaults.peerConnection,
+        iceRestart: defaults.iceRestart,
+      ),
+    );
+  }
+
+  /// True when signalling worked but media didn't — the only case a media-free
+  /// retry can rescue. A signalling failure (rejected token, server
+  /// unreachable) would fail exactly the same way the second time.
+  bool _isMediaPathFailure(Object error) =>
+      error is MediaConnectException || error is NegotiationError;
+
+  /// Runs the meeting. Returns how to wait in the lobby when a host moved this
+  /// participant there; otherwise null, and this screen has closed too.
+  Future<MovedToLobby?> _enterMeeting(
+    Room room,
+    EventsListener<RoomEvent> listener, {
+    required String livekitToken,
+    required bool joinedWithoutMedia,
+  }) async {
+    //NOTE:: Storing guest name in cache
+    StorageHelper().setGuestUserName(name.trim());
+
+    meetingDetails = MeetingDetails(
+        meetingUid: widget.meetingId,
+        authorizationToken: hostToken,
+        livekitToken: livekitToken,
+        features: features,
+        meetingBasicDetails: widget.basicMeetingDetails,
+        // Guests must never trigger notifyParticipantJoinedStatus: that call
+        // marks a pre-registered participant email as joined, so forwarding
+        // a guest-entered email would let a guest impersonate/mark a real
+        // invited participant as joined just by typing their address.
+        participantEmail: _joinAsGuest ? null : _participantEmail,
+        secretKey: widget.secretKey);
+    setLiveKitToken(widget.meetingId, livekitToken);
+
+    if (!mounted) {
+      // Nobody is going to take ownership of this room, so don't leak it.
+      await _disposeRoom(room, listener);
+      return null;
+    }
+
+    final navigator = Navigator.of(context);
+    // Release the preview renderer before the meeting creates its own.
+    setState(() => _meetingCoversPreview = true);
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) {
+      await _disposeRoom(room, listener);
+      return null;
+    }
+    final result = await navigator.push<Object?>(
+      MaterialPageRoute(
+          builder: (_) => RoomPage(room, listener, meetingDetails,
+              fastConnection: true,
+              sdkConfiguration: widget.configuration,
+              joinNotice: joinedWithoutMedia ? _weakConnectionNotice : null)),
+    );
+    if (mounted) setState(() => _meetingCoversPreview = false);
+    if (result is MovedToLobby && mounted) return result;
+    if (mounted && navigator.canPop()) {
+      navigator.pop();
+    }
+    return null;
+  }
+
+  /// Waits to be admitted again after a host moved this participant to the
+  /// lobby. The server has already made the lobby request, so this only polls
+  /// `/join` with its id: no new request, and no name or password again (both
+  /// were checked on the first join and are still held here).
+  Future<void> _waitInLobbyAfterMove(MovedToLobby move) async {
+    _participantTimer?.cancel();
+    setState(() {
+      _movedToLobby = true;
+      lobbyRequestId = move.requestId;
+      isRejected = false;
+      isUserCanJoin = false;
+      isNeedToCancelApiCall = false;
+      isLoading = true;
+    });
+    // The preview tracks went into the meeting and were stopped with it.
+    await _discardLocalMedia();
+    await _restoreLocalMedia(move.micOn, move.cameraOn);
+    if (!mounted || !_movedToLobby) return;
+    startAddingParticipantsPool(_stopLobbyWait);
+  }
+
+  /// Every way the wait ends: admitted (the meeting covers this screen),
+  /// denied, or the poll failed, which leaves the join form so the user can
+  /// ask to join again.
+  void _stopLobbyWait() {
+    isLoading = false;
+    if (mounted && _movedToLobby) setState(() => _movedToLobby = false);
+  }
+
+  /// Whether this meeting lets someone waiting in the lobby leave it, like
+  /// web. Without it the waiting screen has no Leave button.
+  bool get _canLeaveLobbyWait =>
+      widget.basicMeetingDetails?.waitingLeaveEnabled == 1;
+
+  void _leaveLobbyWait() {
+    isNeedToCancelApiCall = true;
+    _participantTimer?.cancel();
+    // Tell the server, so hosts stop seeing this person in the lobby. Sent
+    // without waiting: leaving must not depend on the network.
+    if (lobbyRequestId.isNotEmpty) {
+      final body = <String, dynamic>{
+        "meeting_uid": widget.meetingId,
+        "display_name": name.trim(),
+        "lobby_request_id": lobbyRequestId,
+      };
+      final email = _verifiedEmail?.email ?? _participantEmail;
+      if (email != null && email.isNotEmpty) body["email"] = email;
+      unawaited(apiClient.leaveWaitingLobby(body).then((_) {}, onError: (_) {}));
+    }
+    if (Navigator.of(context).canPop()) Navigator.of(context).pop();
+  }
+
+  /// A [Room] that never connected still owns a signal client, listeners and
+  /// native peer connections. Without this every failed attempt leaked one.
+  Future<void> _disposeRoom(
+      Room room, EventsListener<RoomEvent> listener) async {
+    try {
+      await listener.dispose();
+    } catch (_) {}
+    try {
+      await room.dispose();
+    } catch (_) {}
+  }
+
+  /// Drops the preview tracks after a failed connect.
+  ///
+  /// A failed connect can take them down with it: once fast-connect has
+  /// published them, the room's cleanup unpublishes everything, and
+  /// `stopLocalTrackOnUnpublish` (LiveKit's default) stops the very
+  /// [LocalAudioTrack] / [LocalVideoTrack] this screen created and still holds.
+  /// Handing those to the next [Room] would join the user with a dead mic and a
+  /// black preview — and they'd still carry a transceiver bound to the discarded
+  /// peer connection. Whether or not the publish got that far is a race, so
+  /// always let them go here and rebuild from intent instead.
+  Future<void> _discardLocalMedia() async {
+    await _stopPreviewMic();
+    try {
+      await _videoTrack?.stop();
+    } catch (_) {}
+    _videoTrack = null;
+    _enableAudio = false;
+    _enableVideo = false;
+    if (mounted) setState(() {});
+  }
+
+  /// Rebuilds the preview the user had before a failed attempt, so they aren't
+  /// left staring at a dead camera while deciding whether to retry.
+  Future<void> _restoreLocalMedia(bool wantAudio, bool wantVideo) async {
+    if (wantAudio && !_isMicDisabledByHost) {
+      try {
+        await _setEnableAudio(true);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (wantVideo && !_isCameraDisabledByHost) {
+      try {
+        await _setEnableVideo(true);
+      } catch (_) {}
+    }
+    if (mounted) setState(() {});
+  }
+
+  /// Translates whatever LiveKit threw into something a participant can act on
+  /// and offers them the retry.
+  Future<void> _reportJoinFailure(
+    Object? error, {
+    required String livekitUrl,
+    required String livekitToken,
+    required bool wantedAudio,
+    required bool wantedVideo,
+    required Function stopLoading,
+  }) async {
+    if (error == null || !mounted) {
+      _stopJoinLoading(stopLoading);
+      return;
+    }
+
+    // Diagnosing probes the network, so the join button stays in its loading
+    // state until we actually have something to say.
+    final failure = await JoinFailure.diagnose(error, livekitUrl: livekitUrl);
+
+    // The one that matters: the user did not get in. The network diagnosis
+    // rides along because the exception alone can't tell a blocked office
+    // Wi-Fi from a phone that had already lost signal.
+    DaakiaVcLogger.logError(
+      'Meeting join failed: ${failure.title}',
+      error: error,
+      attributes: {
+        'meeting_uid': widget.meetingId,
+        'error_type': error.runtimeType.toString(),
+        'error': error.toString(),
+        'network_status': failure.diagnosis.status.name,
+        'network_transport': failure.diagnosis.transport,
+        'network_latency_ms': failure.diagnosis.latency?.inMilliseconds,
+      },
+    );
+
+    if (!mounted) return;
+
+    await _restoreLocalMedia(wantedAudio, wantedVideo);
+    if (!mounted) return;
+
+    // The skip-prejoin screen has no UI of its own behind a dialog — it renders
+    // the message inline, with its own Retry button, and only once the loader
+    // has stopped.
+    if (_shouldSkipPreJoin) {
+      _skipJoinErrorMessage = '${failure.title}\n\n${failure.summary}';
+      _stopJoinLoading(stopLoading);
+      return;
+    }
+
+    final retry = await showJoinFailureDialog(context, failure);
+    if (!mounted) return;
+
+    if (!retry) {
+      _stopJoinLoading(stopLoading);
+      return;
+    }
+
+    isNeedToCancelApiCall = false;
+    _join(context, stopLoading,
+        livekitUrl: livekitUrl, livekitToken: livekitToken);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_movedToLobby) {
+      return _buildMovedToLobbyWait();
+    }
     if (_shouldSkipPreJoin) {
       return _buildSkipPreJoinLoader();
     }
 
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // A landscape phone with the keyboard up has ~150dp left; the app bar
+    // alone would take a third of it, so drop it while typing to keep the
+    // field and the Join button on screen together.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Prejoin Page",
-          style: TextStyle(color: Colors.white),
-        ),
-        backgroundColor: themeColor,
-        elevation: 3,
-        shadowColor: Colors.grey,
-        iconTheme: const IconThemeData(
-          color:
-              Colors.white, // Set the color you want for the back button here
+      backgroundColor: Colors.white,
+      appBar: isLandscape && keyboardOpen ? null : _buildAppBar(),
+      body: SafeArea(
+        top: isLandscape && keyboardOpen,
+        child: isLandscape ? _buildLandscapeBody() : _buildPortraitBody(),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    final details = widget.basicMeetingDetails;
+    final title = details?.eventName?.trim();
+    final host = details?.host?.trim();
+    return AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: Colors.black87,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      scrolledUnderElevation: 0,
+      titleSpacing: 0,
+      shape: const Border(bottom: BorderSide(color: Colors.black12)),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            (title == null || title.isEmpty) ? 'Join meeting' : title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.black87,
+              fontSize: 17,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          if (host != null && host.isNotEmpty)
+            Text(
+              'Hosted by $host',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.black54, fontSize: 12.5),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPortraitBody() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+      child: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 560),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) => SizedBox(
+                  height: (constraints.maxWidth * 0.75).clamp(220.0, 380.0),
+                  child: _buildPreview(),
+                ),
+              ),
+              ..._buildStatusBanners(),
+              const SizedBox(height: 32),
+              _buildJoinForm(),
+            ],
+          ),
         ),
       ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  Card(
-                    color: emptyVideoColor,
-                    elevation: 5,
-                    clipBehavior: Clip.antiAliasWithSaveLayer,
-                    child: SizedBox(
-                      width: double.maxFinite,
-                      height: Utils.isMobileDevice() ? 250 : 350,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          _videoTrack != null && _enableVideo
-                              ? Visibility(
-                                  visible: _enableVideo,
-                                  child: VideoTrackRenderer(
-                                    renderMode: VideoRenderMode.auto,
-                                    _videoTrack!,
-                                  ),
-                                )
-                              : Visibility(
-                                  visible: !_enableVideo,
-                                  child: const Column(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.videocam_off,
-                                        size: 55,
-                                        color: Colors.white,
-                                      ),
-                                      SizedBox(height: 8),
-                                      Text(
-                                        'Your Camera is turned off',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 15,
-                                            color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                          Positioned(
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            child: Container(
-                              color: transparentMaskColor,
-                              child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(
-                                        _enableVideo
-                                            ? Icons.videocam
-                                            : Icons.videocam_off,
-                                        color: Colors.white),
-                                    iconSize: 30,
-                                    onPressed: () async {
-                                      if (!Platform.isIOS) {
-                                        bool permissionsGranted =
-                                            await checkAndRequestPermissions(
-                                                context,
-                                                checkForAudio: false);
-                                        if (!permissionsGranted) return;
-                                      }
-                                      setState(() {
-                                        _enableVideo = !_enableVideo;
-                                        _setEnableVideo(_enableVideo);
-                                      });
-                                    },
-                                  ),
-                                  IconButton(
-                                    icon: Icon(
-                                        _enableAudio
-                                            ? Icons.mic
-                                            : Icons.mic_off,
-                                        color: Colors.white),
-                                    iconSize: 30,
-                                    onPressed: () async {
-                                      if (!Platform.isIOS) {
-                                        bool permissionsGranted =
-                                            await checkAndRequestPermissions(
-                                                context,
-                                                checkForCamera: false);
-                                        if (!permissionsGranted) return;
-                                      }
-                                      setState(() {
-                                        _enableAudio = !_enableAudio;
-                                        _setEnableAudio(_enableAudio);
-                                      });
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 20,
-                  ),
-                  Center(
-                    child: Text(
-                      alertMessage,
-                      textAlign:
-                          TextAlign.center, // Equivalent to gravity="center"
-                      style: const TextStyle(
-                        color: Colors
-                            .black, // Equivalent to textColor="@color/black"
-                        fontSize: 15, // Equivalent to textSize="15sp"
-                      ),
-                    ),
-                  ),
-                  const SizedBox(
-                    height: 10,
-                  ),
-                  Container(
-                    margin: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 10),
-                    // Equivalent to marginHorizontal="20dp" and marginTop="10dp"
-                    child: TextFormField(
-                      controller: _nameController ?? TextEditingController(),
-                      decoration: const InputDecoration(
-                        labelText: 'Name*',
-                        border: OutlineInputBorder(),
-                      ),
-                      style: const TextStyle(color: Colors.black),
-                      enabled: _isNameEditable,
-                      textCapitalization: TextCapitalization.words,
-                      inputFormatters: [
-                        NameInputFormatter(),
-                        // Block digits
-                        FilteringTextInputFormatter.deny(RegExp(r'[0-9]')),
-                        // Block noisy punctuation (but allow . ' -)
-                        FilteringTextInputFormatter.deny(
-                            RegExp(r'[_\[\]{}<>@#$%^&*+=~`|\\/"^]')),
-                        LengthLimitingTextInputFormatter(50),
-                      ],
-                      onChanged: (value) => setState(() => name = value),
-                    ),
-                  ),
-                  Visibility(
-                    visible: !widget.isHost &&
-                        !_shouldBypassParticipantChecks &&
-                        (widget.basicMeetingDetails?.isCommonPassword == true ||
-                            widget.basicMeetingDetails?.isStandardPassword ==
-                                true),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 10),
-                      child: TextFormField(
-                        decoration: InputDecoration(
-                          labelText: 'Password*',
-                          border: const OutlineInputBorder(),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              !_obscurePassword
-                                  ? Icons.visibility
-                                  : Icons.visibility_off,
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _obscurePassword = !_obscurePassword;
-                              });
-                            },
-                          ),
-                        ),
-                        style: const TextStyle(
-                          color: Colors.black,
-                        ),
-                        enabled: true,
-                        obscureText: _obscurePassword,
-                        onChanged: (String? value) {
-                          setState(() {
-                            password = value ?? "";
-                          });
-                        },
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  LoadingBtn(
-                    height: 50,
-                    borderRadius: 8,
-                    animate: true,
-                    color: themeColor,
-                    width: MediaQuery.of(context).size.width * 0.45,
-                    loader: Container(
-                      padding: const EdgeInsets.all(10),
-                      width: 40,
-                      height: 40,
-                      child: const CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    ),
-                    child: const Text(
-                      "Join Meeting",
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: (startLoading, stopLoading, btnState) async {
-                      if (btnState == ButtonState.idle) {
-                        if (name.trim().isEmpty) {
-                          Utils.showSnackBar(context,
-                              message: "Please enter your name");
-                          return;
-                        }
-                        if (!widget.isHost &&
-                            !_shouldBypassParticipantChecks &&
-                            !await shouldAddAttendanceId()) {
-                          var event = widget.basicMeetingDetails;
-                          if (event?.isStandardPassword == true) {
-                            if (!checkValidity()) {
-                              return;
-                            }
-                          }
-                          if (event?.isCommonPassword == true) {
-                            if (password.isEmpty) {
-                              if (!context.mounted) return;
-                              Utils.showSnackBar(context,
-                                  message: "Please enter your password");
-                              return;
-                            }
-                          }
-                        }
-                        // Check and request permissions
-                        startLoading();
-                        if (isLoading) {
-                          return;
-                        } else {
-                          isNeedToCancelApiCall = false;
-                          _checkDuplicateJoinAndProceed(stopLoading, () {
-                            if (widget.isHost && !isHostVerified) {
-                              if (!context.mounted) return;
-                              final token =
-                                  widget.configuration?.vcConfig?.hostToken;
+    );
+  }
 
-                              if (token != null && token.isNotEmpty) {
-                                hostToken = token;
-                                isHostVerified = true;
-                                isNeedToCancelApiCall = false;
-                                getFeaturesAndJoinMeeting(stopLoading);
-                                return;
-                              }
-                              if (widget.basicMeetingDetails
-                                      ?.hostPinVerificationRequired ==
-                                  1) {
-                                _showVerificationDialog(context, stopLoading);
-                              } else {
-                                _getHostToken(stopLoading);
-                              }
-                            } else {
-                              checkMeetingType(stopLoading);
-                            }
-                          });
-                        }
-                      }
-                    },
+  /// Preview on the left, form on the right, so the Join button is on screen
+  /// without scrolling, which a stacked layout can't manage in ~360dp height.
+  Widget _buildLandscapeBody() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            flex: 11,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _buildPreview()),
+                // With the keyboard up there's no room for both: the banner
+                // squeezes the preview until its placeholder overflows.
+                if (MediaQuery.viewInsetsOf(context).bottom == 0)
+                  ..._buildStatusBanners(),
+              ],
+            ),
+          ),
+          const SizedBox(width: 24),
+          Expanded(
+            flex: 9,
+            child: Center(
+              child: SingleChildScrollView(child: _buildJoinForm()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPreview() {
+    final showVideo =
+        _videoTrack != null && _enableVideo && !_meetingCoversPreview;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: ColoredBox(
+        color: emptyVideoColor,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (showVideo)
+              VideoTrackRenderer(
+                _videoTrack!,
+                renderMode: VideoRenderMode.auto,
+                fit: VideoViewFit.cover,
+              )
+            else if (!_meetingCoversPreview)
+              _buildCameraOffPlaceholder(),
+            // Scrim so the name and buttons stay readable over bright video.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 28, 12, 12),
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black54],
                   ),
-                ],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        name.trim().isEmpty ? 'You' : name.trim(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    // Live mic level, so the user can check the mic before
+                    // joining.
+                    if (_enableAudio && _audioTrack != null) ...[
+                      MicLevelIndicator(track: _audioTrack),
+                      const SizedBox(width: 12),
+                    ],
+                    _MediaToggleButton(
+                      isOn: _enableAudio,
+                      onIcon: Icons.mic_rounded,
+                      offIcon: Icons.mic_off_rounded,
+                      lockedByHost: _isMicDisabledByHost,
+                      needsPermission: _showMicPermissionWarning,
+                      tooltip: _isMicDisabledByHost
+                          ? 'Microphone disabled by host'
+                          : _showMicPermissionWarning
+                          ? 'Allow microphone access'
+                          : (_enableAudio
+                                ? 'Turn off microphone'
+                                : 'Turn on microphone'),
+                      onPressed: _toggleAudio,
+                    ),
+                    const SizedBox(width: 12),
+                    _MediaToggleButton(
+                      isOn: _enableVideo,
+                      onIcon: Icons.videocam_rounded,
+                      offIcon: Icons.videocam_off_rounded,
+                      lockedByHost: _isCameraDisabledByHost,
+                      needsPermission: _showCameraPermissionWarning,
+                      tooltip: _isCameraDisabledByHost
+                          ? 'Camera disabled by host'
+                          : _showCameraPermissionWarning
+                          ? 'Allow camera access'
+                          : (_enableVideo
+                                ? 'Turn off camera'
+                                : 'Turn on camera'),
+                      onPressed: _toggleVideo,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// The same `user_avatar` the meeting tiles read back out of participant
+  /// metadata (see [Utils.extractUserAvatar]); the host app supplies it via
+  /// [DaakiaMeetingConfiguration.metadata].
+  String? get _userAvatarUrl {
+    final value = widget.configuration?.metadata?['user_avatar'];
+    return value is String && value.trim().isNotEmpty ? value.trim() : null;
+  }
+
+  Widget _buildCameraOffPlaceholder() {
+    final trimmed = name.trim();
+    final avatarUrl = _userAvatarUrl;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Shrinks with the preview (e.g. landscape with the keyboard up).
+        final avatar = (constraints.maxHeight * 0.34).clamp(40.0, 96.0);
+        final showCaption = constraints.maxHeight > 150;
+        final Widget fallback = trimmed.isEmpty
+            ? Icon(
+                Icons.person_rounded,
+                color: Colors.white,
+                size: avatar * 0.55,
+              )
+            : Text(
+                Utils.getInitials(trimmed),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: avatar * 0.36,
+                  fontWeight: FontWeight.w600,
+                ),
+              );
+        return Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: avatar,
+              height: avatar,
+              alignment: Alignment.center,
+              clipBehavior: Clip.antiAlias,
+              decoration: const BoxDecoration(
+                color: themeColor,
+                shape: BoxShape.circle,
+              ),
+              child: avatarUrl == null
+                  ? fallback
+                  : Image.network(
+                      avatarUrl,
+                      width: avatar,
+                      height: avatar,
+                      fit: BoxFit.cover,
+                      // Initials until the image arrives, and for good if it
+                      // fails, so the circle is never blank.
+                      frameBuilder: (_, child, frame, wasSync) =>
+                          wasSync || frame != null ? child : fallback,
+                      errorBuilder: (_, _, _) => fallback,
+                    ),
+            ),
+            if (showCaption) ...[
+              const SizedBox(height: 12),
+              Text(
+                _isCameraDisabledByHost
+                    ? 'Camera is disabled by the host'
+                    : 'Camera is off',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+            // Keep the avatar clear of the bottom control row.
+            SizedBox(height: showCaption ? 40 : 28),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _toggleVideo() async {
+    if (!Platform.isIOS || _cameraPermissionMissing) {
+      final granted = await checkAndRequestPermissions(
+        context,
+        checkForAudio: false,
+      );
+      unawaited(_refreshPermissionState());
+      if (!granted || !mounted) return;
+    }
+    setState(() {
+      _enableVideo = !_enableVideo;
+      _setEnableVideo(_enableVideo);
+    });
+  }
+
+  Future<void> _toggleAudio() async {
+    if (!Platform.isIOS || _micPermissionMissing) {
+      final granted = await checkAndRequestPermissions(
+        context,
+        checkForCamera: false,
+      );
+      unawaited(_refreshPermissionState());
+      if (!granted || !mounted) return;
+    }
+    setState(() {
+      _enableAudio = !_enableAudio;
+      _setEnableAudio(_enableAudio);
+    });
+  }
+
+  List<Widget> _buildStatusBanners() {
+    return [
+      if (_hostMediaRestrictionMessage != null) ...[
+        const SizedBox(height: 16),
+        _StatusBanner(
+          icon: Icons.lock_outline_rounded,
+          message: _hostMediaRestrictionMessage!,
+        ),
+      ],
+      if (_permissionWarningMessage != null) ...[
+        const SizedBox(height: 16),
+        _StatusBanner(
+          icon: Icons.warning_amber_rounded,
+          message: _permissionWarningMessage!,
+          warning: true,
+          actionLabel: 'Allow',
+          onTap: _requestMissingPermissions,
+        ),
+      ],
+      // "Check your camera and mic" is pointless advice when the host is the
+      // one holding them off, or while access is missing (the banner above
+      // says what to do), so it's hidden until the API sends a real message.
+      if (!_isDefaultAlertSuppressed &&
+          !(alertMessage == _defaultAlertMessage &&
+              _permissionWarningMessage != null) &&
+          alertMessage.trim().isNotEmpty) ...[
+        const SizedBox(height: 16),
+        _StatusBanner(
+          icon: Icons.info_outline_rounded,
+          message: alertMessage,
+          // Server messages (meeting not started, waiting in the lobby, …)
+          // need the user's attention; the default hint doesn't.
+          emphasized: alertMessage != _defaultAlertMessage,
+        ),
+      ],
+    ];
+  }
+
+  Widget _buildJoinForm() {
+    final details = widget.basicMeetingDetails;
+    final showPassword =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        !_joinAsGuest &&
+        (details?.isCommonPassword == true ||
+            details?.isStandardPassword == true);
+    final showGuestEmail =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        _joinAsGuest &&
+        _isGuestModeAvailable;
+    final showGuestToggle =
+        !widget.isHost &&
+        !_shouldBypassParticipantChecks &&
+        _isGuestModeAvailable;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Ready to join?',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.black87,
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        if (widget.isHost) ...[
+          const SizedBox(height: 8),
+          const Text(
+            "You're joining as the host",
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.black54, fontSize: 14),
+          ),
+        ],
+        const SizedBox(height: 24),
+        if (_needsEmailVerification) ...[
+          EmailVerificationCard(
+            key: _emailCardKey,
+            controller: _emailVerification!,
+            fieldDecoration: ({required label, required icon}) =>
+                _fieldDecoration(label: label, icon: icon),
+          ),
+          const SizedBox(height: 12),
+        ],
+        TextFormField(
+          controller: _nameController ?? TextEditingController(),
+          onTapOutside: Utils.dismissKeyboardOnTapOutside,
+          decoration: _fieldDecoration(
+            label: 'Your name',
+            icon: Icons.person_outline_rounded,
+          ),
+          style: const TextStyle(color: Colors.black87),
+          enabled: _isNameEditable,
+          textCapitalization: TextCapitalization.words,
+          textInputAction: showPassword || showGuestEmail
+              ? TextInputAction.next
+              : TextInputAction.done,
+          inputFormatters: [
+            NameInputFormatter(),
+            // Block digits
+            FilteringTextInputFormatter.deny(RegExp(r'[0-9]')),
+            // Block noisy punctuation (but allow . ' -)
+            FilteringTextInputFormatter.deny(
+              RegExp(r'[_\[\]{}<>@#$%^&*+=~`|\\/"^]'),
+            ),
+            LengthLimitingTextInputFormatter(50),
+          ],
+          onChanged: (value) => setState(() => name = value),
+        ),
+        if (showPassword) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _passwordController,
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
+            decoration: _fieldDecoration(
+              label: 'Meeting password',
+              icon: Icons.lock_outline_rounded,
+              suffix: IconButton(
+                tooltip: _obscurePassword ? 'Show password' : 'Hide password',
+                icon: Icon(
+                  _obscurePassword
+                      ? Icons.visibility_outlined
+                      : Icons.visibility_off_outlined,
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _obscurePassword = !_obscurePassword;
+                  });
+                },
+              ),
+            ),
+            style: const TextStyle(color: Colors.black87),
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onChanged: (String? value) {
+              setState(() {
+                password = value ?? "";
+              });
+            },
+          ),
+        ],
+        if (showGuestEmail) ...[
+          const SizedBox(height: 12),
+          TextFormField(
+            controller: _guestEmailController,
+            onTapOutside: Utils.dismissKeyboardOnTapOutside,
+            decoration: _fieldDecoration(
+              label: 'Email',
+              icon: Icons.mail_outline_rounded,
+            ),
+            style: const TextStyle(color: Colors.black87),
+            keyboardType: TextInputType.emailAddress,
+            autofillHints: const [AutofillHints.email],
+            autocorrect: false,
+            textInputAction: TextInputAction.done,
+            onChanged: (String? value) {
+              setState(() {
+                _guestEmail = (value ?? "").trim();
+              });
+            },
+          ),
+        ],
+        const SizedBox(height: 20),
+        LayoutBuilder(
+          builder: (context, constraints) => LoadingBtn(
+            key: _joinButtonKey,
+            height: 52,
+            borderRadius: 12,
+            animate: true,
+            color: themeColor,
+            width: constraints.maxWidth,
+            loader: Container(
+              padding: const EdgeInsets.all(12),
+              width: 44,
+              height: 44,
+              child: const CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            child: const Text(
+              "Join meeting",
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            onTap: (startLoading, buttonStopLoading, btnState) async {
+              // The join flow can outlive this button (the page is closed, or
+              // the meeting ends while it waits). loading_btn's stop reverses
+              // the button's AnimationController, which throws once the button
+              // is disposed and would abort the caller mid-flow, e.g. before
+              // the "denied by host" message. A replacement button already
+              // starts idle, so there is nothing left to stop.
+              void stopLoading() {
+                try {
+                  buttonStopLoading();
+                } catch (_) {}
+              }
+
+              if (btnState == ButtonState.idle) {
+                if (name.trim().isEmpty) {
+                  Utils.showSnackBar(
+                    context,
+                    message: "Please enter your name",
+                  );
+                  return;
+                }
+                if (_isEmailVerificationPending) {
+                  _promptEmailVerification();
+                  return;
+                }
+                if (!widget.isHost &&
+                    !_shouldBypassParticipantChecks &&
+                    !await shouldAddAttendanceId()) {
+                  var event = widget.basicMeetingDetails;
+                  if (_joinAsGuest && _isGuestModeAvailable) {
+                    if (!Utils.isValidEmail(_guestEmail)) {
+                      if (!context.mounted) return;
+                      Utils.showSnackBar(
+                        context,
+                        message: "Please enter a valid email",
+                      );
+                      return;
+                    }
+                  } else {
+                    if (event?.isStandardPassword == true) {
+                      if (!checkValidity()) {
+                        return;
+                      }
+                    }
+                    if (event?.isCommonPassword == true) {
+                      if (password.isEmpty) {
+                        if (!context.mounted) return;
+                        Utils.showSnackBar(
+                          context,
+                          message: "Please enter your password",
+                        );
+                        return;
+                      }
+                    }
+                  }
+                }
+                // Check and request permissions
+                startLoading();
+                if (isLoading) {
+                  return;
+                } else {
+                  isNeedToCancelApiCall = false;
+                  _checkDuplicateJoinAndProceed(stopLoading, () {
+                    if (widget.isHost && !isHostVerified) {
+                      if (!context.mounted) return;
+                      final token = widget.configuration?.vcConfig?.hostToken;
+
+                      if (token != null && token.isNotEmpty) {
+                        hostToken = token;
+                        isHostVerified = true;
+                        isNeedToCancelApiCall = false;
+                        getFeaturesAndJoinMeeting(stopLoading);
+                        return;
+                      }
+                      if (widget
+                              .basicMeetingDetails
+                              ?.hostPinVerificationRequired ==
+                          1) {
+                        _showVerificationDialog(context, stopLoading);
+                      } else {
+                        _getHostToken(stopLoading);
+                      }
+                    } else {
+                      checkMeetingType(stopLoading);
+                    }
+                  });
+                }
+              }
+            },
+          ),
+        ),
+        if (showGuestToggle) ...[
+          const SizedBox(height: 8),
+          Center(
+            child: TextButton.icon(
+              onPressed: _toggleGuestMode,
+              icon: Icon(
+                _joinAsGuest
+                    ? Icons.lock_outline_rounded
+                    : Icons.person_outline_rounded,
+                size: 18,
+                color: themeColor,
+              ),
+              label: Text(
+                _joinAsGuest
+                    ? "Have a password? Join with password"
+                    : "Join as guest instead",
+                style: const TextStyle(
+                  color: themeColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  InputDecoration _fieldDecoration({
+    required String label,
+    required IconData icon,
+    Widget? suffix,
+  }) {
+    OutlineInputBorder border(Color color, [double width = 1]) =>
+        OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: color, width: width),
+        );
+    return InputDecoration(
+      labelText: label,
+      filled: true,
+      fillColor: const Color(0xFFF6F6F9),
+      prefixIcon: Icon(icon, size: 20),
+      suffixIcon: suffix,
+      labelStyle: const TextStyle(color: Colors.black54),
+      floatingLabelStyle: const TextStyle(color: themeColor),
+      border: border(Colors.black12),
+      enabledBorder: border(Colors.black12),
+      disabledBorder: border(Colors.black12),
+      focusedBorder: border(themeColor, 1.5),
+    );
+  }
+
+  void _toggleGuestMode() {
+    // Abort any in-flight lobby polling from a previous attempt so switching
+    // modes mid-flight doesn't leave a stale lobby_request_id around.
+    _participantTimer?.cancel();
+    setState(() {
+      _joinAsGuest = !_joinAsGuest;
+      lobbyRequestId = "";
+      if (_joinAsGuest) {
+        password = "";
+        _passwordController.clear();
+      } else {
+        _guestEmail = "";
+        _guestEmailController.clear();
+        _participantEmail = null;
+      }
+    });
+  }
+
+  Widget _buildMovedToLobbyWait() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      appBar: _buildAppBar(),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(height: 220, child: _buildPreview()),
+                  const SizedBox(height: 32),
+                  const Center(
+                    child: CircularProgressIndicator(color: themeColor),
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Asking the host to join....",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    "The host moved you to the lobby. Please wait to be "
+                    "admitted again.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        color: Colors.black54, fontSize: 14, height: 1.4),
+                  ),
+                  if (_canLeaveLobbyWait) ...[
+                    const SizedBox(height: 24),
+                    Center(
+                      child: OutlinedButton(
+                        onPressed: _leaveLobbyWait,
+                        child: const Text("Leave"),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1112,6 +2230,7 @@ class _PreJoinState extends State<PreJoinScreen> {
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (isLoading) ...[
                   const CircularProgressIndicator(color: themeColor),
@@ -1122,10 +2241,29 @@ class _PreJoinState extends State<PreJoinScreen> {
                   ),
                 ],
                 if (!isLoading && hasError) ...[
-                  Text(
-                    _skipJoinErrorMessage,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.red, fontSize: 14),
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: themeColor.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.wifi_tethering_error_rounded,
+                        color: themeColor, size: 32),
+                  ),
+                  const SizedBox(height: 16),
+                  // The message can run to a few lines of guidance, and this
+                  // screen is all there is when the pre-join page is skipped —
+                  // let it scroll rather than clip on a short viewport.
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Text(
+                        _skipJoinErrorMessage,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                            color: Colors.black87, fontSize: 14, height: 1.4),
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -1166,9 +2304,32 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _subscription?.cancel();
     _participantTimer?.cancel();
     _nameController?.dispose();
+    _passwordController.dispose();
+    _guestEmailController.dispose();
+    _emailVerification?.dispose();
+    // Leaving this screen without joining must release the camera and mic —
+    // otherwise the device's in-use indicator stays lit after the user backs
+    // out, which reads as the SDK spying on them. On the join path these were
+    // handed to the Room, which has already stopped them by now.
+    final audioTrack = _audioTrack;
+    final videoTrack = _videoTrack;
+    _audioTrack = null;
+    _videoTrack = null;
+    unawaited(() async {
+      try {
+        await audioTrack?.stop();
+      } catch (_) {}
+      // The meeting route has returned by now (this screen pushed it and is
+      // only disposed afterwards), so no live mic needs the recorder.
+      if (audioTrack != null) await DaakiaAudioRouting.releaseMicRecorder();
+      try {
+        await videoTrack?.stop();
+      } catch (_) {}
+    }());
     super.dispose();
   }
 
@@ -1185,28 +2346,53 @@ class _PreJoinState extends State<PreJoinScreen> {
     }
     networkRequestHandler(
       apiCall: () => apiClient.getMeetingStatus(token, widget.meetingId),
-      onSuccess: (data) {
-        if (data?.inMeeting == true) {
-          final otherPlatform = data?.meetings?.isNotEmpty == true
-              ? data!.meetings!.first.platform
-              : null;
-          _showDuplicateDeviceSheet(stopLoading, onProceed,
-              otherPlatform: otherPlatform);
-        } else {
+      onSuccess: (data) async {
+        if (data?.inMeeting != true) {
           onProceed();
+          return;
         }
+        // A session carrying this device's own id is this device's leftover
+        // one (e.g. after a crash or a dropped connection) that the server
+        // hasn't cleared yet, not a second device, so don't ask. Joining again
+        // replaces it. Sessions without a device_id (older SDKs, web) still
+        // count as another device.
+        final deviceId = await _resolveDeviceId();
+        final otherDevices = (data?.meetings ?? const <ActiveMeetingItem>[])
+            .where((m) => m.deviceId != deviceId)
+            .toList();
+        if (!mounted) return;
+        if (data?.meetings?.isNotEmpty == true && otherDevices.isEmpty) {
+          onProceed();
+          return;
+        }
+        _showDuplicateDeviceSheet(stopLoading, onProceed,
+            otherPlatform:
+                otherDevices.isNotEmpty ? otherDevices.first.platform : null);
       },
       onError: (_) => onProceed(),
     );
   }
 
+  /// The device id sent as `device_id` in the join metadata, and compared
+  /// against meetingStatus: the host app's own one from configuration
+  /// metadata when it passes one, otherwise [DeviceIdProvider]'s.
+  Future<String> _resolveDeviceId() async {
+    final configured = widget.configuration?.metadata?["device_id"];
+    if (configured != null && "$configured".trim().isNotEmpty) {
+      return "$configured";
+    }
+    return DeviceIdProvider.get();
+  }
+
   void _showDuplicateDeviceSheet(Function stopLoading, VoidCallback onProceed,
       {String? otherPlatform}) {
     if (!mounted) return;
-    showModalBottomSheet<void>(
-      context: context,
+    Utils.showAdaptiveSheet<void>(
+      context,
       isDismissible: false,
       enableDrag: false,
+      // Taller than a landscape phone even with the cap lifted.
+      scrollable: true,
       backgroundColor: Colors.transparent,
       builder: (_) => DuplicateIdentityBottomSheet(
         otherPlatform: otherPlatform,
@@ -1310,93 +2496,34 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   Future<bool> checkAndRequestPermissions(BuildContext context,
       {bool checkForCamera = true, bool checkForAudio = true}) async {
-    // Check and request microphone permission
-    if (checkForAudio) {
-      if (await Permission.microphone.isDenied) {
-        // Request permission
-        PermissionStatus micStatus = await Permission.microphone.request();
-        if (micStatus.isDenied) {
-          if (context.mounted) {
-            _showPermissionDialog(context, "Microphone");
-            return false;
-          }
-        } else if (micStatus.isPermanentlyDenied) {
-          if (context.mounted) {
-            _showSettingsDialog(context, "Microphone");
-            return false;
-          }
-        }
-      }
+    if (checkForAudio &&
+        !await _ensureMediaPermission(context, MediaPermission.microphone)) {
+      return false;
     }
-
     if (checkForCamera) {
-      // Check and request camera permission
-      if (await Permission.camera.isDenied) {
-        // Request permission
-        PermissionStatus cameraStatus = await Permission.camera.request();
-        if (cameraStatus.isDenied) {
-          if (context.mounted) {
-            _showPermissionDialog(context, "Camera");
-            return false;
-          }
-        } else if (cameraStatus.isPermanentlyDenied) {
-          if (context.mounted) {
-            _showSettingsDialog(context, "Camera");
-            return false;
-          }
-        }
+      if (!context.mounted) return false;
+      if (!await _ensureMediaPermission(context, MediaPermission.camera)) {
+        return false;
       }
     }
-
-    // Return true if both permissions are granted
     return true;
   }
 
-// Show dialog if permission is temporarily denied
-  void _showPermissionDialog(BuildContext context, String permissionType) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("$permissionType Permission Required"),
-          content: Text(
-              "Please allow $permissionType permission to join the meeting."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-// Show dialog with a link to app settings if permission is permanently denied
-  void _showSettingsDialog(BuildContext context, String permissionType) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text("$permissionType Permission Required"),
-          content: Text(
-              "$permissionType permission is permanently denied. Please enable it from the app settings."),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("Cancel"),
-            ),
-            TextButton(
-              onPressed: () {
-                openAppSettings(); // Open the app settings
-                Navigator.of(context).pop();
-              },
-              child: const Text("Settings"),
-            ),
-          ],
-        );
-      },
-    );
+  /// Asks for [media] if needed; if it's refused, explains why it's needed and
+  /// offers to ask again or, once the system has stopped asking, to open
+  /// Settings. Resolves to whether the permission is granted in the end.
+  Future<bool> _ensureMediaPermission(
+      BuildContext context, MediaPermission media) async {
+    var status = await media.permission.status;
+    // Permanently denied reports isDenied == false, so check it explicitly:
+    // otherwise the toggle would switch on without the permission.
+    if (!status.isPermanentlyDenied && !status.isGranted && !status.isLimited) {
+      status = await media.permission.requestSerially();
+    }
+    if (status.isGranted || status.isLimited) return true;
+    if (!context.mounted) return false;
+    return showMediaPermissionDialog(context, media,
+        permanentlyDenied: status.isPermanentlyDenied);
   }
 
   Future<void> checkMeetingType(Function stopLoading) async {
@@ -1408,8 +2535,30 @@ class _PreJoinState extends State<PreJoinScreen> {
       getFeaturesAndJoinMeeting(stopLoading);
       return;
     }
+    if (!widget.isHost && _isEmailVerificationPending) {
+      if (mounted) _promptEmailVerification();
+      stopLoading();
+      return;
+    }
     if (widget.isHost) {
       getFeaturesAndJoinMeeting(stopLoading);
+    } else if (_joinAsGuest && _isGuestModeAvailable) {
+      if (!Utils.isValidEmail(_guestEmail)) {
+        if (mounted) {
+          Utils.showSnackBar(context, message: "Please enter a valid email");
+        }
+        stopLoading();
+        return;
+      }
+      if (isNeedToCancelApiCall) {
+        stopLoading();
+        return;
+      }
+      _participantEmail = _verifiedEmail?.email ?? _guestEmail;
+      // Same as the standard lobby flow: register the guest via addToLobby
+      // to get a server-issued lobby_request_id, then poll join with it
+      // until the host accepts/rejects.
+      addParticipantToLobby(stopLoading);
     } else if (event?.isStandardPassword == true) {
       if (checkValidity()) {
         verifyPasswordProtectedMeeting(stopLoading);
@@ -1435,6 +2584,33 @@ class _PreJoinState extends State<PreJoinScreen> {
     }
   }
 
+  /// Whether the cached attendance was made in the same role as this join.
+  /// The backend gives a join that sends `meeting_attendance_uid` that
+  /// attendance's LiveKit identity, so reusing a host attendance for a
+  /// participant join puts the participant on the host's identity, and the
+  /// two then kick each other out with DUPLICATE_IDENTITY. Host joins only
+  /// reuse host attendances; participant joins reuse participant or cohost
+  /// ones (a cohost who rejoins keeps the role).
+  Future<bool> _cachedAttendanceMatchesJoin(StorageHelper cacheData) async {
+    final cachedRole = await cacheData.getAttendanceRole();
+    if (widget.isHost) return cachedRole == AttendanceRole.host;
+    return cachedRole == AttendanceRole.participant ||
+        cachedRole == AttendanceRole.cohost;
+  }
+
+  /// Whether the attendance saved for rejoining may be reused for this join:
+  /// it must belong to the signed-in account, and the session it was made in
+  /// must still be running. Once that session has ended (status 3) the saved
+  /// attendance is dropped, or a new join would come back as co-host and skip
+  /// the password and email checks.
+  Future<bool> _savedAttendanceUsable(StorageHelper cacheData) async {
+    if (widget.basicMeetingDetails?.conferenceStatusId == 3) {
+      await cacheData.clearMeetingAttendance();
+      return false;
+    }
+    return cacheData.isAttendanceOwnedBy(widget.configuration?.userEmail);
+  }
+
   Future<bool> shouldAddAttendanceId() async {
     final cacheData = StorageHelper();
     final cachedMeetingUid = await cacheData.getMeetingUid();
@@ -1444,7 +2620,8 @@ class _PreJoinState extends State<PreJoinScreen> {
     final shouldReuse = cachedMeetingUid == widget.meetingId &&
         cachedSessionUid == widget.basicMeetingDetails?.currentSessionUid &&
         cachedAttendanceId != "" &&
-        cachedAttendanceRole == AttendanceRole.cohost;
+        cachedAttendanceRole == AttendanceRole.cohost &&
+        await _savedAttendanceUsable(cacheData);
     return shouldReuse;
   }
 
@@ -1484,10 +2661,19 @@ class _PreJoinState extends State<PreJoinScreen> {
 
   void verifyPasswordProtectedMeeting(Function stopLoading) {
     networkRequestHandlerWithMessage(
-      apiCall: () => apiClient.verifyMeetingPassword({
+      apiCall: () => apiClient.verifyMeetingPassword(
+          widget.configuration?.vcConfig?.hostToken ?? "", {
         "password": password,
-        "meeting_uid": widget.meetingId
+        "meeting_uid": widget.meetingId,
+        // With email verification on, the code must belong to this email.
+        if (_verifiedEmail != null) "email_token": _verifiedEmail!.token,
       }),
+      onFailureResponse: (response) {
+        // email_mismatch needs nothing extra: the server's message is shown.
+        if (response.data?.emailVerificationRequired == true) {
+          _requireEmailVerificationAgain(response.message);
+        }
+      },
       onSuccess: (response) {
         if (response?.data?.passwordVerified == true) {
           _participantEmail = response?.data?.participantEmail;
@@ -1512,6 +2698,10 @@ class _PreJoinState extends State<PreJoinScreen> {
     if (_shouldSkipPreJoin && mounted) {
       setState(() {});
     }
+    if (_emailErrorShownInline) {
+      _emailErrorShownInline = false;
+      return;
+    }
     Utils.showSnackBar(context, message: message);
   }
 
@@ -1533,5 +2723,196 @@ class _PreJoinState extends State<PreJoinScreen> {
       return configFeature?.features;
     }
     return features;
+  }
+}
+
+/// Round mic/camera toggle on the pre-join preview: translucent when on, red
+/// when off (so "off" reads at a glance), dimmed with a lock when the host
+/// has disabled it.
+class _MediaToggleButton extends StatelessWidget {
+  const _MediaToggleButton({
+    required this.isOn,
+    required this.onIcon,
+    required this.offIcon,
+    required this.lockedByHost,
+    this.needsPermission = false,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  final bool isOn;
+  final IconData onIcon;
+  final IconData offIcon;
+  final bool lockedByHost;
+
+  /// Access to the device isn't granted: shows a warning badge, the usual
+  /// "fix me" cue on call apps, so it's visible before the user taps.
+  final bool needsPermission;
+  final String tooltip;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color background;
+    final Color foreground;
+    if (lockedByHost) {
+      background = Colors.white.withValues(alpha: 0.12);
+      foreground = Colors.white38;
+    } else if (isOn) {
+      background = Colors.white.withValues(alpha: 0.22);
+      foreground = Colors.white;
+    } else {
+      background = const Color(0xFFE5484D);
+      foreground = Colors.white;
+    }
+
+    return Tooltip(
+      message: tooltip,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Material(
+            color: background,
+            shape: CircleBorder(
+              side: isOn && !lockedByHost
+                  ? const BorderSide(color: Colors.white38)
+                  : BorderSide.none,
+            ),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              // Null rather than a snackbar: the banner below the preview
+              // already says why it's locked.
+              onTap: lockedByHost ? null : onPressed,
+              child: SizedBox(
+                width: 48,
+                height: 48,
+                child: Icon(
+                  isOn ? onIcon : offIcon,
+                  color: foreground,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+          if (needsPermission && !lockedByHost)
+            const Positioned(
+              right: -3,
+              top: -3,
+              child: IgnorePointer(
+                child: CircleAvatar(
+                  radius: 9,
+                  backgroundColor: Color(0xFFF5A524),
+                  child: Text(
+                    '!',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (lockedByHost)
+            const Positioned(
+              right: -2,
+              bottom: -2,
+              child: CircleAvatar(
+                radius: 9,
+                backgroundColor: Colors.white,
+                child: Icon(
+                  Icons.lock_rounded,
+                  size: 11,
+                  color: Colors.black54,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A one-line-or-more notice under the pre-join preview.
+class _StatusBanner extends StatelessWidget {
+  const _StatusBanner({
+    required this.icon,
+    required this.message,
+    this.emphasized = false,
+    this.warning = false,
+    this.actionLabel,
+    this.onTap,
+  });
+
+  static const _warningColor = Color(0xFFB45309);
+
+  final IconData icon;
+  final String message;
+  final bool emphasized;
+
+  /// Amber: something the user has to fix (e.g. missing device access).
+  final bool warning;
+
+  /// Short call to action shown after the message; the whole banner is tappable.
+  final String? actionLabel;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = warning ? _warningColor : themeColor;
+    final highlighted = emphasized || warning;
+    final color = highlighted ? accent : Colors.black54;
+    final banner = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: warning
+            ? const Color(0xFFF5A524).withValues(alpha: 0.14)
+            : emphasized
+            ? themeColor.withValues(alpha: 0.08)
+            : Colors.black.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      // Icon rides inline with the text so a wrapped message stays centred
+      // as one block instead of leaving the icon stranded top-left.
+      child: Text.rich(
+        TextSpan(
+          children: [
+            WidgetSpan(
+              alignment: PlaceholderAlignment.middle,
+              child: Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Icon(icon, size: 18, color: color),
+              ),
+            ),
+            TextSpan(text: message),
+            if (actionLabel != null)
+              TextSpan(
+                text: '  $actionLabel',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+          ],
+        ),
+        textAlign: TextAlign.center,
+        style: TextStyle(
+          color: highlighted ? accent : Colors.black87,
+          fontSize: 13.5,
+          height: 1.35,
+          fontWeight: highlighted ? FontWeight.w500 : FontWeight.normal,
+        ),
+      ),
+    );
+    if (onTap == null) return banner;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: banner,
+      ),
+    );
   }
 }

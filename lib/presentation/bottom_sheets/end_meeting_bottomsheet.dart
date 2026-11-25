@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
 
 import '../../resources/colors/color.dart';
+import '../dialog/leave_confirmation_dialog.dart';
 
 class EndMeetingBottomSheet extends StatefulWidget {
   final VoidCallback onEndCall;
   final VoidCallback onLeaveCall;
   final bool useCallTerminology;
 
+  /// Asks before leaving; [confirmLeaveMeeting] when not given.
+  final Future<bool> Function(BuildContext context)? confirmLeave;
+
   const EndMeetingBottomSheet(
-      {required this.onEndCall, required this.onLeaveCall, this.useCallTerminology = false, super.key});
+      {required this.onEndCall,
+      required this.onLeaveCall,
+      this.useCallTerminology = false,
+      this.confirmLeave,
+      super.key});
 
   @override
   State<EndMeetingBottomSheet> createState() => _EndMeetingBottomSheetState();
@@ -16,30 +24,18 @@ class EndMeetingBottomSheet extends StatefulWidget {
 
 class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
   Future<void> _confirmEnd() async {
-    final sessionWord = widget.useCallTerminology ? 'call' : 'meeting';
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('End ${sessionWord[0].toUpperCase()}${sessionWord.substring(1)}'),
-        content: Text(
-          'Are you sure you want to end this $sessionWord? This will end it for all participants.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              'End ${sessionWord[0].toUpperCase()}${sessionWord.substring(1)}',
-              style: const TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) widget.onEndCall();
+    final confirmed = await confirmEndMeetingForAll(context,
+        useCallTerminology: widget.useCallTerminology);
+    if (confirmed) widget.onEndCall();
+  }
+
+  Future<void> _confirmLeave() async {
+    final confirmLeave = widget.confirmLeave;
+    final confirmed = confirmLeave != null
+        ? await confirmLeave(context)
+        : await confirmLeaveMeeting(context,
+            useCallTerminology: widget.useCallTerminology);
+    if (confirmed && mounted) widget.onLeaveCall();
   }
 
   @override
@@ -79,7 +75,7 @@ class _EndMeetingBottomSheetState extends State<EndMeetingBottomSheet> {
             width: double.infinity,
             height: 60, // Square shape
             child: ElevatedButton(
-              onPressed: widget.onLeaveCall,
+              onPressed: _confirmLeave,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 foregroundColor: Colors.grey,

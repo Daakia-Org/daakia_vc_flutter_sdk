@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import '../../presentation/pages/chat_controller.dart';
+import '../../presentation/widgets/role_pill.dart';
 import '../../utils/participant_action_specs.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
@@ -15,10 +16,13 @@ void showParticipantQuickActions(
   Participant participant,
   RtcViewmodel viewModel,
 ) {
-  showModalBottomSheet(
-    context: context,
+  Utils.showAdaptiveSheet<void>(
+    context,
     backgroundColor: Colors.transparent,
-    isScrollControlled: true,
+    // The identity header plus a role-dependent action list can outgrow a
+    // landscape phone, so the sheet may take the full height and the action
+    // list scrolls under a fixed header that holds the close button.
+    forceFullHeight: true,
     builder: (_) => ParticipantQuickActionsSheet(
       participant: participant,
       viewModel: viewModel,
@@ -60,8 +64,6 @@ class _ParticipantQuickActionsSheetState
     final participant = widget.participant;
     final viewModel = widget.viewModel;
 
-    final bool isTargetHost = Utils.isHost(participant.metadata);
-    final bool isTargetCoHost = Utils.isCoHost(participant.metadata);
     final bool isSelf =
         participant.identity == viewModel.room.localParticipant?.identity;
 
@@ -74,6 +76,20 @@ class _ParticipantQuickActionsSheetState
         // Use the root navigator's context: the sheet is already dismissed
         // at this point, so the builder's `context` param may be unmounted.
         showParticipantRenameDialog(
+            Navigator.of(this.context, rootNavigator: false).context,
+            participant,
+            viewModel);
+      },
+      onRemoveFromCall: () {
+        Navigator.pop(context);
+        showRemoveParticipantConfirmDialog(
+            Navigator.of(this.context, rootNavigator: false).context,
+            participant,
+            viewModel);
+      },
+      onMoveToLobby: () {
+        Navigator.pop(context);
+        showMoveToLobbyConfirmDialog(
             Navigator.of(this.context, rootNavigator: false).context,
             participant,
             viewModel);
@@ -98,14 +114,14 @@ class _ParticipantQuickActionsSheetState
     final String displayName = participant.name.isNotEmpty
         ? participant.name
         : participant.identity;
-    final String roleLabel =
-        isTargetHost ? 'Host' : (isTargetCoHost ? 'Co-Host' : '');
+    // Every role the participant holds, not just the first that matches:
+    // the guest flag is independent of the meeting role.
+    final rolePills = buildRolePills(participant.metadata);
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+    return Material(
+      color: const Color(0xFF1E1E1E),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      clipBehavior: Clip.antiAlias,
       child: SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -125,7 +141,7 @@ class _ParticipantQuickActionsSheetState
             // Shown prominently so the host can confirm the right person
             // even if tiles shifted while the sheet was opening.
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+              padding: const EdgeInsets.fromLTRB(16, 14, 4, 10),
               child: Row(
                 children: [
                   CircleAvatar(
@@ -184,34 +200,47 @@ class _ParticipantQuickActionsSheetState
                             ],
                           ],
                         ),
-                        if (roleLabel.isNotEmpty)
-                          Text(
-                            roleLabel,
-                            style: TextStyle(
-                              color: Colors.grey[400],
-                              fontSize: 12,
+                        if (rolePills.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              children: rolePills,
                             ),
                           ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'Close',
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
                   ),
                 ],
               ),
             ),
 
             const Divider(color: Colors.white12, height: 1),
-            const SizedBox(height: 4),
 
             // ── Actions ─────────────────────────────────────────────────────
-            for (final action in actions)
-              _ActionTile(
-                icon: action.icon,
-                label: action.label,
-                visible: action.visible,
-                onTap: action.onTap,
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final action in actions)
+                      _ActionTile(
+                        icon: action.icon,
+                        label: action.label,
+                        visible: action.visible,
+                        onTap: action.onTap,
+                      ),
+                  ],
+                ),
               ),
-
-            const SizedBox(height: 8),
+            ),
           ],
         ),
       ),

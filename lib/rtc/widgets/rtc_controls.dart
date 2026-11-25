@@ -2,9 +2,13 @@ import 'dart:async';
 
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/bottom_sheets/end_meeting_bottomsheet.dart';
-import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/meeting_audio_dialogs.dart';
+import 'package:daakia_vc_flutter_sdk/utils/permission_request.dart';
+import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
@@ -13,14 +17,21 @@ import '../../resources/colors/color.dart';
 import '../../presentation/bottom_sheets/audio_output_bottomsheet.dart';
 import '../../presentation/bottom_sheets/more_option_bottomsheet.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
+import '../audio_routing.dart';
 
 class RtcControls extends StatefulWidget {
   final Room room;
   final LocalParticipant participant;
 
+  /// [Axis.horizontal] is the classic bottom bar. [Axis.vertical] renders the
+  /// same buttons as a rail on the trailing edge, which is what the meeting
+  /// screen uses in landscape so the controls don't eat the limited height.
+  final Axis axis;
+
   const RtcControls(
     this.room,
     this.participant, {
+    this.axis = Axis.horizontal,
     super.key,
   });
 
@@ -33,15 +44,30 @@ class RtcControls extends StatefulWidget {
 class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   CameraPosition position = CameraPosition.front;
 
-  bool _speakerphoneOn = true;
-  bool _userExplicitlySelectedEarpiece = false;
+  // Backed by DaakiaAudioRouting so the choice survives this widget being
+  // rebuilt on a portrait/landscape layout switch.
+  bool get _speakerphoneOn => DaakiaAudioRouting.uiSpeakerphoneOn;
+  set _speakerphoneOn(bool v) => DaakiaAudioRouting.uiSpeakerphoneOn = v;
+  bool get _userExplicitlySelectedEarpiece => DaakiaAudioRouting.uiEarpieceChoice;
+  set _userExplicitlySelectedEarpiece(bool v) =>
+      DaakiaAudioRouting.uiEarpieceChoice = v;
 
   PermissionStatus _micOsStatus = PermissionStatus.granted;
   PermissionStatus _cameraOsStatus = PermissionStatus.granted;
 
-  List<MediaDevice> _audioOutputDevices = [];
+  List<MediaDevice> get _audioOutputDevices => DaakiaAudioRouting.uiOutputs;
+  set _audioOutputDevices(List<MediaDevice> v) => DaakiaAudioRouting.uiOutputs = v;
   MediaDevice? _selectedOutputDevice;
   StreamSubscription<List<MediaDevice>>? _deviceSubscription;
+
+  // Mic toggle UX: a tap while the room is reconnecting can't publish, and a
+  // first publish can take a moment, so show that instead of a dead button.
+  late final EventsListener<RoomEvent> _roomListener;
+  bool _isReconnecting = false;
+  bool _micBusy = false;
+  // A second tap while the OS permission dialog is up would queue another
+  // request and, once granted, toggle the device a second time.
+  bool _awaitingOsPermission = false;
 
   LocalParticipant get participant => widget.participant;
 
@@ -49,13 +75,40 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     participant.addListener(_onChange);
+    _isReconnecting = widget.room.connectionState == ConnectionState.reconnecting;
+    _roomListener = widget.room.createListener()
+      ..on<RoomReconnectingEvent>((_) => _setReconnecting(true))
+      ..on<RoomAttemptReconnectEvent>((_) => _setReconnecting(true))
+      ..on<RoomReconnectedEvent>((_) => _setReconnecting(false))
+      ..on<RoomDisconnectedEvent>((_) => _setReconnecting(false));
     // Set speaker immediately so audio is loud even before device list loads.
-    Hardware.instance.setSpeakerphoneOn(true);
-    Hardware.instance.enumerateDevices().then(_loadDevices);
-    _deviceSubscription =
-        Hardware.instance.onDeviceChange.stream.listen(_loadDevices);
+    // Only once per meeting: a layout switch rebuilds this widget and must not
+    // override the user's current output choice.
+    if (!DaakiaAudioRouting.uiInitialRouteApplied) {
+      DaakiaAudioRouting.uiInitialRouteApplied = true;
+      DaakiaAudioRouting.setSpeakerphoneOn(true);
+    }
+    DaakiaAudioRouting.enumerateDevices().then(_loadDevices);
+    _deviceSubscription = DaakiaAudioRouting.onDeviceChange.listen(
+      _loadDevices,
+    );
     WidgetsBinding.instance.addObserver(this);
     _checkOsPermissions();
+  }
+
+  void _setReconnecting(bool value) {
+    if (mounted && _isReconnecting != value) {
+      setState(() => _isReconnecting = value);
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(content: Text(message), duration: const Duration(seconds: 2)),
+      );
   }
 
   @override
@@ -64,7 +117,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       _checkOsPermissions();
       // Re-enumerate on resume to catch BT/headset changes while backgrounded
       // (onDeviceChange stream doesn't fire when the app isn't in foreground).
-      Hardware.instance.enumerateDevices().then(_loadDevices);
+      DaakiaAudioRouting.enumerateDevices().then(_loadDevices);
     }
   }
 
@@ -81,20 +134,36 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   void _loadDevices(List<MediaDevice> devices) {
     final rawOutputs = devices.where((d) => d.kind == 'audiooutput').toList();
-    final hadExternal =
-        _audioOutputDevices.any((d) => isExternalAudioDevice(d.label));
+    final hadExternal = _audioOutputDevices.any(
+      (d) => isExternalAudioDevice(d.label),
+    );
 
     // On iOS, also check audioinput for BT devices: when overrideOutputAudioPort(.speaker)
     // is active the current route shows only Speaker, but BT HFP still appears in
     // availableInputs (audioinput kind) with portType containing "bluetooth".
-    final hasBtInput = defaultTargetPlatform == TargetPlatform.iOS &&
-        devices.any((d) =>
-            d.kind == 'audioinput' &&
-            (d.groupId ?? '').toLowerCase().contains('bluetooth'));
+    // Same for wired/USB headsets (e.g. USB-C EarPods): their mic stays in
+    // availableInputs while the forced speaker hides their output.
+    final hasBtInput =
+        defaultTargetPlatform == TargetPlatform.iOS &&
+        devices.any(
+          (d) => d.kind == 'audioinput' && isExternalInputPort(d.groupId),
+        );
     final hasExternal =
         rawOutputs.any((d) => isExternalAudioDevice(d.label)) || hasBtInput;
 
     final outputs = augmentOutputsForIos(devices);
+    DaakiaAudioRouting.diag('loadDevices', {
+      'raw': devices
+          .where((d) => d.kind != 'videoinput')
+          .map((d) => '${d.kind}|${d.label}|${d.groupId}')
+          .toList(),
+      'shown': outputs.map((d) => d.label).toList(),
+      'hadExternal': hadExternal,
+      'hasExternal': hasExternal,
+      'hasBtInput': hasBtInput,
+      'earpieceChoice': _userExplicitlySelectedEarpiece,
+    });
+    unawaited(DaakiaAudioRouting.diagRoute('loadDevices.route'));
 
     if (!mounted) return;
     setState(() => _audioOutputDevices = outputs);
@@ -102,7 +171,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
     if (!hadExternal && hasExternal) {
       // External device just connected (or was already there at first load).
       // Always route to it regardless of any prior earpiece preference.
-      Hardware.instance.setSpeakerphoneOn(false);
+      DaakiaAudioRouting.setSpeakerphoneOn(false);
       setState(() {
         _speakerphoneOn = false;
         _selectedOutputDevice = null;
@@ -112,7 +181,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       // External device disconnected.
       if (!_userExplicitlySelectedEarpiece) {
         // User was not on earpiece by choice → restore speaker.
-        Hardware.instance.setSpeakerphoneOn(true);
+        DaakiaAudioRouting.setSpeakerphoneOn(true);
         setState(() {
           _speakerphoneOn = true;
           _selectedOutputDevice = null;
@@ -179,29 +248,59 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         l.contains('wireless')) {
       return Icons.bluetooth_audio;
     }
-    if (l.contains('headphone') || l.contains('headset')) {
+    if (l.contains('headphone') ||
+        l.contains('headset') ||
+        isWiredHeadsetPort(groupId)) {
       return Icons.headset;
     }
     return Icons.volume_up;
   }
 
-  Widget _buildAudioOutputButton() {
+  /// The mic and speaker buttons are disabled while audio is disconnected;
+  /// tapping either says why and offers to reconnect. Reconnecting leaves the
+  /// mic muted.
+  Future<void> _onAudioOffControlPressed(RtcViewmodel viewModel) async {
+    if (_micBusy) return;
+    final turnOn = await showAudioDisconnectedPrompt(context);
+    if (!turnOn || !mounted) return;
+    setState(() => _micBusy = true);
+    try {
+      await viewModel.joinAudio();
+    } finally {
+      if (mounted) setState(() => _micBusy = false);
+    }
+  }
+
+  Widget _buildAudioOutputButton(RtcViewmodel viewModel) {
+    if (viewModel.isAudioDisconnected) {
+      return IconButton(
+        onPressed: () => _onAudioOffControlPressed(viewModel),
+        icon: Icon(Icons.volume_off,
+            color: Colors.white.withValues(alpha: 0.4)),
+        iconSize: 30,
+      );
+    }
     return IconButton(
+      // Where the output can't be switched there is no sheet; the button still
+      // offers Disconnect Audio.
       onPressed: Hardware.instance.canSwitchSpeakerphone
-          ? _showAudioOutputSheet
-          : null,
-      icon: Icon(
-        _audioOutputIcon,
-        color: Colors.white.withValues(
-            alpha: Hardware.instance.canSwitchSpeakerphone ? 1.0 : 0.5),
-      ),
+          ? () => _showAudioOutputSheet(viewModel)
+          : () => _confirmDisconnectAudio(viewModel),
+      icon: Icon(_audioOutputIcon, color: Colors.white),
       iconSize: 30,
     );
   }
 
-  void _showAudioOutputSheet() {
-    showModalBottomSheet(
-      context: context,
+  Future<void> _confirmDisconnectAudio(RtcViewmodel viewModel) async {
+    final confirmed = await confirmDisconnectAudio(context);
+    if (confirmed && mounted) await viewModel.disconnectAudio();
+  }
+
+  void _showAudioOutputSheet(RtcViewmodel viewModel) {
+    Utils.showAdaptiveSheet<void>(
+      context,
+      // The device list grows with whatever is paired.
+      scrollable: true,
       backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
@@ -210,35 +309,55 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
         speakerphoneOn: _speakerphoneOn,
         initialDevices: _audioOutputDevices,
         selectedDevice: _selectedOutputDevice,
+        onDisconnectAudio: () {
+          Navigator.pop(ctx);
+          _confirmDisconnectAudio(viewModel);
+        },
         onDeviceSelected: (device) async {
           Navigator.pop(ctx);
+          DaakiaAudioRouting.diag('sheetTap', {
+            'label': device.label,
+            'groupId': device.groupId,
+          });
           final label = device.label.toLowerCase();
+          final bool speaker;
+          final bool earpiece;
           if (label.contains('speakerphone') || label.contains('speaker')) {
-            Hardware.instance.setSpeakerphoneOn(true, forceSpeakerOutput: true);
-            setState(() {
-              _speakerphoneOn = true;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = false;
-            });
+            speaker = true;
+            earpiece = false;
           } else if (label.contains('earpiece') || label.contains('receiver')) {
-            Hardware.instance.setSpeakerphoneOn(false);
-            setState(() {
-              _speakerphoneOn = false;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = true;
-            });
+            speaker = false;
+            earpiece = true;
           } else {
             // BT / wired headset.
             // selectAudioOutput is desktop-only in LiveKit; on mobile, calling
             // setSpeakerphoneOn(false) removes the speaker override and lets iOS/Android
             // auto-route to the connected BT/wired device by OS priority.
-            Hardware.instance.setSpeakerphoneOn(false);
-            setState(() {
-              _speakerphoneOn = false;
-              _selectedOutputDevice = null;
-              _userExplicitlySelectedEarpiece = false;
-            });
+            speaker = false;
+            earpiece = false;
           }
+
+          // Already on this output: switching again would only reconfigure
+          // the audio session for nothing.
+          final alreadySelected = speaker
+              ? _speakerphoneOn
+              : !_speakerphoneOn && _userExplicitlySelectedEarpiece == earpiece;
+          if (alreadySelected) return;
+
+          // Update the tick and button icon right away. The switch itself
+          // blocks the platform thread while iOS reconfigures audio (up to ~1s),
+          // so start it after the sheet has finished closing; otherwise the
+          // close animation is what freezes.
+          setState(() {
+            _speakerphoneOn = speaker;
+            _selectedOutputDevice = null;
+            _userExplicitlySelectedEarpiece = earpiece;
+          });
+          await Future.delayed(const Duration(milliseconds: 300));
+          DaakiaAudioRouting.setSpeakerphoneOn(
+            speaker,
+            forceSpeakerOutput: speaker,
+          );
         },
       ),
     );
@@ -246,6 +365,16 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   Future<void> _onMicPressed(RtcViewmodel viewModel) async {
     if (viewModel.isAudioInterrupted) return;
+    if (_micBusy) return;
+    if (_isReconnecting) {
+      _showMessage('Reconnecting… try again in a moment');
+      return;
+    }
+
+    if (viewModel.isAudioDisconnected) {
+      await _onAudioOffControlPressed(viewModel);
+      return;
+    }
 
     // Check OS-level permission first — this is the most actionable issue.
     final status = await Permission.microphone.status;
@@ -254,7 +383,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
     if (status.isDenied) {
-      final result = await Permission.microphone.request();
+      if (_awaitingOsPermission) return;
+      _awaitingOsPermission = true;
+      final PermissionStatus result;
+      try {
+        result = await Permission.microphone.requestSerially();
+      } finally {
+        _awaitingOsPermission = false;
+      }
       await _checkOsPermissions();
       if (!result.isGranted) return;
     } else {
@@ -263,7 +399,8 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
     // Check meeting-level permission.
     final isHostOrCoHost = viewModel.isHost() || viewModel.isCoHost();
-    final hasMeetingPermission = isHostOrCoHost ||
+    final hasMeetingPermission =
+        isHostOrCoHost ||
         viewModel.isAudioPermissionEnable ||
         viewModel.isMicPermissionGranted;
 
@@ -279,9 +416,21 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
 
-    participant.isMicrophoneEnabled()
-        ? viewModel.disableAudio()
-        : viewModel.enableAudio();
+    final enabling = !participant.isMicrophoneEnabled();
+    setState(() => _micBusy = true);
+    try {
+      if (enabling) {
+        await viewModel.enableAudio();
+      } else {
+        await viewModel.disableAudio();
+      }
+    } catch (_) {
+      _showMessage(enabling
+          ? "Couldn't turn on your microphone. Try again."
+          : "Couldn't turn off your microphone. Try again.");
+    } finally {
+      if (mounted) setState(() => _micBusy = false);
+    }
   }
 
   Future<void> _onCameraPressed(RtcViewmodel viewModel) async {
@@ -292,7 +441,14 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
     if (status.isDenied) {
-      final result = await Permission.camera.request();
+      if (_awaitingOsPermission) return;
+      _awaitingOsPermission = true;
+      final PermissionStatus result;
+      try {
+        result = await Permission.camera.requestSerially();
+      } finally {
+        _awaitingOsPermission = false;
+      }
       await _checkOsPermissions();
       if (!result.isGranted) return;
     } else {
@@ -301,7 +457,8 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
     // Check meeting-level permission.
     final isHostOrCoHost = viewModel.isHost() || viewModel.isCoHost();
-    final hasMeetingPermission = isHostOrCoHost ||
+    final hasMeetingPermission =
+        isHostOrCoHost ||
         viewModel.isVideoPermissionEnable ||
         viewModel.isVideoPermissionGranted;
 
@@ -317,9 +474,18 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       return;
     }
 
-    participant.isCameraEnabled()
-        ? viewModel.disableVideo()
-        : viewModel.enableVideo();
+    final enabling = !participant.isCameraEnabled();
+    try {
+      if (enabling) {
+        await viewModel.enableVideo();
+      } else {
+        await viewModel.disableVideo();
+      }
+    } catch (_) {
+      _showMessage(enabling
+          ? "Couldn't turn on your camera. Try again."
+          : "Couldn't turn off your camera. Try again.");
+    }
   }
 
   void _showSettingsDialog(String permissionType) {
@@ -350,11 +516,18 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
 
   Widget _buildMicButton(RtcViewmodel viewModel) {
     return _ControlButton(
-      icon: participant.isMicrophoneEnabled() ? Icons.mic : Icons.mic_off,
-      iconColor: _isMicOsDenied
-          ? Colors.orange
-          : Colors.white.withValues(alpha: viewModel.getMicAlpha()),
+      icon: !viewModel.isAudioDisconnected && participant.isMicrophoneEnabled()
+          ? Icons.mic
+          : Icons.mic_off,
+      iconColor: viewModel.isAudioDisconnected
+          ? Colors.white.withValues(alpha: 0.4)
+          : _isMicOsDenied
+              ? Colors.orange
+              : Colors.white.withValues(
+                  alpha: _isReconnecting ? 0.4 : viewModel.getMicAlpha(),
+                ),
       showWarning: _isMicOsDenied,
+      busy: _micBusy,
       onPressed: () => _onMicPressed(viewModel),
     );
   }
@@ -373,91 +546,122 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final viewModel = Provider.of<RtcViewmodel>(context);
+    final buttons = _buildButtons(viewModel);
+
+    if (widget.axis == Axis.horizontal) {
+      return Container(
+        color: transparentMaskColor,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: buttons,
+        ),
+      );
+    }
+
     return Container(
       color: transparentMaskColor,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          _buildAudioOutputButton(),
-          _buildCameraButton(viewModel),
-          _buildMicButton(viewModel),
-          IconButton(
-            onPressed: () {
-              if (participant.isCameraEnabled()) {
-                _toggleCamera();
-              }
-            },
-            icon: Icon(
-              Icons.flip_camera_android,
-              color: Colors.white
-                  .withValues(alpha: participant.isCameraEnabled() ? 1 : 0.5),
-            ),
-            iconSize: 30,
-          ),
-          IconButton(
-            onPressed: () {
-              showMoreOptionBottomSheet();
-            },
-            icon: Badge(
-              isLabelVisible: (viewModel.getUnReadCount() +
-                      viewModel.getUnreadCountPrivateChat() +
-                      viewModel.screenShareRequestCount) >
-                  0,
-              label: Text(
-                (viewModel.getUnReadCount() +
-                        viewModel.getUnreadCountPrivateChat() +
-                        viewModel.screenShareRequestCount)
-                    .toString(),
-                style: const TextStyle(color: Colors.white),
-              ),
-              offset: const Offset(8, 8),
-              backgroundColor: Colors.red,
-              child: const Icon(
-                Icons.more_horiz,
-                color: Colors.white,
+      width: _railWidth,
+      // A short landscape viewport (or a large text scale) can leave less room
+      // than the buttons need, so the rail scrolls instead of overflowing.
+      child: LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: IntrinsicHeight(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: buttons,
               ),
             ),
-            iconSize: 30,
           ),
-          IconButton(
-            onPressed: () {
-              if (viewModel.isHost() || viewModel.isCoHost()) {
-                _endMeetingOptions(viewModel);
-              } else {
-                _onTapDisconnect(viewModel);
-              }
-            },
-            icon: const Icon(
-              Icons.call_end,
-              color: Colors.redAccent,
-            ),
-            iconSize: 30,
-          )
-        ],
+        ),
       ),
     );
   }
 
+  static const double _railWidth = 64;
+
+  List<Widget> _buildButtons(RtcViewmodel viewModel) {
+    return [
+      _buildAudioOutputButton(viewModel),
+      _buildCameraButton(viewModel),
+      _buildMicButton(viewModel),
+      IconButton(
+        onPressed: () {
+          if (participant.isCameraEnabled()) {
+            _toggleCamera();
+          }
+        },
+        icon: Icon(
+          Icons.flip_camera_android,
+          color: Colors.white.withValues(
+            alpha: participant.isCameraEnabled() ? 1 : 0.5,
+          ),
+        ),
+        iconSize: 30,
+      ),
+      IconButton(
+        onPressed: () {
+          showMoreOptionBottomSheet();
+        },
+        icon: Badge(
+          isLabelVisible:
+              (viewModel.getUnReadCount() +
+                  viewModel.getUnreadCountPrivateChat() +
+                  viewModel.screenShareRequestCount +
+                  viewModel.lobbyRequestList.length) >
+              0,
+          label: Text(
+            (viewModel.getUnReadCount() +
+                    viewModel.getUnreadCountPrivateChat() +
+                    viewModel.screenShareRequestCount +
+                    viewModel.lobbyRequestList.length)
+                .toString(),
+            style: const TextStyle(color: Colors.white),
+          ),
+          offset: const Offset(8, 8),
+          backgroundColor: Colors.red,
+          child: const Icon(Icons.more_horiz, color: Colors.white),
+        ),
+        iconSize: 30,
+      ),
+      IconButton(
+        onPressed: () {
+          if (viewModel.isHost() || viewModel.isCoHost()) {
+            _endMeetingOptions(viewModel);
+          } else {
+            _onTapDisconnect(viewModel);
+          }
+        },
+        icon: const Icon(Icons.call_end, color: Colors.redAccent),
+        iconSize: 30,
+      ),
+    ];
+  }
+
   void showMoreOptionBottomSheet() {
-    showModalBottomSheet(
-        context: context,
-        builder: (BuildContext context) {
-          return const MoreOptionBottomSheet();
-        });
+    Utils.showAdaptiveSheet<void>(
+      context,
+      // No scrollable: the sheet body is already a scroll view of its own.
+      builder: (BuildContext context) {
+        return const MoreOptionBottomSheet();
+      },
+    );
   }
 
   void _onTapDisconnect(RtcViewmodel viewModel) async {
     if (!mounted) return;
-    final result = await context.showDisconnectDialog();
-    if (result == true) {
+    final result = await confirmLeaveMeeting(context,
+        useCallTerminology: viewModel.useCallTerminology);
+    if (result) {
       viewModel.isMeetingEnded = true;
       viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
     }
   }
 
   void _endMeetingOptions(RtcViewmodel viewModel) {
-    showModalBottomSheet(
-      context: context,
+    Utils.showAdaptiveSheet<void>(
+      context,
       backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
@@ -465,6 +669,8 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
       builder: (context) {
         return EndMeetingBottomSheet(
           useCallTerminology: viewModel.useCallTerminology,
+          confirmLeave: (sheetContext) =>
+              confirmModeratorLeave(sheetContext, viewModel),
           onEndCall: () {
             Navigator.pop(context);
             viewModel.endMeetingForAll();
@@ -481,6 +687,7 @@ class _RtcControlState extends State<RtcControls> with WidgetsBindingObserver {
   @override
   void dispose() {
     participant.removeListener(_onChange);
+    _roomListener.dispose();
     _deviceSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
@@ -493,11 +700,15 @@ class _ControlButton extends StatelessWidget {
   final bool showWarning;
   final VoidCallback onPressed;
 
+  /// Shows a small spinner in place of the icon while an action is running.
+  final bool busy;
+
   const _ControlButton({
     required this.icon,
     required this.iconColor,
     required this.showWarning,
     required this.onPressed,
+    this.busy = false,
   });
 
   @override
@@ -508,7 +719,19 @@ class _ControlButton extends StatelessWidget {
       children: [
         IconButton(
           onPressed: onPressed,
-          icon: Icon(icon, color: iconColor),
+          icon: busy
+              ? const SizedBox(
+                  width: 30,
+                  height: 30,
+                  child: Padding(
+                    padding: EdgeInsets.all(5),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      color: Colors.white,
+                    ),
+                  ),
+                )
+              : Icon(icon, color: iconColor),
           iconSize: 30,
         ),
         if (showWarning)
@@ -522,8 +745,11 @@ class _ControlButton extends StatelessWidget {
                 color: Colors.orange,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.priority_high,
-                  size: 10, color: Colors.white),
+              child: const Icon(
+                Icons.priority_high,
+                size: 10,
+                color: Colors.white,
+              ),
             ),
           ),
       ],

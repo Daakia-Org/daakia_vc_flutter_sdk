@@ -14,6 +14,7 @@ import 'annotation_overlay.dart';
 import 'no_video.dart';
 import 'participant_info.dart';
 import 'participant_quick_actions.dart';
+import 'video_with_placeholder.dart';
 
 abstract class ParticipantWidget extends StatefulWidget {
   // Convenience method to return relevant widget for participant
@@ -107,6 +108,24 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
   TrackPublication? get audioPublication;
 
   bool get isScreenShare => widget.type == ParticipantTrackType.kScreenShare;
+
+  String get _displayName => widget.participant.name.isNotEmpty
+      ? widget.participant.name
+      : widget.participant.identity;
+
+  /// Same wording as web: the share says who is presenting, your own share
+  /// says "You are presenting".
+  String get _infoTitle {
+    if (!isScreenShare) return _displayName;
+    return widget.participant is LocalParticipant
+        ? 'You are presenting'
+        : '$_displayName is presenting';
+  }
+
+  /// This is the camera tile of someone who is sharing their screen. The
+  /// tile listens to its participant, so the badge follows the share.
+  bool get _isPresentingCamera =>
+      !isScreenShare && widget.participant.isScreenShareEnabled();
   EventsListener<ParticipantEvent>? _listener;
 
   @override
@@ -147,6 +166,20 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
   // Widgets to show above the info bar
   List<Widget> extraWidgets(bool isScreenShare) => [];
 
+  /// The camera (or share) is on but its video hasn't reached us yet, for
+  /// example while subscribing. Shown as loading rather than as camera off.
+  bool get _isVideoOnTheWay =>
+      videoPublication != null &&
+      videoPublication!.muted == false &&
+      activeVideoTrack == null;
+
+  Widget _loadingPlaceholder() => VideoLoadingPlaceholder(
+        name: widget.participant.name,
+        userAvatar: Utils.extractUserAvatar(widget.participant.metadata),
+        isSpeaker: widget.isSpeaker,
+        isScreenShare: isScreenShare,
+      );
+
   @override
   Widget build(BuildContext ctx) {
     final viewModel = Provider.of<RtcViewmodel>(context);
@@ -186,19 +219,23 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                 viewModel,
               ),
               child: activeVideoTrack != null && !activeVideoTrack!.muted
-                  ? VideoTrackRenderer(
-                      renderMode: VideoRenderMode.auto,
-                      activeVideoTrack!,
-                      fit: VideoViewFit.contain,
+                  // Keyed by track so a new track gets a fresh renderer and
+                  // shows the loading state again until its first frame.
+                  ? VideoWithPlaceholder(
+                      key: ValueKey(activeVideoTrack!.sid),
+                      track: activeVideoTrack!,
+                      placeholder: _loadingPlaceholder(),
                     )
-                  : isScreenShare && videoPublication != null
-                      ? const _ScreenSharePausedWidget()
-                      : NoVideoWidget(
-                          name: widget.participant.name,
-                          userAvatar: Utils.extractUserAvatar(
-                              widget.participant.metadata),
-                          isSpeaker: widget.isSpeaker,
-                        ),
+                  : _isVideoOnTheWay
+                      ? _loadingPlaceholder()
+                      : isScreenShare && videoPublication != null
+                          ? const _ScreenSharePausedWidget()
+                          : NoVideoWidget(
+                              name: widget.participant.name,
+                              userAvatar: Utils.extractUserAvatar(
+                                  widget.participant.metadata),
+                              isSpeaker: widget.isSpeaker,
+                            ),
             ),
             // Annotation overlay — renders remote strokes + drawing input on screen-share tiles
             if (isScreenShare && videoPublication != null)
@@ -226,11 +263,12 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                     ),
                   // ...extraWidgets(isScreenShare),
                   ParticipantInfoWidget(
-                    title: widget.participant.name.isNotEmpty
-                        ? widget.participant.name
-                        : widget.participant.identity,
+                    title: _infoTitle,
+                    // With audio disconnected we drop everyone's audio on
+                    // purpose; their mic state still comes from the publisher.
                     audioAvailable: audioPublication?.muted == false &&
-                        audioPublication?.subscribed == true,
+                        (audioPublication?.subscribed == true ||
+                            viewModel.isAudioDisconnected),
                     connectionQuality: widget.participant.connectionQuality,
                     isScreenShare: isScreenShare,
                     enabledE2EE: widget.participant.isEncrypted,
@@ -269,9 +307,16 @@ abstract class _ParticipantWidgetState<T extends ParticipantWidget>
                   ),
                 ),
               ),
-            if (viewModel.isHandRaised(widget.participant.identity))
+            if (_isPresentingCamera)
               Positioned(
                 top: 5,
+                left: 5,
+                child: _PresentingBadge(large: widget.isSpeaker),
+              ),
+            // Sits under the "Presenting" badge when both are showing.
+            if (viewModel.isHandRaised(widget.participant.identity))
+              Positioned(
+                top: _isPresentingCamera ? (widget.isSpeaker ? 40 : 26) : 5,
                 left: 5,
                 child: Container(
                   padding: EdgeInsets.symmetric(
@@ -581,6 +626,43 @@ class _ScreenSharePausedWidget extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// "Presenting" badge on the sharer's camera tile, matching web.
+class _PresentingBadge extends StatelessWidget {
+  const _PresentingBadge({required this.large});
+
+  /// The stage tile gets a bigger badge than a filmstrip tile.
+  final bool large;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: large ? 10 : 6,
+        vertical: large ? 4 : 2,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(large ? 50 : 12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.monitor, color: Colors.white, size: large ? 18 : 12),
+          const SizedBox(width: 4),
+          Text(
+            'Presenting',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: large ? 14 : 10,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

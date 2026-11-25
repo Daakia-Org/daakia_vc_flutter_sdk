@@ -8,6 +8,21 @@ import 'daakia_vc_sentry_service.dart';
 ///
 /// Both services are independent — initialize either or both; an uninitialized
 /// service is silently skipped without affecting the other.
+///
+/// ## Routing policy
+///
+/// Datadog is the firehose: every log level reaches it, including routine
+/// lifecycle telemetry (API responses, disconnects, reconnect attempts).
+///
+/// Sentry is for actionable faults only — crashes, uncaught exceptions and
+/// response-parsing failures. Anything expected during a healthy meeting must
+/// not reach it, or real issues drown in noise. Concretely:
+///
+/// - [logDebug] / [logInfo] never reach Sentry.
+/// - [logWarning] / [logError] reach Sentry by default; pass
+///   `reportToSentry: false` for events that are logged at those levels for
+///   Datadog dashboards but are not defects (e.g. reconnect attempts).
+/// - [captureException] is Sentry-only.
 class DaakiaVcLogger {
   DaakiaVcLogger._();
 
@@ -45,17 +60,18 @@ class DaakiaVcLogger {
     DaakiaVcDatadogService.logDebug(message, attributes: attributes);
   }
 
+  /// Datadog only — informational events are never Sentry issues.
   static void logInfo(String message, {Map<String, Object?>? attributes}) {
     DaakiaVcDatadogService.logInfo(message, attributes: attributes);
-    DaakiaVcSentryService.captureMessage(
-      message,
-      level: SentryLevel.info,
-      context: attributes,
-    );
   }
 
-  static void logWarning(String message, {Map<String, Object?>? attributes}) {
+  static void logWarning(
+    String message, {
+    Map<String, Object?>? attributes,
+    bool reportToSentry = true,
+  }) {
     DaakiaVcDatadogService.logWarning(message, attributes: attributes);
+    if (!reportToSentry) return;
     DaakiaVcSentryService.captureMessage(
       message,
       level: SentryLevel.warning,
@@ -65,13 +81,18 @@ class DaakiaVcLogger {
 
   /// Logs an error message to Datadog; Sentry receives it as an exception
   /// (with stack trace) if [error] is provided, or as an error message if not.
+  ///
+  /// Set [reportToSentry] to false for events that belong at error level in
+  /// Datadog but are not defects — they would otherwise bury real issues.
   static void logError(
     String message, {
     dynamic error,
     StackTrace? stackTrace,
     Map<String, Object?>? attributes,
+    bool reportToSentry = true,
   }) {
     DaakiaVcDatadogService.logError(message, null, null, attributes);
+    if (!reportToSentry) return;
     if (error != null) {
       DaakiaVcSentryService.captureException(
         error,

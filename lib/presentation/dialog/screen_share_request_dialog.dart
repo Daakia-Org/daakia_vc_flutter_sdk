@@ -17,14 +17,22 @@ class ScreenShareRequestDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    // 260 roughly fits 2 tiles with the rest scrollable, but a phone in
+    // landscape is only ~360dp tall and a Dialog already gives up 24dp of
+    // inset top and bottom. Clamping against the viewport keeps the title row
+    // and the tiles' action buttons on the card instead of overflowing it.
+    final maxHeight = (media.size.height - media.viewInsets.vertical - 96)
+        .clamp(120.0, 260.0);
+
     return Dialog(
       backgroundColor: Colors.grey[900],
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxHeight: 260, // roughly fits 2 tiles, rest scrollable
+        constraints: BoxConstraints(
+          maxHeight: maxHeight,
           minWidth: 280,
           maxWidth: 400,
         ),

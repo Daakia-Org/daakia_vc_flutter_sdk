@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../widgets/host_control_switch.dart';
+import '../widgets/workshop_mode_dialog.dart';
 
 class WebinarControls extends StatelessWidget {
   const WebinarControls({super.key});
@@ -56,11 +57,30 @@ class WebinarControls extends StatelessWidget {
                 value: viewModel.isWebinarModeEnable,
                 isEnable: viewModel.meetingDetails.features?.isWorkshopEnabled() == true,
                 onChanged: (value) {
+                  // Captured before the toggle so the summary dialog can say
+                  // which restrictions were actually lifted when turning the
+                  // mode off — the host may have already relaxed some of the
+                  // sub-switches individually.
+                  final wasMicLocked = viewModel.isAudioModeEnable;
+                  final wasCameraLocked = viewModel.isVideoModeEnable;
+                  final wasListHidden = viewModel.isParticipantDrawerHidden;
+
                   viewModel.isWebinarModeEnable = value;
                   viewModel.updateAudioPermission(value);
                   viewModel.updateVideoPermission(value);
                   viewModel.isParticipantDrawerHidden = value;
                   viewModel.updateParticipantDrawerConsent(value);
+
+                  showWorkshopModeDialog(
+                    context,
+                    notice: WorkshopModeNotice(
+                      enabled: value,
+                      audience: WorkshopAudience.host,
+                      micLocked: value || wasMicLocked,
+                      cameraLocked: value || wasCameraLocked,
+                      participantListHidden: value || wasListHidden,
+                    ),
+                  );
                 },
                 isDividerRequired: false,
               ),
@@ -124,6 +144,48 @@ class WebinarControls extends StatelessWidget {
                   viewModel.isChatAttachmentDownloadEnable = value;
                   viewModel.updateChatAttachmentConsent(value);
                 },
+              ),
+
+              // Whiteboard Collaboration
+              HostControlSwitch(
+                title: 'Whiteboard collaboration',
+                subtitle:
+                    'If turned ON, all participants will be able to draw on the whiteboard.',
+                value: viewModel.isWhiteboardCollabEnabled,
+                isEnable:
+                    viewModel.meetingDetails.features?.isWhiteboardAllowed() ==
+                        true,
+                onChanged: (value) {
+                  viewModel.updateWhiteboardCollabConsent(value);
+                },
+              ),
+
+              const Divider(color: Colors.white),
+
+              // Notification Settings
+              const Padding(
+                padding: EdgeInsets.only(left: 4, bottom: 4),
+                child: Text(
+                  'Notification Settings',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+
+              // End Meeting Sound
+              HostControlSwitch(
+                title: 'End meeting sound',
+                subtitle:
+                    'If turned ON, hosts and co-hosts hear a chime when the meeting is about to end. Everyone still sees the on-screen warning.',
+                value: viewModel.isNotificationSoundEnabled,
+                onChanged: (value) {
+                  viewModel.updateNotificationSoundConsent(value);
+                },
+                isDividerRequired: false,
               ),
 
               const Divider(color: Colors.white),

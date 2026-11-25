@@ -30,7 +30,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 build/
-test/
+/test/
 #pubspec.lock
 
 # Android related
@@ -95,3 +95,6 @@ CLAUDE.md
 graphify-out
 
 sentry.properties
+
+# Local test harness (not part of the SDK)
+scripts/test_duplicate_identity.sh

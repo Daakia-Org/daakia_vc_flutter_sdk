@@ -1,23 +1,31 @@
 import 'dart:io';
 
 class Constant {
-  static const String sdkVersion = '4.5.2';
+  static const String sdkVersion = '4.6.0';
   static const String sdkName = 'daakia_vc_flutter_sdk';
 
   static final String platform = getPlatform();
 
-  static String baseUrl = "https://api.daakia.co.in/v2.0/";
+  static String baseUrl = "https://api.daakia.co.in/";
   static String whiteboardDomain = "https://www.daakia.co.in/";
 
-  static const String startRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_start.mp3";
-  static const String stopRecordingUrl = "https://cdn.vc.daakia.co.in/sounds/recording_stop.mp3";
+  /// DOM event the whiteboard page listens for to re-fetch its edit
+  /// permission. It only triggers a re-check; the backend decides the result.
+  static const String whiteboardPermissionChangedEvent =
+      "daakia:whiteboard-permission-changed";
+
+  static const String meetingEndWarningSoundDir = "packages/daakia_vc_flutter_sdk/assets/sounds/";
+  static const String meetingEndWarningSound = "meeting_end_warning.m4a";
 
   static const String meetingUid = "MEETING_UID";
   static const String sessionUid = "SESSION_UID";
   static const String attendanceId = "ATTENDANCE_ID";
   static const String attendanceRole = "ATTENDANCE_ROLE";
   static const String hostToken = "HOST_TOKEN";
+  static const String attendanceOwner = "ATTENDANCE_OWNER";
   static const String guestUserName = "GUEST_USER_NAME";
+  static const String emailVerificationPrefix = "MEETING_EMAIL_VERIFICATION_";
+  static const String deviceId = "DEVICE_ID";
 
   static const String liveCaptionAgentId = "captions-agent";
   static const String liveCaptionAgentName = "Live Captions";
@@ -26,7 +34,45 @@ class Constant {
   static const String captionAgentInterimTranscript = "interim_transcript";
 
   static const int meetingExtendTime = 10;
+
+  /// Early warning, minutes before the end. Hosts and co-hosts only; in an
+  /// extendable meeting the elected leader gets the extend prompt instead —
+  /// see [MeetingManager].
   static const int meetingEndSoonTime = 10;
+
+  /// Final warning, minutes before the end. Shown in every meeting, to everyone.
+  static const int meetingEndFinalWarningTime = 5;
+
+  /// How often remaining time is re-checked. Matches the web client so both
+  /// platforms fire their warnings within the same tick.
+  static const int meetingEndCheckIntervalMs = 10000;
+
+  /// How long the end-of-meeting chime keeps looping. Closing the countdown
+  /// card stops it sooner; the short message never does.
+  static const int meetingEndWarningSoundDurationMs = 60000;
+
+  /// Idle minutes before the "Still there?" prompt when the meeting's
+  /// `meeting_config.inactive_timeout_minutes` is missing or not positive.
+  static const int inactiveTimeoutDefaultMinutes = 5;
+
+  /// How often the inactive-meeting watcher re-checks the room. Matches web.
+  static const int inactiveCheckIntervalMs = 60000;
+
+  /// The "Still there?" countdown. Fixed in the client on every platform; it
+  /// does not come from the API.
+  static const int inactiveCountdownSeconds = 120;
+
+  /// Gap between broadcasting the inactivity notice and ending the meeting, so
+  /// the other clients receive it before the room closes under them.
+  static const int inactiveEndNoticeLeadMs = 500;
+
+  /// How long a received inactivity notice may label a ROOM_DELETED disconnect
+  /// as an inactivity end. Keeps a stale notice off a later, normal end.
+  static const int inactiveEndNoticeValidityMs = 60000;
+
+  /// How long the "ended due to inactivity" screen stays before the meeting
+  /// closes.
+  static const int inactiveEndScreenSeconds = 10;
 
   static const int maxMessageSize = 16384; // 16 KB limit
 

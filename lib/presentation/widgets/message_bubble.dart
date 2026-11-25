@@ -69,8 +69,8 @@ class _MessageBubbleState extends State<MessageBubble> {
             // Message Card
             GestureDetector(
               onLongPress: () => !widget.chat.isDeleted
-                  ? showModalBottomSheet(
-                      context: context,
+                  ? Utils.showAdaptiveSheet<void>(
+                      context,
                       backgroundColor: Colors.transparent,
                       builder: (_) => MessageActionSheet(
                         isMine: isSender,
@@ -238,8 +238,10 @@ class _MessageBubbleState extends State<MessageBubble> {
               ReactionBarWidget(
                 reactions: widget.chat.reactions!,
                 onTapReaction: (emojiCode, list) {
-                  showModalBottomSheet(
-                    context: context,
+                  Utils.showAdaptiveSheet<void>(
+                    context,
+                    // One row per reactor, with no upper bound.
+                    scrollable: true,
                     backgroundColor: const Color(0xFF1E1E1E),
                     shape: const RoundedRectangleBorder(
                       borderRadius:

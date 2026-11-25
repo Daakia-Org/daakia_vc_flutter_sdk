@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class MeetingDetailsModel {
   String? eventMode;
   String? eventType;
@@ -27,6 +29,14 @@ class MeetingDetailsModel {
   int? meetingId;
   int? hostPinVerificationRequired;
 
+  /// 1 when non-host participants who aren't logged in must verify their
+  /// email with a one-time code before joining.
+  int? emailVerificationRequired;
+
+  /// 1 when someone waiting in the lobby may leave it with a Leave button,
+  /// which tells the server they left.
+  int? waitingLeaveEnabled;
+
   MeetingDetailsModel(
       {this.eventMode,
         this.eventType,
@@ -55,6 +65,8 @@ class MeetingDetailsModel {
         this.currentSessionUid,
         this.meetingId,
         this.hostPinVerificationRequired,
+        this.emailVerificationRequired,
+        this.waitingLeaveEnabled,
       });
 
   MeetingDetailsModel.fromJson(Map<String, dynamic> json) {
@@ -64,7 +76,7 @@ class MeetingDetailsModel {
     startDate = json['start_date'];
     endDate = json['end_date'];
     duration = json['duration'];
-    isStartNow = json['is_start_now'];
+    isStartNow = JsonParser.toFlagInt(json['is_start_now']);
     topic = json['topic'];
     timeZone = json['time_zone'];
     timezoneIdentifier = json['timezone_identifier'];
@@ -75,14 +87,16 @@ class MeetingDetailsModel {
     roomUid = json['room_uid'];
     conferenceStatusId = json['conference_status_id'];
     totalMembersCount = json['total_members_count'];
-    isPassword = json['is_password'];
+    isPassword = json['is_password']?.toString();
     conferenceStatus = json['conference_status'] != null
         ? ConferenceStatus.fromJson(json['conference_status'])
         : null;
-    isLobbyMode = json['is_lobby_mode'];
-    isStandardPassword = json['is_standard_password'];
-    isCommonPassword = json['is_common_password'];
-    currentSessionUid = json['current_session_uid'].toString();
+    isLobbyMode = JsonParser.toBool(json['is_lobby_mode']);
+    isStandardPassword = JsonParser.toBool(json['is_standard_password']);
+    isCommonPassword = JsonParser.toBool(json['is_common_password']);
+    // `?.` matters here: a plain `.toString()` turns a null session into the
+    // literal string "null".
+    currentSessionUid = json['current_session_uid']?.toString();
     transcriptionDetail = json['transcription_detail'] != null
         ? TranscriptionDetail.fromJson(json['transcription_detail'])
         : null;
@@ -90,7 +104,11 @@ class MeetingDetailsModel {
         ? MeetingConfig.fromJson(json['meeting_config'])
         : null;
     meetingId = json['meeting_id'];
-    hostPinVerificationRequired = json['host_pin_verification_required'];
+    hostPinVerificationRequired =
+        JsonParser.toFlagInt(json['host_pin_verification_required']);
+    emailVerificationRequired =
+        JsonParser.toFlagInt(json['email_verification_required']);
+    waitingLeaveEnabled = JsonParser.toFlagInt(json['waiting_leave_enabled']);
   }
 
   Map<String, dynamic> toJson() {
@@ -128,6 +146,8 @@ class MeetingDetailsModel {
     }
     data['meeting_id'] = meetingId;
     data['host_pin_verification_required'] = hostPinVerificationRequired;
+    data['email_verification_required'] = emailVerificationRequired;
+    data['waiting_leave_enabled'] = waitingLeaveEnabled;
     return data;
   }
 }
@@ -156,7 +176,7 @@ class TranscriptionDetail {
   TranscriptionDetail({transcriptionEnable, transcriptionLangIso, transcriptionLangTitle});
 
   TranscriptionDetail.fromJson(Map<String, dynamic> json) {
-    transcriptionEnable = json['transcription_enable'];
+    transcriptionEnable = JsonParser.toBool(json['transcription_enable']);
     transcriptionLangIso = json['transcription_lang_iso'];
     transcriptionLangTitle = json['transcription_lang_title'];
   }
@@ -164,7 +184,7 @@ class TranscriptionDetail {
   Map<String, dynamic> toJson() {
     final Map<String, dynamic> data = <String, dynamic>{};
     data['transcription_enable'] = transcriptionEnable;
-    data['transcription_enable'] = transcriptionLangIso;
+    data['transcription_lang_iso'] = transcriptionLangIso;
     data['transcription_lang_title'] = transcriptionLangTitle;
     return data;
   }
@@ -176,15 +196,21 @@ class MeetingConfig {
   int? autoMeetingEnd;
   String? autoMeetingEndSchedule;
   String? autoMeetingEndScheduleTimezoneFormated;
+  int? isGuestMode;
+  int? inactivePromptEnabled;
+  num? inactiveTimeoutMinutes;
 
-  MeetingConfig({autoStartRecording, recordingForceStopped, autoMeetingEnd, autoMeetingEndSchedule, autoMeetingEndScheduleTimezoneFormated});
+  MeetingConfig({autoStartRecording, recordingForceStopped, autoMeetingEnd, autoMeetingEndSchedule, autoMeetingEndScheduleTimezoneFormated, this.isGuestMode, this.inactivePromptEnabled, this.inactiveTimeoutMinutes});
 
   MeetingConfig.fromJson(Map<String, dynamic> json) {
-    autoStartRecording = json['auto_start_recording'];
-    recordingForceStopped = json['recording_force_stopped'];
-    autoMeetingEnd = json['auto_meeting_end'];
+    inactivePromptEnabled = JsonParser.toFlagInt(json['inactive_prompt_enabled']);
+    inactiveTimeoutMinutes = JsonParser.toNum(json['inactive_timeout_minutes']);
+    autoStartRecording = JsonParser.toFlagInt(json['auto_start_recording']);
+    recordingForceStopped = JsonParser.toFlagInt(json['recording_force_stopped']);
+    autoMeetingEnd = JsonParser.toFlagInt(json['auto_meeting_end']);
     autoMeetingEndSchedule = json['auto_meeting_end_schedule'];
     autoMeetingEndScheduleTimezoneFormated = json['auto_meeting_end_schedule_timezone_formated'];
+    isGuestMode = JsonParser.toFlagInt(json['is_guest_mode']);
   }
 
   Map<String, dynamic> toJson() {
@@ -194,6 +220,9 @@ class MeetingConfig {
     data['auto_meeting_end'] = autoMeetingEnd;
     data['auto_meeting_end_schedule'] = autoMeetingEndSchedule;
     data['auto_meeting_end_schedule_timezone_formated'] = autoMeetingEndScheduleTimezoneFormated;
+    data['is_guest_mode'] = isGuestMode;
+    data['inactive_prompt_enabled'] = inactivePromptEnabled;
+    data['inactive_timeout_minutes'] = inactiveTimeoutMinutes;
     return data;
   }
 }

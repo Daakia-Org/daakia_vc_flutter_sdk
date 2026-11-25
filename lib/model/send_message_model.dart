@@ -1,4 +1,5 @@
 import 'package:daakia_vc_flutter_sdk/model/reply_message.dart';
+import '../utils/json_parser.dart';
 
 class SendMessageModel {
   final String? action;
@@ -24,7 +25,7 @@ class SendMessageModel {
       id: json['id'] as String?,
       message: json['message'] as String?,
       timestamp: json['timestamp'] as int?,
-      isReplied: json['isReplied'] as bool?,
+      isReplied: JsonParser.toBool(json['isReplied']),
       replyMessage: json['replyMessage'] as ReplyMessage?,
     );
   }

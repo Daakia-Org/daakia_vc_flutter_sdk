@@ -5,6 +5,7 @@ import 'package:daakia_vc_flutter_sdk/model/transcription_action_model.dart';
 import 'package:livekit_client/livekit_client.dart';
 
 import 'consent_participant.dart';
+import '../utils/json_parser.dart';
 
 class RemoteActivityData {
   final RemoteParticipant? identity;
@@ -93,13 +94,13 @@ class RemoteActivityData {
       timestamp: json['timestamp'] as int?,
       timeStamp: json['timeStamp'] as int?,
       action: json['action'] as String?,
-      isSender: json['isSender'] as bool? ?? false,
+      isSender: JsonParser.toBool(json['isSender']) ?? false,
       requestId: json['request_id'] as String? ?? "",
       meetingUid: json['meeting_uid'] as String? ?? "",
       displayName: json['display_name'] as String? ?? "",
       participantLobbyStatus: json['participant_lobby_status'] as String? ?? "",
       token: json['token'] as String? ?? "",
-      value: json['value'] as bool? ?? false,
+      value: JsonParser.toBool(json['value']) ?? false,
       userIdentity: json['user_identity'] as String? ?? "",
       userName: json['user_name'] as String? ?? "",
       liveCaptionsData: json['liveCaptionsData'] != null
@@ -116,8 +117,8 @@ class RemoteActivityData {
           .toList(),
       dispatchId: json['dispatchId'] as String?,
       mode: json['mode'] as String?,
-      isDeleted: json['isDeleted'] as bool? ?? false,
-      isEdited: json['isEdited'] as bool? ?? false,
+      isDeleted: JsonParser.toBool(json['isDeleted']) ?? false,
+      isEdited: JsonParser.toBool(json['isEdited']) ?? false,
       replyMessage: json['replyMessage'] != null
           ? ReplyMessage.fromJson(json['replyMessage'] as Map<String, dynamic>)
           : null,
@@ -128,8 +129,8 @@ class RemoteActivityData {
       reactions: (json['reactions'] as List<dynamic>?)
           ?.map((e) => Reaction.fromJson(e as Map<String, dynamic>))
           .toList(),
-      removeReaction: json['removeReaction'] as bool? ?? false,
-      isScreenShareAllowed: json['is_screen_share_allowed'] as bool? ?? false,
+      removeReaction: JsonParser.toBool(json['removeReaction']) ?? false,
+      isScreenShareAllowed: JsonParser.toBool(json['is_screen_share_allowed']) ?? false,
       fromUserId: json['from'] as String?,
       messages: json['messages'] as List<dynamic>?,
       raisedHands: (json['raisedHands'] as List<dynamic>?)

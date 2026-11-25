@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class TranscriptionModel {
   final String? id;
   final String name;
@@ -28,7 +30,7 @@ class TranscriptionModel {
       timestamp: json['timestamp'] as String,
       sourceLang: json['sourceLang'] as String,
       targetLang: json['targetLang'] as String,
-      isFinal: json['isFinal'] as bool,
+      isFinal: JsonParser.toBool(json['isFinal']) ?? false,
       translatedTranscription: json['translatedTranscription'] as String?, // Handle the new field in fromJson
     );
   }

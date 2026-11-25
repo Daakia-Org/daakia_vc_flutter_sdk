@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class WebinarPermissionModel {
   bool? videoPermission;
   bool? audioPermission;
@@ -6,8 +8,8 @@ class WebinarPermissionModel {
 
   factory WebinarPermissionModel.fromJson(Map<String, dynamic> json) {
     return WebinarPermissionModel(
-      videoPermission: json['video_permission'] as bool?,
-      audioPermission: json['audio_permission'] as bool?,
+      videoPermission: JsonParser.toBool(json['video_permission']),
+      audioPermission: JsonParser.toBool(json['audio_permission']),
     );
   }
 

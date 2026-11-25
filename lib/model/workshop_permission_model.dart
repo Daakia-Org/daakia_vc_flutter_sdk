@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class WorkshopPermissionModel {
   bool? isUpdated;
   bool? videoPermission;
@@ -7,9 +9,9 @@ class WorkshopPermissionModel {
 
   factory WorkshopPermissionModel.fromJson(Map<String, dynamic> json) {
     return WorkshopPermissionModel(
-      isUpdated: json['updated'] as bool?,
-      videoPermission: json['is_video_enabled'] as bool?,
-      audioPermission: json['is_mic_enabled'] as bool?,
+      isUpdated: JsonParser.toBool(json['updated']),
+      videoPermission: JsonParser.toBool(json['is_video_enabled']),
+      audioPermission: JsonParser.toBool(json['is_mic_enabled']),
     );
   }
 

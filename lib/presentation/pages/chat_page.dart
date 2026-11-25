@@ -1,4 +1,5 @@
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/attachment_picker_sheet.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/widgets/chat_scroll_targets.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/message_bubble.dart';
 import 'package:daakia_vc_flutter_sdk/utils/utils.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +22,13 @@ class ChatPage extends StatefulWidget {
   }
 }
 
-class _ChatState extends State<ChatPage> {
+class _ChatState extends State<ChatPage>
+    with AutomaticKeepAliveClientMixin {
+  // Keep the tab alive so switching chats, which now closes the keyboard,
+  // does not throw away a half-typed message.
+  @override
+  bool get wantKeepAlive => true;
+
   @override
   void initState() {
     super.initState();
@@ -38,12 +45,21 @@ class _ChatState extends State<ChatPage> {
 
   final TextEditingController messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final ChatScrollTargets _scrollTargets = ChatScrollTargets();
   final FocusNode _messageFocusNode = FocusNode();
   String? _highlightedMessageId;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     collectLobbyEvents(widget.viewModel, context);
+    // Typing in landscape leaves ~150dp above the keyboard: trim padding so
+    // the input and some messages stay visible.
+    final media = MediaQuery.of(context);
+    final isLandscape = media.orientation == Orientation.landscape;
+    // Read the keyboard from the view: the Chats scaffold this page sits in
+    // strips it from the MediaQuery its body sees, so viewInsets is always 0.
+    final isCompact = isLandscape && View.of(context).viewInsets.bottom > 0;
     return PopScope(
       onPopInvokedWithResult: (isPoped, dynamic) async {
         widget.viewModel.isChatOpen = false;
@@ -52,10 +68,11 @@ class _ChatState extends State<ChatPage> {
         backgroundColor: const Color(0xFF000000),
         // Use a specific color for no_video_background
         body: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 20.0),
+          padding: EdgeInsets.symmetric(vertical: isLandscape ? 4.0 : 20.0),
           child: Column(
             children: [
-              if (widget.viewModel.pinnedPublicChat != null)
+              // No room for the pinned bar above the keyboard in landscape.
+              if (widget.viewModel.pinnedPublicChat != null && !isCompact)
                 PinnedMessageWidget(
                   name: widget.viewModel.pinnedPublicChat?.isSender == true
                       ? widget.viewModel.room.localParticipant?.name
@@ -71,6 +88,8 @@ class _ChatState extends State<ChatPage> {
               Expanded(
                 child: ListView.builder(
                   controller: _scrollController,
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
                   reverse: true,
                   itemCount: widget.viewModel.getMessageList().length,
                   itemBuilder: (context, index) {
@@ -78,29 +97,33 @@ class _ChatState extends State<ChatPage> {
                         widget.viewModel.getMessageList().length - 1 - index;
                     var message =
                         widget.viewModel.getMessageList()[reversedIndex];
-                    return MessageBubble(
-                      chat: message,
-                      viewModel: widget.viewModel,
-                      isHighlighted: _highlightedMessageId == message.id,
-                      onNavigate: () {
-                        _scrollToMessageById(message.replyMessage?.id);
-                      },
-                      onEdit: () {
-                        final text = message.message ?? "";
-                        messageController.text = text;
+                    return _scrollTargets.wrap(
+                      id: message.id,
+                      index: index,
+                      child: MessageBubble(
+                        chat: message,
+                        viewModel: widget.viewModel,
+                        isHighlighted: _highlightedMessageId == message.id,
+                        onNavigate: () {
+                          _scrollToMessageById(message.replyMessage?.id);
+                        },
+                        onEdit: () {
+                          final text = message.message ?? "";
+                          messageController.text = text;
 
-                        // Wait a frame so the text field updates before selecting
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          messageController.selection = TextSelection(
-                            baseOffset: 0,
-                            extentOffset: text.length,
-                          );
-                          FocusScope.of(context)
-                              .requestFocus(FocusNode()); // clear old focus
-                          FocusScope.of(context)
-                              .requestFocus(_messageFocusNode); // open keyboard
-                        });
-                      },
+                          // Wait a frame so the text field updates before selecting
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            messageController.selection = TextSelection(
+                              baseOffset: 0,
+                              extentOffset: text.length,
+                            );
+                            FocusScope.of(context)
+                                .requestFocus(FocusNode()); // clear old focus
+                            FocusScope.of(context)
+                                .requestFocus(_messageFocusNode); // open keyboard
+                          });
+                        },
+                      ),
                     );
                   },
                 ),
@@ -123,8 +146,8 @@ class _ChatState extends State<ChatPage> {
 
               // Message Input Section
               Padding(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10.0, vertical: 10.0),
+                padding: EdgeInsets.symmetric(
+                    horizontal: 10.0, vertical: isCompact ? 4.0 : 10.0),
                 child: Container(
                   padding: const EdgeInsets.symmetric(
                       horizontal: 10.0, vertical: 5.0),
@@ -160,6 +183,7 @@ class _ChatState extends State<ChatPage> {
                         child: TextField(
                           controller: messageController,
                           focusNode: _messageFocusNode,
+                          onTapOutside: Utils.dismissKeyboardOnTapOutside,
                           maxLength: Constant.maxMessageCharLimit,
                           decoration: const InputDecoration(
                             hintText: "Type here...",
@@ -221,32 +245,31 @@ class _ChatState extends State<ChatPage> {
 
   /// Scrolls to a specific message by its [messageId] and highlights it temporarily.
   /// Can be used for pinned messages, reply navigation, or any message jump.
-  void _scrollToMessageById(String? messageId) {
+  Future<void> _scrollToMessageById(String? messageId) async {
     if (messageId == null) return;
     final messages = widget.viewModel.getMessageList();
     final index = messages.indexWhere((msg) => msg.id == messageId);
 
-    if (index != -1) {
-      final reversedIndex = messages.length - 1 - index;
+    if (index == -1) return;
+    // Message heights vary, so scroll until the row itself is on screen.
+    await _scrollTargets.scrollTo(
+      _scrollController,
+      id: messageId,
+      // The list is reversed: the newest message is row 0.
+      index: messages.length - 1 - index,
+    );
+    if (!mounted) return;
+    setState(() {
+      _highlightedMessageId = messageId;
+    });
 
-      setState(() {
-        _highlightedMessageId = messageId;
-      });
-
-      _scrollController.animateTo(
-        reversedIndex * 100.0, // Approximate height per item
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-
-      // Remove highlight after a short delay
-      Future.delayed(const Duration(milliseconds: 1500), () {
-        if (mounted) {
-          setState(() {
-            _highlightedMessageId = null;
-          });
-        }
-      });
-    }
+    // Remove highlight after a short delay
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted && _highlightedMessageId == messageId) {
+        setState(() {
+          _highlightedMessageId = null;
+        });
+      }
+    });
   }
 }

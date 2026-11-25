@@ -85,7 +85,16 @@ class DaakiaVcSentryService {
     return stack.toString().contains('package:daakia_vc_flutter_sdk');
   }
 
-  static Future<Scope?> _buildScope(Map<String, Object?>? context) async {
+  /// [context] entries become searchable Sentry tags. [contexts] entries become
+  /// structured context blocks instead — use those for anything long or
+  /// high-cardinality, since tag values are truncated and indexed.
+  /// [fingerprint] overrides grouping when the message text varies between
+  /// occurrences of what is really one issue.
+  static Future<Scope?> _buildScope(
+    Map<String, Object?>? context, {
+    Map<String, Object?>? contexts,
+    List<String>? fingerprint,
+  }) async {
     if (_options == null) return null;
     final scope = Scope(_options!);
 
@@ -103,6 +112,18 @@ class DaakiaVcSentryService {
         }
       }
     }
+
+    if (contexts != null) {
+      for (final entry in contexts.entries) {
+        if (entry.value != null) {
+          await scope.setContexts(entry.key, entry.value);
+        }
+      }
+    }
+
+    if (fingerprint != null && fingerprint.isNotEmpty) {
+      scope.fingerprint = fingerprint;
+    }
     return scope;
   }
 
@@ -110,13 +131,19 @@ class DaakiaVcSentryService {
     dynamic throwable, {
     dynamic stackTrace,
     Map<String, Object?>? context,
+    Map<String, Object?>? contexts,
+    List<String>? fingerprint,
   }) async {
     if (_client == null) return;
     try {
       await _client!.captureException(
         throwable,
         stackTrace: stackTrace,
-        scope: await _buildScope(context),
+        scope: await _buildScope(
+          context,
+          contexts: contexts,
+          fingerprint: fingerprint,
+        ),
       );
     } catch (_) {}
   }

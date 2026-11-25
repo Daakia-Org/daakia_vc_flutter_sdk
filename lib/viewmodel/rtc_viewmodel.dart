@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
@@ -32,6 +33,7 @@ import '../model/caption_data.dart';
 import '../model/emoji_message.dart';
 import '../model/language_model.dart';
 import '../model/meeting_details.dart';
+import '../model/white_board_data.dart';
 import '../model/private_chat_model.dart';
 import '../model/raised_hand.dart';
 import '../model/send_message_model.dart';
@@ -41,6 +43,8 @@ import '../utils/consent_status_enum.dart';
 import '../utils/constants.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
+import '../utils/meeting_end_time.dart';
+import '../rtc/audio_routing.dart';
 
 class RtcViewmodel extends ChangeNotifier {
   final List<RemoteActivityData> _messageList = [];
@@ -415,22 +419,108 @@ class RtcViewmodel extends ChangeNotifier {
 
   String get selfIdentity => room.localParticipant?.identity ?? "";
 
-  void disableAudio() async {
-    await participant.setMicrophoneEnabled(false);
+  Future<void> disableAudio() async {
+    await _setMicrophoneLogged(false);
     notifyListeners();
   }
 
   Future<void> enableAudio() async {
-    await participant.setMicrophoneEnabled(true);
+    // Talking without hearing anyone makes no sense, so unmuting (the mic
+    // button, or accepting the host's request) brings audio back first.
+    if (_isAudioDisconnected) await joinAudio(announce: false);
+    await _setMicrophoneLogged(true);
     notifyListeners();
   }
 
-  void disableVideo() async {
+  //===============================[Meeting audio off]===============================
+
+  bool _isAudioDisconnected = false;
+
+  /// Meeting audio off on this device ("leave computer audio"): still in the
+  /// meeting, but the mic is off, nobody else is heard and the SDK's own
+  /// sounds stay quiet until [joinAudio]. For a second device in the same room
+  /// as one that is already in the meeting.
+  bool get isAudioDisconnected => _isAudioDisconnected;
+
+  EventsListener<RoomEvent>? _audioDisconnectListener;
+
+  /// Turns the mic off and unsubscribes from every remote audio track,
+  /// including ones published or re-subscribed (after a reconnect) later.
+  Future<void> disconnectAudio() async {
+    if (_isAudioDisconnected) return;
+    _isAudioDisconnected = true;
+    notifyListeners();
+    if (participant.isMicrophoneEnabled()) {
+      await _setMicrophoneLogged(false);
+    }
+    for (final remote in room.remoteParticipants.values) {
+      for (final publication in remote.audioTrackPublications) {
+        await publication.unsubscribe();
+      }
+    }
+    // Auto-subscribe brings new audio tracks in; drop them as they arrive.
+    _audioDisconnectListener ??= room.createListener()
+      ..on<TrackSubscribedEvent>((event) {
+        if (_isAudioDisconnected && event.track is RemoteAudioTrack) {
+          event.publication.unsubscribe();
+        }
+      });
+    notifyListeners();
+  }
+
+  /// Hears everyone again. The mic stays off: joining audio isn't unmuting.
+  /// [announce] says so in a room notice; off when unmuting comes next.
+  Future<void> joinAudio({bool announce = true}) async {
+    if (!_isAudioDisconnected) return;
+    _isAudioDisconnected = false;
+    await _audioDisconnectListener?.dispose();
+    _audioDisconnectListener = null;
+    for (final remote in room.remoteParticipants.values) {
+      for (final publication in remote.audioTrackPublications) {
+        await publication.subscribe();
+      }
+    }
+    notifyListeners();
+    if (announce) sendMessageToUI('Audio reconnected. Your mic is muted.');
+  }
+
+  // Diagnostics: records each mic toggle and the resulting publication state,
+  // so a "mic button on but nobody hears me" report can be traced in Datadog.
+  // Errors are logged and re-thrown, keeping the existing behaviour.
+  Future<void> _setMicrophoneLogged(bool enabled) async {
+    DaakiaAudioRouting.diag('mic', {'requested': enabled});
+    try {
+      await participant.setMicrophoneEnabled(enabled);
+    } catch (e) {
+      DaakiaAudioRouting.diag('micError', {
+        'requested': enabled,
+        'error': e.toString(),
+      });
+      rethrow;
+    }
+    // LiveKit settles the mute state asynchronously; read it a moment later so
+    // the record shows the real outcome, without delaying the caller.
+    unawaited(Future.delayed(const Duration(milliseconds: 500), () {
+      final pub =
+          participant.getTrackPublicationBySource(TrackSource.microphone);
+      DaakiaAudioRouting.diag('micResult', {
+        'requested': enabled,
+        'isMicrophoneEnabled': participant.isMicrophoneEnabled(),
+        'published': pub != null,
+        'muted': pub?.muted,
+        'engineRecording':
+            // ignore: experimental_member_use
+            AudioManager.instance.audioEngineState.isRecordingEnabled,
+      });
+    }));
+  }
+
+  Future<void> disableVideo() async {
     await participant.setCameraEnabled(false);
     notifyListeners();
   }
 
-  void enableVideo() async {
+  Future<void> enableVideo() async {
     await participant.setCameraEnabled(true);
     notifyListeners();
   }
@@ -491,6 +581,48 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  final Set<String> _movingToLobby = {};
+
+  /// Whether a move to the lobby for [identity] is still in flight.
+  bool isMovingToLobby(String identity) => _movingToLobby.contains(identity);
+
+  /// Whether this host / co-host may send [participant] back to the lobby.
+  /// Mirrors the web's `canMoveParticipantToLobby`. Participants on the
+  /// mobile apps are included, since the apps handle being moved.
+  bool canMoveToLobby(Participant participant) {
+    final local = room.localParticipant;
+    if (local == null || participant.identity == local.identity) return false;
+    if (meetingDetails.meetingBasicDetails?.isLobbyMode != true) return false;
+    if (!isHost() && !isCoHost()) return false;
+    if (participant.kind != ParticipantKind.STANDARD) return false;
+    if (Utils.isHost(participant.metadata) ||
+        Utils.isCoHost(participant.metadata)) {
+      return false;
+    }
+    return true;
+  }
+
+  void moveToLobby(Participant participant) {
+    final identity = participant.identity;
+    if (!_movingToLobby.add(identity)) return;
+    notifyListeners();
+    final name = participant.name.isNotEmpty ? participant.name : identity;
+    networkRequestHandler(
+      apiCall: () => apiClient.moveParticipantToLobby(
+        meetingDetails.authorizationToken,
+        {
+          "meeting_uid": meetingDetails.meetingUid,
+          "participant_identity": identity,
+        },
+      ),
+      onSuccess: (_) => sendMessageToUI("$name moved to the lobby."),
+      onError: (message) => sendMessageToUI(message),
+    ).whenComplete(() {
+      _movingToLobby.remove(identity);
+      if (!isMeetingEnded) notifyListeners();
+    });
+  }
+
   int _coHostCount = 0;
 
   // Getter
@@ -502,7 +634,12 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  void makeCoHost(String identity, bool isCoHost) {
+  /// [onDone] runs once the new co-host has been told, so a caller about to
+  /// leave the meeting doesn't disconnect before the message goes out.
+  /// [onFailed], when given, receives the backend's message instead of it
+  /// being shown as a room notice.
+  void makeCoHost(String identity, bool isCoHost,
+      {VoidCallback? onDone, ValueChanged<String>? onFailed}) {
     Map<String, dynamic> body = {
       "participant_identity": identity,
       "meeting_uid": meetingDetails.meetingUid,
@@ -511,21 +648,31 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
       apiCall: () =>
           apiClient.makeCoHost(meetingDetails.authorizationToken, selfIdentity, body),
-      onSuccess: (_) => {
-        sendPrivateAction(
+      onSuccess: (_) async {
+        if (!meetingDetails.features!.isAllowMultipleCoHost()) {
+          if (isCoHost) {
+            coHostCount++;
+          } else {
+            coHostCount--;
+          }
+        }
+        await sendPrivateAction(
             ActionModel(
                 action: !isCoHost
                     ? MeetingActions.removeCoHost
                     : MeetingActions.makeCoHost,
                 token: !isCoHost ? "" : meetingDetails.authorizationToken,
                 user: {"name": room.localParticipant?.name}),
-            identity),
-        if (!meetingDetails.features!.isAllowMultipleCoHost())
-          {
-            if (isCoHost) {coHostCount++} else {coHostCount--}
-          }
+            identity);
+        onDone?.call();
       },
-      onError: (message) => sendMessageToUI(message),
+      onError: (message) {
+        if (onFailed != null) {
+          onFailed(message);
+        } else {
+          sendMessageToUI(message);
+        }
+      },
     );
   }
 
@@ -901,7 +1048,11 @@ class RtcViewmodel extends ChangeNotifier {
     }
     networkRequestHandler(
         apiCall: () => apiClient.acceptParticipantInLobby(selfIdentity, body),
-        onSuccess: (_) {},
+        // Gone from the list and the banner now, not when its heartbeat
+        // goes stale.
+        onSuccess: (_) => acceptAll
+            ? _clearLobbyRequests()
+            : removeLobbyRequest(request.requestId),
         onError: (message) => sendMessageToUI(message));
   }
 
@@ -912,7 +1063,10 @@ class RtcViewmodel extends ChangeNotifier {
   List<RemoteActivityData> get lobbyRequestList =>
       List.unmodifiable(_lobbyRequestList);
 
-  void checkAndAddUserToLobbyList(RemoteActivityData remoteData) {
+  /// Adds a request from a `lobby` message, or refreshes its heartbeat: the
+  /// server repeats it on every 5 s poll of a pending request. Returns whether
+  /// the request is new.
+  bool checkAndAddUserToLobbyList(RemoteActivityData remoteData) {
     final requestId = remoteData.requestId ?? "";
 
     if (!_previousLobbyRequestList.contains(requestId)) {
@@ -920,10 +1074,48 @@ class RtcViewmodel extends ChangeNotifier {
       _previousLobbyRequestList.add(requestId);
       requestTimestamps[requestId] = DateTime.now().millisecondsSinceEpoch;
       notifyListeners();
+      return true;
     } else {
       // Update the timestamp for the existing request
       requestTimestamps[requestId] = DateTime.now().millisecondsSinceEpoch;
+      return false;
     }
+  }
+
+  /// Requests that were waiting when the host closed the lobby banner. Only
+  /// someone new brings it back.
+  final Set<String> _dismissedLobbyRequests = {};
+
+  /// Whether someone arrived since the host last closed the lobby banner. The
+  /// banner then lists everyone waiting, not just the newcomer, so it always
+  /// agrees with the lobby count.
+  bool get hasNewLobbyRequest => _lobbyRequestList
+      .any((r) => !_dismissedLobbyRequests.contains(r.requestId));
+
+  void dismissLobbyBanner() {
+    _dismissedLobbyRequests
+        .addAll(_lobbyRequestList.map((r) => r.requestId ?? ""));
+    notifyListeners();
+  }
+
+  /// Drops a request that was admitted or denied, here or by another host
+  /// (`lobby_leave`).
+  void removeLobbyRequest(String? requestId) {
+    if (requestId == null) return;
+    requestTimestamps.remove(requestId);
+    _previousLobbyRequestList.remove(requestId);
+    _dismissedLobbyRequests.remove(requestId);
+    final before = _lobbyRequestList.length;
+    _lobbyRequestList.removeWhere((data) => data.requestId == requestId);
+    if (_lobbyRequestList.length != before) notifyListeners();
+  }
+
+  void _clearLobbyRequests() {
+    requestTimestamps.clear();
+    _previousLobbyRequestList.clear();
+    _dismissedLobbyRequests.clear();
+    _lobbyRequestList.clear();
+    notifyListeners();
   }
 
   void startLobbyCheck() {
@@ -931,10 +1123,11 @@ class RtcViewmodel extends ChangeNotifier {
     _timer = Timer.periodic(const Duration(seconds: 2), (timer) {
       final currentTime = DateTime.now().millisecondsSinceEpoch;
 
-      // Remove entries older than 12 seconds without `removeWhere`
+      // Drop requests with no heartbeat for 15 s, the same cut-off as web.
+      // Pending requests repeat their `lobby` message on every 5 s poll.
       List<String> toRemove = [];
       requestTimestamps.forEach((requestId, timestamp) {
-        if (currentTime - timestamp > 12000) {
+        if (currentTime - timestamp > 15000) {
           toRemove.add(requestId);
         }
       });
@@ -942,6 +1135,7 @@ class RtcViewmodel extends ChangeNotifier {
       for (final requestId in toRemove) {
         requestTimestamps.remove(requestId);
         _previousLobbyRequestList.remove(requestId);
+        _dismissedLobbyRequests.remove(requestId);
         _lobbyRequestList.removeWhere((data) => data.requestId == requestId);
       }
 
@@ -1531,15 +1725,53 @@ class RtcViewmodel extends ChangeNotifier {
         });
   }
 
-  void endMeetingForAll() {
+  /// Whether this device asked the backend to end the meeting, so the
+  /// ROOM_DELETED that follows isn't announced as somebody else's doing.
+  bool endedMeetingForAll = false;
+
+  /// Ends the meeting for everyone.
+  ///
+  /// [onFailed], when given, receives the backend's message instead of it
+  /// being shown as a room notice, for callers with somewhere of their own to
+  /// show it.
+  void endMeetingForAll({ValueChanged<String>? onFailed}) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
     };
+    // Set before the call: the room can close under us before it returns.
+    endedMeetingForAll = true;
     networkRequestHandler(
       apiCall: () => apiClient.endMeeting(selfIdentity, body),
       onSuccess: (_) => sendEvent(EndMeeting(reason: "roomDeleted")),
-      onError: (message) => sendMessageToUI(message),
+      onError: (message) {
+        endedMeetingForAll = false;
+        if (onFailed != null) {
+          onFailed(message);
+        } else {
+          sendMessageToUI(message);
+        }
+      },
     );
+  }
+
+  //===============================[Inactive meeting prompt]===============================
+
+  /// Whether the "Still there?" prompt is on for this meeting
+  /// (`meeting_config.inactive_prompt_enabled`, decided by the backend).
+  bool isInactivePromptEnabled() =>
+      meetingDetails.meetingBasicDetails?.meetingConfig?.inactivePromptEnabled ==
+      1;
+
+  /// Idle time before the prompt: `meeting_config.inactive_timeout_minutes`,
+  /// [Constant.inactiveTimeoutDefaultMinutes] when missing or not positive, and
+  /// never under a minute. Fractions are kept, matching web (`0.5` -> 1 min).
+  Duration inactiveTimeout() {
+    final minutes =
+        meetingDetails.meetingBasicDetails?.meetingConfig?.inactiveTimeoutMinutes;
+    final effective = minutes == null || minutes <= 0
+        ? Constant.inactiveTimeoutDefaultMinutes
+        : math.max(1, minutes);
+    return Duration(milliseconds: (effective * 60000).round());
   }
 
   void updateParticipantName({String? participant, required String newName}) {
@@ -1569,7 +1801,18 @@ class RtcViewmodel extends ChangeNotifier {
     }
   }
 
-  void meetingTimeExtend() {
+  /// Adds [Constant.meetingExtendTime] minutes to the meeting, once.
+  ///
+  /// [onExtended] runs only after the backend accepts, so a rejected extend
+  /// (already used, expired token) leaves this client on the same clock as
+  /// everyone else instead of quietly running long. The backend owns the
+  /// "can only be extended once" rule; its message is surfaced as-is — handed
+  /// to [onFailed] when the caller has somewhere of its own to show it, or as a
+  /// room notice otherwise.
+  void meetingTimeExtend({
+    VoidCallback? onExtended,
+    ValueChanged<String>? onFailed,
+  }) {
     Map<String, dynamic> body = {
       "meeting_uid": meetingDetails.meetingUid,
       "is_extend_time": true,
@@ -1577,34 +1820,325 @@ class RtcViewmodel extends ChangeNotifier {
     networkRequestHandler(
         apiCall: () => apiClient.meetingTimeExtend(
             meetingDetails.authorizationToken, selfIdentity, body),
-        onSuccess: (_) => sendAction(
-            ActionModel(action: MeetingActions.extendMeetingEndTime)));
-  }
-
-  bool isAutoMeetingEndEnable() {
-    if (isHost() &&
-        meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
-            1) {
-      return true;
-    }
-    return false;
-  }
-
-  String? getMeetingEndDate() {
-    return meetingDetails
-            .meetingBasicDetails?.meetingConfig?.autoMeetingEndSchedule ??
-        meetingDetails.meetingBasicDetails?.endDate;
-  }
-
-  void getWhiteboardData() {
-    networkListRequestHandler(
-        apiCall: () => apiClient.getWhiteBoardData(
-            selfIdentity,
-            meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
-        onSuccess: (data) {
-          final whiteboard = data!.first;
-          sendEvent(WhiteboardStatus(status: whiteboard.status == 'open'));
+        onSuccess: (_) {
+          sendAction(ActionModel(action: MeetingActions.extendMeetingEndTime));
+          onExtended?.call();
+        },
+        onError: (message) {
+          if (onFailed != null) {
+            onFailed(message);
+          } else {
+            sendMessageToUI(message);
+          }
         });
+  }
+
+  /// Whether this meeting can be extended past its scheduled end (a "SaaS"
+  /// meeting, in web's terms).
+  ///
+  /// A property of the meeting, not of the local user: every client needs the
+  /// same answer so they all run the same warning schedule. Which single
+  /// participant is offered the extend prompt is decided separately, by
+  /// [isMeetingExtendLeader].
+  bool isAutoMeetingEndEnable() {
+    return meetingDetails.meetingBasicDetails?.meetingConfig?.autoMeetingEnd ==
+        1;
+  }
+
+  /// Whether the meeting is actually closed when its scheduled time runs out:
+  /// extendable (SaaS) meetings and basic-plan meetings. Every other meeting
+  /// stays open past its end, so it must not be shown a countdown to zero.
+  bool meetingClosesAtScheduledEnd() {
+    return isAutoMeetingEndEnable() ||
+        meetingDetails.features?.isBasicPlan() == true;
+  }
+
+  /// Picks the one participant who gets the "extend meeting" prompt.
+  ///
+  /// Every client runs this against the same roster and reaches the same
+  /// answer, so no signalling is needed to agree — and only one person can
+  /// press Extend, so nobody double-extends or assumes someone else did it.
+  ///
+  ///   host present  -> the host
+  ///   no host       -> the earliest-joined co-host
+  ///
+  /// If that co-host leaves, the next tick elects the next earliest one.
+  ///
+  /// Caveat, same as web: there is no backend record of *when* someone became
+  /// a co-host, only their current role. A co-host who reconnects gets a fresh
+  /// join time and can hand the prompt to someone else mid-meeting.
+  bool isMeetingExtendLeader() {
+    final local = room.localParticipant;
+    if (local == null) return false;
+    if (!isHost() && !isCoHost()) return false;
+
+    final roster = <Participant>[local, ...room.remoteParticipants.values];
+    // A host anywhere in the room outranks every co-host.
+    final hosts = roster.where((p) => Utils.isHost(p.metadata)).toList();
+    final candidates = hosts.isNotEmpty
+        ? hosts
+        : roster.where((p) => Utils.isCoHost(p.metadata)).toList();
+    if (candidates.isEmpty) return false;
+
+    candidates.sort((a, b) {
+      final byJoin = a.joinedAt.compareTo(b.joinedAt);
+      // joinedAt has second granularity, so two moderators admitted together
+      // can tie; identity breaks it the same way on every client.
+      return byJoin != 0 ? byJoin : a.identity.compareTo(b.identity);
+    });
+    return candidates.first.identity == local.identity;
+  }
+
+  //===============================[End Meeting Warning Sound]===============================
+
+  // Defaults on so the warning is audible if the host-control fetch fails.
+  bool _isNotificationSoundEnabled = true;
+
+  /// Whether the end-of-meeting warning chime is switched on for this meeting.
+  /// Read from `getHostControls()` on join, then kept live by
+  /// [MeetingActions.notificationSoundSetting] broadcasts.
+  bool get isNotificationSoundEnabled => _isNotificationSoundEnabled;
+
+  set isNotificationSoundEnabled(bool value) {
+    if (_isNotificationSoundEnabled == value) return;
+    _isNotificationSoundEnabled = value;
+    notifyListeners();
+  }
+
+  /// Only moderators hear the warning chime — participants get the on-screen
+  /// message but no sound.
+  bool shouldPlayMeetingEndSound() =>
+      _isNotificationSoundEnabled && (isHost() || isCoHost());
+
+  /// Persists the toggle, then tells the room so nobody is left acting on a
+  /// value they read at join time.
+  void updateNotificationSoundConsent(bool value) {
+    final previous = _isNotificationSoundEnabled;
+    isNotificationSoundEnabled = value;
+
+    Map<String, dynamic> body = {
+      "meeting_id": meetingDetails.meetingUid,
+      "permission_granted": value,
+    };
+
+    networkRequestHandler(
+      apiCall: () => apiClient.updateNotificationSoundConsent(
+          meetingDetails.authorizationToken, selfIdentity, body),
+      onSuccess: (_) {
+        // The accepted value is the one we sent; the response body carries no
+        // echo of it, so don't try to read one back.
+        sendAction(ActionModel(
+          action: MeetingActions.notificationSoundSetting,
+          value: value,
+        ));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isNotificationSoundEnabled = previous;
+      },
+    );
+  }
+
+  /// When the meeting really ends, extension included, as a UTC ISO string.
+  ///
+  /// Neither backend field works alone: `end_date` is honest UTC but ignores
+  /// extensions, while `auto_meeting_end_schedule` includes them but is local
+  /// wall-clock time mislabelled with a `Z`. [MeetingEndTime] reconciles the
+  /// two.
+  String? getMeetingEndDate() {
+    return MeetingEndTime.from(meetingDetails.meetingBasicDetails)
+        .end
+        ?.toIso8601String();
+  }
+
+  /// Whether the meeting was extended before this client joined, so a rejoin
+  /// doesn't offer an extension the backend has already used up.
+  bool isMeetingAlreadyExtended() {
+    return MeetingEndTime.from(meetingDetails.meetingBasicDetails).isExtended;
+  }
+
+  /// Re-reads the end time once the room is up, as web does.
+  ///
+  /// The details in hand were fetched before pre-join, so an extension made
+  /// while this client sat there would otherwise be missed: it would count down
+  /// to the old end and offer an extension that is already used up. Only ever
+  /// moves the end out. [onDone] runs whether or not the fetch succeeds.
+  void syncMeetingEndTime({required VoidCallback onDone}) {
+    final secret = meetingDetails.secretKey;
+    final config = meetingDetails.meetingBasicDetails?.meetingConfig;
+    if (!isAutoMeetingEndEnable() || secret == null || config == null) {
+      onDone();
+      return;
+    }
+    final current = MeetingEndTime.from(meetingDetails.meetingBasicDetails).end;
+    networkRequestHandler(
+      apiCall: () =>
+          apiClient.getMeetingDetails(meetingDetails.meetingUid, secret),
+      onSuccess: (fresh) {
+        final freshConfig = fresh?.meetingConfig;
+        final freshEnd = MeetingEndTime.from(fresh).end;
+        if (freshConfig != null &&
+            freshEnd != null &&
+            (current == null || freshEnd.isAfter(current))) {
+          config.autoMeetingEndSchedule = freshConfig.autoMeetingEndSchedule;
+          config.autoMeetingEndScheduleTimezoneFormated =
+              freshConfig.autoMeetingEndScheduleTimezoneFormated;
+        }
+        onDone();
+      },
+      onError: (_) => onDone(),
+    );
+  }
+
+  //===============================[Whiteboard]===============================
+
+  /// The meeting's whiteboard, once one exists. It is created on first open
+  /// and reused for every later open/close, same as web.
+  int? _whiteboardId;
+
+  bool _isWhiteboardOpen = false;
+
+  bool get isWhiteboardOpen => _isWhiteboardOpen;
+
+  bool _isWhiteboardActionInProgress = false;
+
+  bool get isWhiteboardActionInProgress => _isWhiteboardActionInProgress;
+
+  set isWhiteboardActionInProgress(bool value) {
+    _isWhiteboardActionInProgress = value;
+    notifyListeners();
+  }
+
+  bool _isWhiteboardCollabEnabled = false;
+
+  bool get isWhiteboardCollabEnabled => _isWhiteboardCollabEnabled;
+
+  set isWhiteboardCollabEnabled(bool value) {
+    _isWhiteboardCollabEnabled = value;
+    notifyListeners();
+  }
+
+  bool canManageWhiteboard() =>
+      (isHost() || isCoHost()) &&
+      meetingDetails.features?.isWhiteboardAllowed() == true;
+
+  Future<void> getWhiteboardData() async {
+    final whiteboard = await _fetchWhiteboard();
+    if (whiteboard == null) return;
+    setWhiteboardState(whiteboard.status == 'open', whiteboardId: whiteboard.id);
+  }
+
+  /// The meeting's whiteboard, or null when nobody has opened one yet.
+  Future<WhiteboardData?> _fetchWhiteboard() {
+    final completer = Completer<WhiteboardData?>();
+    networkListRequestHandler(
+      apiCall: () => apiClient.getWhiteBoardData(
+          selfIdentity,
+          meetingDetails.meetingBasicDetails?.meetingId.toString() ?? ""),
+      onSuccess: (data) => completer.complete(data?.firstOrNull),
+      onError: (_) => completer.complete(null),
+    );
+    return completer.future;
+  }
+
+  /// Applies an open/close, whoever made it (join-time fetch, a remote
+  /// moderator, or us), and lets the room show or hide the board.
+  void setWhiteboardState(bool open, {int? whiteboardId}) {
+    if (whiteboardId != null) _whiteboardId = whiteboardId;
+    _isWhiteboardOpen = open;
+    notifyListeners();
+    sendEvent(WhiteboardStatus(status: open));
+  }
+
+  /// Opens or closes the whiteboard for everyone, following web: create the
+  /// board on first use, persist the new status, then broadcast it. Stops at
+  /// the first failure so the room never disagrees with the backend, which
+  /// late joiners read from.
+  Future<void> toggleWhiteboard() async {
+    if (_isWhiteboardActionInProgress) return;
+    isWhiteboardActionInProgress = true;
+    final open = !_isWhiteboardOpen;
+    try {
+      // Reuse the meeting's board if one exists (another moderator may have
+      // created it since we joined); only create one for the first open.
+      final id = _whiteboardId ??
+          (await _fetchWhiteboard())?.id ??
+          await _createWhiteboard();
+      if (id == null) return;
+      if (!await _updateWhiteboardStatus(id, open)) return;
+      await sendAction(ActionModel(
+        action: MeetingActions.whiteboardState,
+        value: open,
+        whiteboardId: id,
+      ));
+      setWhiteboardState(open, whiteboardId: id);
+      sendMessageToUI(open ? "Whiteboard opened" : "Whiteboard closed");
+    } finally {
+      isWhiteboardActionInProgress = false;
+    }
+  }
+
+  Future<int?> _createWhiteboard() {
+    final completer = Completer<int?>();
+    networkRequestHandler(
+      apiCall: () => apiClient.saveWhiteboard(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "meeting_uid": meetingDetails.meetingUid,
+        "whiteboard_json": [],
+      }),
+      onSuccess: (data) {
+        final id = data is Map ? int.tryParse('${data['whiteboardId']}') : null;
+        if (id == null) sendMessageToUI("Could not open the whiteboard.");
+        completer.complete(id);
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        completer.complete(null);
+      },
+    );
+    return completer.future;
+  }
+
+  Future<bool> _updateWhiteboardStatus(int whiteboardId, bool open) {
+    final completer = Completer<bool>();
+    networkRequestHandler(
+      apiCall: () => apiClient.updateWhiteboardStatus(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "whiteboard_id": whiteboardId,
+        "status": open,
+      }),
+      onSuccess: (_) => completer.complete(true),
+      onError: (message) {
+        sendMessageToUI(message);
+        completer.complete(false);
+      },
+    );
+    return completer.future;
+  }
+
+  /// Lets every participant draw (on) or only moderators (off). Each
+  /// whiteboard page re-checks its own permission when it hears the action.
+  void updateWhiteboardCollabConsent(bool value) {
+    final previous = _isWhiteboardCollabEnabled;
+    isWhiteboardCollabEnabled = value;
+
+    networkRequestHandler(
+      apiCall: () => apiClient.updateWhiteboardCollaborationConsent(
+          meetingDetails.authorizationToken, selfIdentity, {
+        "meeting_id": meetingDetails.meetingUid,
+        "permission_granted": value,
+      }),
+      onSuccess: (_) {
+        sendAction(ActionModel(
+          action: MeetingActions.allowLiveCollabWhiteboard,
+          value: value,
+        ));
+      },
+      onError: (message) {
+        sendMessageToUI(message);
+        isWhiteboardCollabEnabled = previous;
+      },
+    );
   }
 
   List<ParticipantAttendanceData> _pendingParticipantList = [];
@@ -1687,6 +2221,62 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  /// Whether this device reports invitees joining and leaving.
+  ///
+  /// The backend keeps an invitee "joined" until a client says otherwise, so
+  /// one moderator reports for everyone: the host, or, with no host in the
+  /// room, the co-host who joined first. Same rule as the web client, so the
+  /// two don't race. [excludingIdentity] leaves out the participant whose
+  /// change is being reported.
+  bool _reportsInviteeStatus({String? excludingIdentity}) {
+    final local = room.localParticipant;
+    if (local == null) return false;
+    if (isHost()) return true;
+    if (!isCoHost()) return false;
+    final present = <Participant>[local, ...room.remoteParticipants.values]
+        .where((p) => p.identity != excludingIdentity)
+        .toList();
+    if (present.any((p) => Utils.isHost(p.metadata))) return false;
+    final moderators = present
+        .where((p) => p == local || Utils.isCoHost(p.metadata))
+        .toList()
+      ..sort((a, b) {
+        final byJoin = a.joinedAt.compareTo(b.joinedAt);
+        return byJoin != 0 ? byJoin : a.identity.compareTo(b.identity);
+      });
+    return moderators.first.identity == local.identity;
+  }
+
+  /// Tells the backend an invitee joined or left, then refreshes the
+  /// Participants Not Joined list here and for the other moderators.
+  ///
+  /// Without the "left" report the backend kept a departed invitee as joined,
+  /// so they never came back to the list; without the "joined" report a
+  /// rejoin that skips password entry (e.g. as co-host) stayed "not joined".
+  void reportInviteeJoinedStatus(Participant participant,
+      {required bool joined}) {
+    if (!isInviteParticipantEnabled) return;
+    if (participant is LocalParticipant) return;
+    if (!_reportsInviteeStatus(
+        excludingIdentity: joined ? null : participant.identity)) {
+      return;
+    }
+    final email = Utils.extractParticipantEmail(participant.metadata);
+    if (email == null) return;
+    networkRequestHandler(
+      apiCall: () => apiClient.updateParticipantJoinedStatus({
+        "meeting_uid": meetingDetails.meetingUid,
+        "participant_email": email,
+        "is_joined": joined,
+      }),
+      onSuccess: (_) {
+        sendAction(
+            ActionModel(action: MeetingActions.refreshInvitedParticipants));
+        fetchInvitedParticipants(silent: true);
+      },
+    );
+  }
+
   Future<bool> sendInviteEmails(List<String> emails) async {
     if (emails.isEmpty) return false;
     Map<String, dynamic> body = {
@@ -1747,7 +2337,7 @@ class RtcViewmodel extends ChangeNotifier {
         apiCall: () => apiClient.updateRecordingConsent(selfIdentity, body),
         onSuccess: (data) {
           if (data?.canStartRecording == true) {
-            startRecording();
+            startRecordingAfterConsent();
           }
           if (needToUpdateLocally) {
             locallyUpdateRecordingConsentStatus(status);
@@ -1759,6 +2349,30 @@ class RtcViewmodel extends ChangeNotifier {
         onError: (message) {
           sendMessageToUI(message);
         });
+  }
+
+  /// Starting a recording needs the host's token, so a participant whose
+  /// consent completed the list asks the hosts and co-hosts to start it.
+  void startRecordingAfterConsent() {
+    if ((isHost() || isCoHost()) &&
+        meetingDetails.authorizationToken.isNotEmpty) {
+      startRecording();
+      return;
+    }
+    for (final participant in room.remoteParticipants.values) {
+      if (Utils.isHost(participant.metadata) ||
+          Utils.isCoHost(participant.metadata)) {
+        sendPrivateAction(
+            ActionModel(action: MeetingActions.requestStartRecording),
+            participant.identity);
+      }
+    }
+  }
+
+  void handleStartRecordingRequest() {
+    if (!isHost() && !isCoHost()) return;
+    if (meetingDetails.authorizationToken.isEmpty || isRecording) return;
+    startRecording();
   }
 
   void startRecordingConsentFlow() {
@@ -1855,7 +2469,15 @@ class RtcViewmodel extends ChangeNotifier {
             meetingDetails.meetingUid, getSessionId() ?? ""),
         onSuccess: (data) {
           if (data != null) {
-            final localList = ConsentParticipant.fromRemoteList(data);
+            // The server lists everyone who was in the session, including
+            // people who have since left; only show who is here now.
+            final present = {
+              room.localParticipant?.identity,
+              ...room.remoteParticipants.keys,
+            };
+            final localList = ConsentParticipant.fromRemoteList(data)
+                .where((p) => present.contains(p.participantId))
+                .toList();
             participantListForConsent = localList;
 
             if (onLoaded != null) {
@@ -1987,6 +2609,72 @@ class RtcViewmodel extends ChangeNotifier {
     _pinnedParticipantId = value;
     notifyListeners();
   }
+
+  //===============================[Layout]===============================
+  // Spotlight: while watching someone else's screen share, the share stays
+  // full size with one floating card that follows whoever is talking. The
+  // choice only changes this device and lasts for the rest of the meeting,
+  // so it comes back by itself when the next share starts.
+
+  bool _spotlightSelected = false;
+
+  bool get spotlightSelected => _spotlightSelected;
+
+  set spotlightSelected(bool value) {
+    if (value == _spotlightSelected) return;
+    _spotlightSelected = value;
+    notifyListeners();
+  }
+
+  /// Someone other than us is sharing. Only one share runs at a time.
+  bool get isWatchingRemoteShare => _participantTracks.any((t) =>
+      t.type == ParticipantTrackType.kScreenShare &&
+      t.participant is RemoteParticipant);
+
+  /// Spotlight is offered while watching someone else's share, but not while
+  /// the whiteboard is open, because the whiteboard then holds the stage.
+  bool get canChooseSpotlight => isWatchingRemoteShare && !_isWhiteboardOpen;
+
+  /// Spotlight is what the screen shows right now.
+  bool get isSpotlightActive => _spotlightSelected && canChooseSpotlight;
+
+  /// Corner the Spotlight card was last dragged to (0 top-left, 1 top-right,
+  /// 2 bottom-left, 3 bottom-right), or null before the first drag. Kept for
+  /// the meeting so the next share puts the card where the user left it.
+  int? spotlightCorner;
+
+  /// The Spotlight card is folded away to a small tab.
+  bool spotlightCollapsed = false;
+
+  // Grid: when nobody is sharing, everyone in equal tiles, a page at a time,
+  // instead of one big speaker with a strip. Same lifetime as Spotlight:
+  // this device only, for the rest of the meeting, and it comes back by
+  // itself when a share or the whiteboard ends.
+
+  bool _gridSelected = false;
+
+  bool get gridSelected => _gridSelected;
+
+  set gridSelected(bool value) {
+    if (value == _gridSelected) return;
+    _gridSelected = value;
+    notifyListeners();
+  }
+
+  /// Anyone, us included, is sharing.
+  bool get isAnyoneSharing => _participantTracks
+      .any((t) => t.type == ParticipantTrackType.kScreenShare);
+
+  /// Grid is offered when nothing else holds the stage: no share (same as
+  /// web's phone layout, which greys out Standard during one) and no
+  /// whiteboard.
+  bool get canChooseGrid => !isAnyoneSharing && !_isWhiteboardOpen;
+
+  /// Grid is what the screen shows right now.
+  bool get isGridActive => _gridSelected && canChooseGrid;
+
+  /// There is a layout choice to make right now.
+  bool get canChooseLayout => canChooseSpotlight || canChooseGrid;
 
   //===============================[Pin Chat]===============================
   RemoteActivityData? _pinnedPublicChat;
@@ -2367,14 +3055,47 @@ class RtcViewmodel extends ChangeNotifier {
         isAudioModeEnable = data.audioPermission;
         isAudioPermissionEnable = !data.audioPermission;
         isChatAttachmentDownloadEnable = data.chatAttachmentDownloadEnabled;
+        isWhiteboardCollabEnabled = data.whiteboardCollaborationEnabled;
+        isNotificationSoundEnabled = data.notificationSoundEnabled;
         isParticipantDrawerHidden = !data.participantDrawer;
         isScreenShareEnable = data.screenSharePermissionGranted;
         isVideoModeEnable = data.videoPermission;
         isVideoPermissionEnable = !data.videoPermission;
+        isMicPermissionGranted =
+            Utils.isMicEnabled(room.localParticipant?.attributes);
+        isVideoPermissionGranted =
+            Utils.isVideoEnabled(room.localParticipant?.attributes);
+        _enforceHostMediaRestrictions();
+        sendEvent(ShowWorkshopModeNotice());
         //if (data.isRecordingActive) setRecording(true); NOTE: Not Needed
       },
       onError: (_) => _fallbackToIndividualHostControlAPIs(),
     );
+  }
+
+  /// Mutes media the host has switched off for participants.
+  ///
+  /// The prejoin page publishes mic/camera as part of the connect, and a lobby
+  /// participant can be admitted long after the host flipped webinar/workshop
+  /// mode on, so the join-time host-control fetch has to *apply* the state and
+  /// not merely render it — otherwise the participant keeps streaming media the
+  /// meeting has disabled. Individual workshop-mode grants (participant
+  /// attributes) and host/co-host still win.
+  void _enforceHostMediaRestrictions() {
+    if (isHost() || isCoHost()) return;
+    final localParticipant = room.localParticipant;
+    if (localParticipant == null) return;
+
+    if (!isAudioPermissionEnable &&
+        !isMicPermissionGranted &&
+        localParticipant.isMicrophoneEnabled()) {
+      disableAudio();
+    }
+    if (!isVideoPermissionEnable &&
+        !isVideoPermissionGranted &&
+        localParticipant.isCameraEnabled()) {
+      disableVideo();
+    }
   }
 
   // ignore: deprecated_member_use_from_same_package
@@ -2609,6 +3330,8 @@ class RtcViewmodel extends ChangeNotifier {
           isAudioModeEnable = (data?.audioPermission == true);
           isAudioPermissionEnable = !(data?.audioPermission == true);
           isMicPermissionGranted = Utils.isMicEnabled(room.localParticipant?.attributes);
+          _enforceHostMediaRestrictions();
+          sendEvent(ShowWorkshopModeNotice());
         },
         onError: (message) {
           sendMessageToUI(message);
@@ -2646,6 +3369,8 @@ class RtcViewmodel extends ChangeNotifier {
           isVideoModeEnable = (data?.videoPermission == true);
           isVideoPermissionEnable = !(data?.videoPermission == true);
           isVideoPermissionGranted = Utils.isVideoEnabled(room.localParticipant?.attributes);
+          _enforceHostMediaRestrictions();
+          sendEvent(ShowWorkshopModeNotice());
         },
         onError: (message) {
           sendMessageToUI(message);
@@ -2719,6 +3444,81 @@ class RtcViewmodel extends ChangeNotifier {
     );
   }
 
+  /// Participants currently in the raised-hand queue, resolved to live
+  /// [Participant] objects. Stale queue entries (participant already gone)
+  /// are dropped.
+  List<Participant> get _raisedHandParticipants {
+    final byIdentity = {
+      for (final track in _participantTracks)
+        track.participant.identity: track.participant
+    };
+    return _raisedHandQueue
+        .map((raisedHand) => byIdentity[raisedHand.identity])
+        .whereType<Participant>()
+        .toList();
+  }
+
+  /// Raised hands whose workshop-mode media permission a moderator can
+  /// change: hosts and co-hosts always have it, so they are left out.
+  List<Participant> get _raisedHandPermissionTargets => _raisedHandParticipants
+      .where((participant) =>
+          !Utils.isHost(participant.metadata) &&
+          !Utils.isCoHost(participant.metadata))
+      .toList();
+
+  /// Whether everyone with a raised hand already has mic permission, so the
+  /// bulk action should offer to revoke it instead, like web.
+  bool get allRaisedHandsHaveMic {
+    final targets = _raisedHandPermissionTargets;
+    return targets.isNotEmpty &&
+        targets.every((p) => Utils.isMicEnabled(p.attributes));
+  }
+
+  /// Video counterpart of [allRaisedHandsHaveMic].
+  bool get allRaisedHandsHaveVideo {
+    final targets = _raisedHandPermissionTargets;
+    return targets.isNotEmpty &&
+        targets.every((p) => Utils.isVideoEnabled(p.attributes));
+  }
+
+  /// Grants or revokes workshop-mode mic permission for everyone who currently
+  /// has their hand raised. Anyone already in the requested state is skipped,
+  /// so this only fires the calls that actually change something.
+  void setMicForRaisedHands(bool allow) {
+    final targets = _raisedHandPermissionTargets
+        .where((p) => Utils.isMicEnabled(p.attributes) != allow)
+        .toList();
+
+    if (targets.isEmpty) {
+      sendMessageToUI(allow
+          ? "All raised hands already have mic permission"
+          : "No raised hand has mic permission");
+      return;
+    }
+
+    for (final participant in targets) {
+      updateAudioPermissionForParticipant(participant.identity, allow);
+    }
+  }
+
+  /// Video counterpart of [setMicForRaisedHands].
+  void setVideoForRaisedHands(bool allow) {
+    final targets = _raisedHandPermissionTargets
+        .where((p) => Utils.isVideoEnabled(p.attributes) != allow)
+        .toList();
+
+    if (targets.isEmpty) {
+      sendMessageToUI(allow
+          ? "All raised hands already have video permission"
+          : "No raised hand has video permission");
+      return;
+    }
+
+    for (final participant in targets) {
+      updateVideoPermissionForParticipant(participant.identity, allow);
+    }
+  }
+
   //===============================[Participant Drawer]===============================
 
   bool _isParticipantDrawerHidden = false;
@@ -2730,7 +3530,16 @@ class RtcViewmodel extends ChangeNotifier {
     notifyListeners();
   }
 
-  bool isParticipantPageOpen = false;
+  bool _isParticipantPageOpen = false;
+
+  bool get isParticipantPageOpen => _isParticipantPageOpen;
+
+  // The lobby banner hides while the page, with its own lobby list, is open.
+  set isParticipantPageOpen(bool value) {
+    if (_isParticipantPageOpen == value) return;
+    _isParticipantPageOpen = value;
+    notifyListeners();
+  }
 
   @Deprecated('Use getHostControls() instead.')
   void getParticipantDrawerConsent() {
@@ -3043,15 +3852,20 @@ class RtcViewmodel extends ChangeNotifier {
     final storageHelper = StorageHelper();
     final metadata = room.localParticipant?.metadata;
     final sessionUid = Utils.getMetadataSessionUid(metadata);
-    final isCoHost = Utils.isCoHost(metadata);
     storageHelper
         .setMeetingUid(meetingDetails.meetingUid);
     if (sessionUid != null) {
       storageHelper.setSessionUid(sessionUid);
     }
     storageHelper.setAttendanceId(Utils.getMetadataAttendanceId(room.localParticipant?.metadata));
-    storageHelper.setAttendanceRole(
-        isCoHost ? AttendanceRole.cohost : AttendanceRole.participant);
+    storageHelper.setAttendanceOwner(sdkConfiguration?.userEmail);
+    // The host is stored as its own role so pre-join never hands a host's
+    // attendance to a participant join (see _cachedAttendanceMatchesJoin).
+    storageHelper.setAttendanceRole(Utils.isHost(metadata)
+        ? AttendanceRole.host
+        : Utils.isCoHost(metadata)
+            ? AttendanceRole.cohost
+            : AttendanceRole.participant);
   }
 
   // Only fires for the advance-password flow, where verify/password returns

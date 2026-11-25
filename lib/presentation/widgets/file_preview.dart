@@ -12,6 +12,7 @@ import 'package:flutter_chat_types/flutter_chat_types.dart' show PreviewData;
 import 'package:flutter_link_previewer/flutter_link_previewer.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class FilePreviewWidget extends StatefulWidget {
   final String fileUrl;
@@ -35,6 +36,7 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
   final HashMap<String, PreviewData?> metadata =
       HashMap<String, PreviewData?>();
   double? _progress; // State variable to track download progress
+  bool _saving = false;
 
   @override
   void initState() {
@@ -214,6 +216,29 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
                     maxLines: 2,
                   ),
                 ),
+              // Same rule as web: shown only while the host allows
+              // attachment downloads.
+              if (mimeType != null && widget.isChatAttachmentDownloadEnable)
+                Builder(
+                  builder: (buttonContext) => IconButton(
+                    tooltip: 'Download',
+                    visualDensity: VisualDensity.compact,
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.download_rounded,
+                            color: Colors.white),
+                    onPressed: _saving
+                        ? null
+                        : () => _saveCopy(buttonContext, mimeType),
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: 10),
@@ -234,6 +259,55 @@ class _FilePreviewWidgetState extends State<FilePreviewWidget> {
         ],
       ),
     );
+  }
+
+  /// Download button: keeps a copy outside the app. Android saves it to the
+  /// public Downloads folder; iOS has no shared Downloads folder an app can
+  /// write to, so it opens the share sheet, where "Save to Files" lives.
+  Future<void> _saveCopy(BuildContext buttonContext, String mimeType) async {
+    // Read before any await: the anchor for the iPad share popover.
+    final box = buttonContext.findRenderObject() as RenderBox?;
+    final origin =
+        box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+
+    setState(() => _saving = true);
+    try {
+      final fileName = Uri.decodeFull(widget.fileUrl.split('/').last);
+      final filePath = await _resolveFilePath(fileName);
+      if (!File(filePath).existsSync()) {
+        setState(() => _progress = 0.0);
+        try {
+          await _downloadFile(widget.fileUrl, filePath);
+        } finally {
+          if (mounted) setState(() => _progress = null);
+        }
+      }
+
+      if (Platform.isIOS) {
+        await SharePlus.instance.share(ShareParams(
+          files: [XFile(filePath, mimeType: mimeType)],
+          sharePositionOrigin: origin,
+        ));
+        return;
+      }
+
+      final saved = await DownloadUtils.saveToDownloads(
+        sourcePath: filePath,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+      if (!mounted) return;
+      Utils.showSnackBar(
+        context,
+        message: saved ? "Saved to Downloads" : "Couldn't save the file",
+      );
+    } catch (_) {
+      if (mounted) {
+        Utils.showSnackBar(context, message: "Couldn't download the file");
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   Future<String> _resolveFilePath(String fileName) async {

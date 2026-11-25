@@ -9,7 +9,9 @@ This SDK provides a simple and efficient way to add video conferencing features 
 ✅ **Android**  | ✅ **iOS**
 
 ## Latest Release
-**v4.5.2** - See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and what's new.
+**v4.6.0** - Needs Flutter 3.41.6+ / Dart 3.11+, Android API 24+ and compileSdk 37. See
+[CHANGELOG.md](CHANGELOG.md) for detailed release notes and the [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460)
+for upgrading from v4.5.x.
 
 # How to use
 
@@ -21,8 +23,18 @@ add ``daakia_vc_flutter_sdk:`` to your ``pubspec.yaml`` dependencies then run ``
 
 ```yaml
   dependencies:
-    daakia_vc_flutter_sdk: ^4.5.2
+    daakia_vc_flutter_sdk: ^4.6.0
 ```
+
+### Requirements
+
+| | Minimum |
+|---|---|
+| Flutter | 3.22+ (v4.5.x), **3.41.6+ from v4.6.0** |
+| Dart SDK | ^3.8.0 (v4.5.x), **^3.11.0 from v4.6.0** |
+| Android | API 21 (v4.5.x), **API 24 from v4.6.0** |
+| Android compileSdk | **37 from v4.6.0** |
+| iOS | 14.0 |
 
 
 
@@ -133,6 +145,10 @@ All of the following entries **must** be present in your `Info.plist`. Apple wil
   <key>NSPhotoLibraryUsageDescription</key>
   <string>$(PRODUCT_NAME) accesses your photo library to share images in the conference chat</string>
 
+  <!-- Required: a bundled file picker references location APIs; the SDK never asks for location -->
+  <key>NSLocationWhenInUseUsageDescription</key>
+  <string>This app does not use your location.</string>
+
   <!-- Required: keep audio running when app is backgrounded -->
   <key>UIBackgroundModes</key>
   <array>
@@ -158,7 +174,7 @@ You may need to delete `Podfile.lock` and re-run `pod install` after updating th
 
 ### Podfile Permission Macros
 
-The SDK uses [`permission_handler`](https://pub.dev/packages/permission_handler) to check and request camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
+The SDK checks and requests camera/microphone access at the OS level. On iOS, you must explicitly enable these permissions in your `Podfile`'s `post_install` block, otherwise permission checks will always return denied and the controls will not function correctly.
 
 ```ruby
 post_install do |installer|
@@ -180,6 +196,11 @@ After updating your Podfile, run:
 ```bash
 cd ios && pod install
 ```
+
+> **Swift Package Manager:** if your app resolves plugins through SPM, these `Podfile` macros are not used;
+> camera and microphone access are enabled from the matching `NS*UsageDescription` keys in `Info.plist`.
+> After changing those keys, clear `~/Library/Developer/Xcode/DerivedData` once. See the
+> [Migration Guide](doc/MigrationGuide.md#upgrading-to-v460).
 ## Usage/Examples
 
 ```dart

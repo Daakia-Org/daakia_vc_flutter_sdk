@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
+import '../utils/permission_request.dart';
+
 class DaakiaMeetingService {
   static const _channel = MethodChannel('io.daakia/meeting_service');
 
@@ -11,6 +13,13 @@ class DaakiaMeetingService {
   static String? _title;
   static bool _showMuteButton = false;
   static bool _isMuted = false;
+
+  // Bumped by every start() and stop(). start() awaits the notification
+  // permission check before reaching native code; if the meeting closes in
+  // that window, stop() runs first and finds nothing to stop — so start()
+  // re-checks this afterwards and bails instead of launching an orphaned
+  // service for a meeting that no longer exists.
+  static int _session = 0;
 
   // Callbacks wired up by RoomPage to handle Android notification button presses.
   static VoidCallback? onMuteToggle;
@@ -20,6 +29,22 @@ class DaakiaMeetingService {
   // RoomPage uses these to disable/re-enable the mic button and restart the track.
   static VoidCallback? onAudioInterruptionBegan;
   static VoidCallback? onAudioInterruptionEnded;
+
+  // Diagnostics only: iOS reports every audio route change with the live
+  // AVAudioSession state (category, mode, current outputs/inputs).
+  static void Function(Map<String, dynamic> route)? onAudioRouteChanged;
+
+  /// Current audio route, for diagnostics: the AVAudioSession state on iOS,
+  /// the audio mode and communication device on Android. Null elsewhere.
+  static Future<Map<String, dynamic>?> getAudioRoute() async {
+    if (!Platform.isIOS && !Platform.isAndroid) return null;
+    try {
+      final route = await _channel.invokeMapMethod<String, dynamic>('getAudioRoute');
+      return route;
+    } catch (e) {
+      return null;
+    }
+  }
 
   /// Must be called once (e.g. in RoomPage.initState) before any [start] call
   /// so that notification button presses from Android are dispatched back here.
@@ -41,6 +66,10 @@ class DaakiaMeetingService {
       case 'audioInterruptionEnded':
         onAudioInterruptionEnded?.call();
         break;
+      case 'audioRouteChanged':
+        final args = call.arguments;
+        if (args is Map) onAudioRouteChanged?.call(Map<String, dynamic>.from(args));
+        break;
     }
   }
 
@@ -60,6 +89,7 @@ class DaakiaMeetingService {
   }) async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
+    final session = ++_session;
     _title = title;
     _isMuted = isMuted;
     _showMuteButton = showMuteButton;
@@ -68,9 +98,10 @@ class DaakiaMeetingService {
       // POST_NOTIFICATIONS is a runtime permission on Android 13+.
       final notifStatus = await Permission.notification.status;
       if (notifStatus.isDenied) {
-        await Permission.notification.request();
+        await Permission.notification.requestSerially();
       }
     }
+    if (session != _session) return; // stop() ran while we were waiting.
 
     try {
       await _channel.invokeMethod('startMeetingService', {
@@ -166,6 +197,7 @@ class DaakiaMeetingService {
 
   static Future<void> stop() async {
     if (!Platform.isAndroid && !Platform.isIOS) return;
+    _session++;
     _title = null;
     _isMuted = false;
     _showMuteButton = false;

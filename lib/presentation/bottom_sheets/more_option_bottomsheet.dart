@@ -16,6 +16,7 @@ import '../../utils/meeting_actions.dart';
 import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import '../dialog/emoji_dialog.dart';
+import 'layout_bottomsheet.dart';
 import '../dialog/notification_permission_dialog.dart';
 import '../pages/all_participant_page.dart';
 import '../pages/permission_request_page.dart';
@@ -47,7 +48,12 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
               // Top View (like the handle in a bottom sheet)
               Center(
                 child: Container(
-                  margin: const EdgeInsets.only(top: 10.0, bottom: 30.0),
+                  // Landscape has far less height to spend, so the grab handle
+                  // gets a tighter gutter there.
+                  margin: MediaQuery.of(context).orientation ==
+                          Orientation.landscape
+                      ? const EdgeInsets.only(top: 8.0, bottom: 12.0)
+                      : const EdgeInsets.only(top: 10.0, bottom: 30.0),
                   width: 50,
                   height: 5,
                   color: Colors.white,
@@ -62,6 +68,23 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                       viewModel.getUnreadCountPrivateChat()), onTap: () {
                 Navigator.pop(context);
                 showChatBottomSheet(viewModel);
+              }),
+              // Layout: Grid or Speaker when nobody shares, Gallery or
+              // Spotlight while watching someone else's share. Hidden while
+              // you share or the whiteboard holds the stage (same as web).
+              buildOption(context,
+                  icon: Icons.view_quilt_outlined,
+                  text: 'Layout',
+                  isVisible: viewModel.canChooseLayout, onTap: () {
+                final navigator = Navigator.of(context);
+                navigator.pop();
+                Utils.showAdaptiveSheet<void>(
+                  navigator.context,
+                  backgroundColor: Colors.transparent,
+                  // Room to scroll in landscape or on a short screen.
+                  scrollable: true,
+                  builder: (_) => LayoutBottomSheet(viewModel: viewModel),
+                );
               }),
               // Recording Section
               buildOption(context,
@@ -108,6 +131,18 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                   isVisible: viewModel.isHost() || viewModel.isCoHost(), onTap: () {
                 Navigator.pop(context);
                 showWebinarControls();
+              }),
+              // Whiteboard
+              buildOption(context,
+                  icon: Icons.draw,
+                  text: viewModel.isWhiteboardOpen
+                      ? 'Close Whiteboard'
+                      : 'Open Whiteboard',
+                  isVisible: viewModel.canManageWhiteboard(),
+                  isEnabled: !viewModel.isWhiteboardActionInProgress,
+                  onTap: () {
+                Navigator.pop(context);
+                viewModel.toggleWhiteboard();
               }),
               // Screen Share
               buildOption(context,
@@ -156,6 +191,8 @@ class _MoreOptionState extends State<MoreOptionBottomSheet> {
                 icon: Icons.people,
                 text: 'Participants',
                 isVisible: viewModel.isHost() || viewModel.isCoHost() || !viewModel.isParticipantDrawerHidden,
+                // People waiting in the lobby; only hosts and co-hosts get them.
+                setBadge: BadgeData(viewModel.lobbyRequestList.length),
                 onTap: () {
                   showParticipantBottomSheet(viewModel);
                 },

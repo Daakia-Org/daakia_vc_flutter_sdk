@@ -136,9 +136,11 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
         widget.viewModel.meetingDetails.features?.isVoiceTextTranslationAllowed() ==
             true;
 
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
+    Utils.showAdaptiveSheet<void>(
+      context,
+      forceFullHeight: true,
+      // Two language pickers plus the keyboard inset overflow a short viewport.
+      scrollable: true,
       backgroundColor: Colors.transparent,
       builder: (_) => LanguageSelectionBottomSheet(
         languages: widget.viewModel.languages,
@@ -206,7 +208,9 @@ class _TranscriptionScreenState extends State<TranscriptionScreen> {
               ? null
               : SnackBarAction(
                   label: 'Open',
-                  onPressed: () => Utils.openMediaFile(path, context),
+                  // The snack bar outlives this screen, so Open can be tapped
+                  // after it is closed; this State's context is gone by then.
+                  onPressed: () => Utils.openMediaFile(path, messenger.context),
                 ),
         ),
       );

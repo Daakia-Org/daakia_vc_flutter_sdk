@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class TranscriptionActionModel {
   bool? showIcon;
   bool? isLanguageSelected;
@@ -8,8 +10,8 @@ class TranscriptionActionModel {
       {this.showIcon, this.isLanguageSelected, this.langCode, this.sourceLang});
 
   TranscriptionActionModel.fromJson(Map<String, dynamic> json) {
-    showIcon = json['showIcon'];
-    isLanguageSelected = json['isLanguageSelected'];
+    showIcon = JsonParser.toBool(json['showIcon']);
+    isLanguageSelected = JsonParser.toBool(json['isLanguageSelected']);
     langCode = json['langCode'];
     sourceLang = json['source_lang'];
   }

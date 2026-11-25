@@ -6,53 +6,70 @@ import 'package:animated_emoji/emojis.g.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:daakia_vc_flutter_sdk/events/meeting_end_events.dart';
 import 'package:daakia_vc_flutter_sdk/events/rtc_events.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/host_leave_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/meeting_audio_dialogs.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/meeting_audio_off_banner.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/dialog/leave_confirmation_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/model/action_model.dart';
 import 'package:daakia_vc_flutter_sdk/model/daakia_meeting_configuration.dart';
 import 'package:daakia_vc_flutter_sdk/model/meeting_details.dart';
+import 'package:daakia_vc_flutter_sdk/model/moved_to_lobby.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/dialog/notification_permission_dialog.dart';
 import 'package:daakia_vc_flutter_sdk/presentation/widgets/emoji_reaction_widget.dart';
-import 'package:daakia_vc_flutter_sdk/rtc/lobby_request_manager.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/widgets/workshop_mode_dialog.dart';
+import 'package:daakia_vc_flutter_sdk/presentation/pages/all_participant_page.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/lobby_request_banner.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/status_pill_row.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/connectivity_banner.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/room_notification.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/participant_info.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/spotlight_card.dart';
+import 'package:daakia_vc_flutter_sdk/rtc/widgets/meeting_grid.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/pip_screen.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/rtc_controls.dart';
 import 'package:daakia_vc_flutter_sdk/rtc/widgets/white_board_widget.dart';
 import 'package:daakia_vc_flutter_sdk/theme/daakia_sdk_theme.dart';
+import 'package:daakia_vc_flutter_sdk/utils/cdn_sounds.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
+import 'package:daakia_vc_flutter_sdk/utils/whiteboard_download.dart';
+import 'package:daakia_vc_flutter_sdk/utils/whiteboard_file_selector.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_disconnect_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/datadog_reconnect_logger.dart';
+import 'package:daakia_vc_flutter_sdk/service/daakia_vc_logger.dart';
 import 'package:daakia_vc_flutter_sdk/utils/rtc_ext.dart';
 import 'package:daakia_vc_flutter_sdk/utils/storage_helper.dart';
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_provider.dart';
 import 'package:daakia_vc_flutter_sdk/viewmodel/rtc_viewmodel.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+// livekit_client's ConnectionState is the one used here.
+import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import '../service/daakia_meeting_service.dart';
+import 'audio_routing.dart';
 import 'package:livekit_client/livekit_client.dart';
-import 'package:livekit_client/src/track/audio_management.dart'
-    show onConfigureNativeAudio, defaultNativeAudioConfigurationFunc, AudioTrackState;
-import 'package:livekit_client/src/support/native_audio.dart'
-    show NativeAudioConfiguration, AppleAudioCategory, AppleAudioCategoryOption, AppleAudioMode;
 import 'package:provider/provider.dart';
 import 'package:simple_pip_mode/simple_pip.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart';
 
 import '../model/annotation_stroke.dart';
 import '../model/emoji_message.dart';
 import '../model/remote_activity_data.dart';
 import '../presentation/dialog/duplicate_identity_dialog.dart';
+import '../presentation/dialog/inactive_meeting_dialog.dart';
+import '../presentation/dialog/inactivity_ended_dialog.dart';
+import '../presentation/dialog/meeting_ending_dialog.dart';
 import '../presentation/dialog/screen_share_request_dialog.dart';
 import '../presentation/pages/transcription_screen.dart';
 import '../utils/consent_status_enum.dart';
 import '../utils/annotation_actions.dart';
 import '../utils/meeting_actions.dart';
 import '../utils/utils.dart';
+import 'inactive_meeting_watcher.dart';
 import 'meeting_manager.dart';
 import 'method_channels/daakia_pip.dart';
 
@@ -63,12 +80,18 @@ class RoomPage extends StatefulWidget {
   final bool fastConnection;
   final DaakiaMeetingConfiguration? sdkConfiguration;
 
+  /// Shown once the meeting UI is up, to explain something about the join the
+  /// user would otherwise have to guess at — currently only that a weak
+  /// connection forced them in with mic and camera off.
+  final String? joinNotice;
+
   const RoomPage(
     this.room,
     this.listener,
     this.meetingDetails, {
     this.fastConnection = false,
     this.sdkConfiguration,
+    this.joinNotice,
     super.key,
   });
 
@@ -97,7 +120,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // Coalesces rapid-fire track add/remove events (e.g. both sides repeatedly
   // toggling screen share) into a single rebuild instead of one per event,
   // to reduce main-thread churn during toggle storms.
-  Timer? _sortParticipantsDebounceTimer;
+  // See [_scheduleSortParticipants].
+  Timer? _sortParticipantsTimer;
+
+  /// What the last sort showed, see [_layoutSignature].
+  List<Object?> _lastLayoutSignature = const [];
+
+  // Groups the mic / camera / participant-list changes that arrive as three
+  // separate actions when the host toggles Workshop mode into one notice.
+  final WorkshopModeNoticeController _workshopNotice =
+      WorkshopModeNoticeController();
 
   late final MeetingManager meetingManager;
 
@@ -108,6 +140,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       // Re-ensure the meeting notification is visible. Covers the case where the
       // user granted POST_NOTIFICATIONS in system Settings while in the meeting.
       DaakiaMeetingService.restartIfActive();
+      // Timers may have been paused in the background; catch up at once.
+      _inactivityWatcher?.check();
     }
   }
 
@@ -122,7 +156,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           statusBarBrightness: Brightness.dark,      // white icons on iOS
         ));
     WakelockPlus.enable();
-    _setupIosAudioConfig();
+    DaakiaAudioRouting.attach();
     if (lkPlatformIs(PlatformType.android)) {
       pip = SimplePip(onPipEntered: () {
         setState(() {
@@ -151,23 +185,45 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     _sortParticipants();
     WidgetsBindingCompatible.instance?.addPostFrameCallback((_) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
-      lobbyManager = LobbyRequestManager(context, viewModel);
       viewModel?.context = context;
+      // The sort in initState ran before the meeting state existed; hand it
+      // the list now rather than waiting for the next room change.
+      _sortParticipants();
       if (!fastConnection) {
         _askPublish();
       }
+      _showJoinNotice();
+      // Before the scheduler: its first check runs synchronously, and joining a
+      // meeting already inside its final minutes fires the warning there and
+      // then. Starting the load first gives that case a head start.
+      unawaited(_prepareMeetingEndWarningSound());
       meetingManager = MeetingManager(
           endDate: viewModel?.getMeetingEndDate(),
           isAutoMeetingEnd: viewModel?.isAutoMeetingEndEnable(),
+          // Only in-memory otherwise: a rejoin after the extension would offer
+          // it again, and the backend would turn the second one down.
+          isExtended: viewModel?.isMeetingAlreadyExtended() ?? false,
           endMeetingCallBack: (event) {
             if (event is MeetingEnd) {
               _meetingEndLogic(viewModel);
             } else if (event is MeetingExtends) {
               viewModel?.meetingTimeExtend();
+            } else if (event is MeetingEndingSoon) {
+              _handleMeetingEndingSoon(viewModel, event);
             }
-          },
-          context: context);
+          });
       meetingManager.startMeetingEndScheduler();
+      viewModel?.syncMeetingEndTime(onDone: () {
+        if (!mounted) return;
+        if (viewModel.isMeetingAlreadyExtended() &&
+            meetingManager.adoptExtendedEndDate(viewModel.getMeetingEndDate())) {
+          // Warnings already given counted down to the old end.
+          _warnedTiers.clear();
+          _promptedTiers.clear();
+        }
+        _isMeetingEndTimeSynced = true;
+      });
+      _initInactivityWatcher(viewModel);
       _initializeWebViewController();
       viewModel?.getWhiteboardData();
       viewModel?.getAttendanceListForParticipant();
@@ -177,6 +233,8 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         viewModel?.checkSessionStatus(
             asUser: true,
             callBack: () {
+              // Joining a meeting that is already recording doesn't ask again.
+              if (widget.room.isRecording) return;
               showRecordingConsentDialog(viewModel);
             });
       } else {
@@ -204,7 +262,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     });
 
     if (lkPlatformIs(PlatformType.android)) {
-      Hardware.instance.setSpeakerphoneOn(true);
+      DaakiaAudioRouting.setSpeakerphoneOn(true);
     }
 
     if (lkPlatformIsDesktop()) {
@@ -237,20 +295,30 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   // subsequent RoomAttemptReconnectEvents for the same outage are no-ops,
   // which also prevents stacked timers from firing out of order.
   Timer? _reconnectShowDelayTimer;
-  // Safety net only, in case a reconnected/disconnected event is ever missed.
-  // LiveKit's own reconnectAttemptsExceeded disconnect is the authoritative
-  // give-up signal. Kept comfortably longer than LiveKit's worst-case backoff
-  // window (~44s across 10 attempts) plus per-attempt connection timeouts.
+  // Reconnect watchdog, see _armReconnectWatchdog.
   Timer? _reconnectFallbackTimer;
+
+  // When the last reconnect attempt started. A DUPLICATE_IDENTITY disconnect
+  // that lands during or shortly after a reconnect is almost always this
+  // device kicking itself, not a join from another device: a reconnect
+  // attempt that timed out on our side can still complete on the server, and
+  // the server's kick for that stale session reaches this client and ends the
+  // healthy one. See _onDuplicateIdentity.
+  DateTime? _lastReconnectAttemptAt;
+  static const _selfKickWindow = Duration(seconds: 60);
+
+  // Set by the first RoomDisconnectedEvent; later ones are only logged.
+  bool _disconnectHandled = false;
 
   late final TransformationController _zoomController;
   double _zoomScale = 1.0;
 
   void onReconnectStart() {
+    _lastReconnectAttemptAt = DateTime.now();
+    _armReconnectWatchdog();
     // Already showing (or about to show) the banner for this outage.
     if (_isReconnecting || _reconnectShowDelayTimer != null) return;
 
-    _reconnectFallbackTimer?.cancel();
     _reconnectShowDelayTimer = Timer(const Duration(milliseconds: 800), () {
       _reconnectShowDelayTimer = null;
       if (!mounted) return;
@@ -259,15 +327,89 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         _isConnected = false;
       });
     });
+  }
 
-    _reconnectFallbackTimer = Timer(const Duration(seconds: 90), () {
-      _reconnectFallbackTimer = null;
-      if (mounted && _isReconnecting) {
-        setState(() {
-          _isReconnecting = false;
-        });
+  /// Shared start of every way the meeting ends unexpectedly. Returns false
+  /// when the ending was already handled.
+  bool _beginMeetingEnd(String? reason) {
+    _resetReconnectUiState();
+    // The "Reconnecting…" banner is drawn over the notification overlay, so
+    // leaving it up would hide the disconnect message shown below.
+    if (mounted && (_isReconnecting || _isConnected)) {
+      setState(() {
+        _isReconnecting = false;
+        _isConnected = false;
+      });
+    }
+    _isProgrammaticPop = true;
+    // Down before anything below pops the meeting, or the pop would close
+    // the prompt instead.
+    _stopInactivityWatcher();
+    DatadogDisconnectLogger.logDisconnectEvent(
+        meetingId: widget.meetingDetails.meetingUid,
+        room: widget.room,
+        reason: reason);
+    // LiveKit can report more than one disconnect for the same ending: a
+    // kick during a reconnect is followed by joinFailure from the rejoin
+    // still in flight. Handling it again would replace the message the user
+    // just got and schedule a second pop, which can close the host app's
+    // screen underneath the meeting.
+    if (_disconnectHandled) return false;
+    _disconnectHandled = true;
+    _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
+    clearMemory(_livekitProviderKey.currentState?.viewModel);
+    return true;
+  }
+
+  /// Re-armed by every reconnect attempt. LiveKit can stop retrying without
+  /// telling us: when the server drops the session (a leave such as
+  /// DUPLICATE_IDENTITY) while a full reconnect is running, the room ignores
+  /// that disconnect because it expects the reconnect to finish, and the
+  /// reconnect then gives up quietly because the engine is closed. The user is
+  /// left in a meeting that looks live but is gone. A gap this long with no
+  /// new attempt and no reconnected/disconnected event means that happened.
+  /// One attempt plus its backoff stays well under it.
+  static const _reconnectStallTimeout = Duration(seconds: 60);
+
+  void _armReconnectWatchdog() {
+    _reconnectFallbackTimer?.cancel();
+    _reconnectFallbackTimer =
+        Timer(_reconnectStallTimeout, _onReconnectStalled);
+  }
+
+  void _onReconnectStalled() {
+    _reconnectFallbackTimer = null;
+    if (!mounted || _disconnectHandled) return;
+    // connectionState alone can't be trusted here: in the stuck case it still
+    // reads connected (the abandoned rejoin left a socket open) while the
+    // engine has already shut down for good. LiveKit marks isClosed internal,
+    // but it is the only signal that the session can no longer recover.
+    // ignore: invalid_use_of_internal_member
+    final engineClosed = widget.room.engine.isClosed;
+    if (!engineClosed &&
+        widget.room.connectionState == ConnectionState.connected) {
+      // Reconnected, the event was just missed: only clear the banner.
+      if (_isReconnecting) {
+        setState(() => _isReconnecting = false);
       }
-    });
+      return;
+    }
+    DaakiaVcLogger.logWarning(
+      'Reconnect stalled, meeting ended as connection lost',
+      attributes: {
+        'meetingId': widget.meetingDetails.meetingUid,
+        'connectionState': widget.room.connectionState.name,
+        'engineClosed': engineClosed,
+        'secondsSinceReconnectAttempt': _lastReconnectAttemptAt == null
+            ? null
+            : DateTime.now().difference(_lastReconnectAttemptAt!).inSeconds,
+      },
+    );
+    if (!_beginMeetingEnd('reconnectStalled')) return;
+    // Release the camera, mic and server session now rather than when the
+    // user taps Leave. The disconnect event this sends is already handled.
+    unawaited(widget.room.disconnect());
+    _showDuplicateIdentityDialog(connectionDropped: true);
   }
 
   void onReconnectSuccess() {
@@ -326,42 +468,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         .any((p) => p.track != null && !p.muted);
   }
 
-  // On iOS, override LiveKit's default audio config function so that when the user
-  // has chosen speaker output, we use overrideOutputAudioPort(.speaker) — applied by
-  // setting preferSpeakerOutput:true — instead of the defaultToSpeaker category option.
-  // defaultToSpeaker is only valid for PlayAndRecord; when audioTrackState=remoteOnly
-  // LiveKit picks Playback category, causing OSStatus error -50 with defaultToSpeaker.
-  // overrideOutputAudioPort(.speaker) works with any category and persists through
-  // LiveKit's automatic session reconfigurations.
-  void _setupIosAudioConfig() {
-    if (defaultTargetPlatform != TargetPlatform.iOS) return;
-    onConfigureNativeAudio = (AudioTrackState state) async {
-      // Only force speaker when user explicitly tapped "Speaker" (forceSpeakerOutput = true).
-      // At startup preferSpeakerOutput is true but forceSpeakerOutput is false, so iOS
-      // can auto-route to BT/wired if connected (videoChat + allowBluetooth handles it).
-      if (Hardware.instance.forceSpeakerOutput) {
-        if (state == AudioTrackState.none) return NativeAudioConfiguration.soloAmbient;
-        // Use PlayAndRecord so defaultToSpeaker (added by setSpeakerphoneOn forceSpeakerOutput)
-        // is valid, and preferSpeakerOutput calls overrideOutputAudioPort(.speaker) which
-        // forces the built-in loudspeaker even when BT is connected.
-        return NativeAudioConfiguration(
-          appleAudioCategory: AppleAudioCategory.playAndRecord,
-          appleAudioCategoryOptions: {
-            AppleAudioCategoryOption.allowBluetooth,
-            AppleAudioCategoryOption.allowBluetoothA2DP,
-            AppleAudioCategoryOption.allowAirPlay,
-          },
-          appleAudioMode: AppleAudioMode.videoChat,
-          preferSpeakerOutput: true,
-        );
-      }
-      return defaultNativeAudioConfigurationFunc(state);
-    };
-  }
-
   @override
   void dispose() {
-    onConfigureNativeAudio = defaultNativeAudioConfigurationFunc;
+    unawaited(DaakiaAudioRouting.detach());
     _resetReconnectUiState();
     _zoomController.removeListener(_onZoomChanged);
     _zoomController.dispose();
@@ -372,10 +481,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     viewModel?.stopLobbyCheck();
     viewModel?.cancelRoomEvents();
     meetingManager.cancelMeetingEndScheduler();
-    lobbyManager?.dispose();
+    _inactivityWatcher?.dispose();
+    _inactivityWatcher = null;
     widget.room.disconnect();
     handleAndroidNotification(enable: false);
-    _sortParticipantsDebounceTimer?.cancel();
+    _sortParticipantsTimer?.cancel();
+    _workshopNotice.dispose();
     // always dispose listener
     (() async {
       DaakiaPiP.disposePiP();
@@ -386,33 +497,41 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     onWindowShouldClose = null;
     WakelockPlus.disable();
     player.stop();
+    _meetingEndWarningCutoff?.cancel();
+    _meetingEndWarningPlayer?.dispose();
+    _meetingEndWarningPlayer = null;
   }
 
   void _setUpListeners() => _listener
     ..on<RoomConnectedEvent>((event) {
       // Successfully connected
       onReconnectSuccess();
+      _updateInactivityWatcher();
     })
+    ..on<RoomReconnectingEvent>((_) => _updateInactivityWatcher())
     ..on<RoomReconnectedEvent>((event) {
       // Successfully reconnected
       onReconnectSuccess();
+      _updateInactivityWatcher();
     })
     ..on<RoomDisconnectedEvent>((event) async {
       // Run cleanup and navigation for ALL disconnect reasons, including null.
       // The outer null-guard that was here made the `case null` in the switch
       // unreachable — any unexpected disconnect (network drop, server kill
       // without a reason) would leave the page open and the service running.
-      _resetReconnectUiState();
-      _isProgrammaticPop = true;
-      DatadogDisconnectLogger.logDisconnectEvent(
-          meetingId: widget.meetingDetails.meetingUid,
-          room: widget.room,
-          reason: event.reason?.name);
-      _livekitProviderKey.currentState?.viewModel.isMeetingEnded = true;
-      clearMemory(_livekitProviderKey.currentState?.viewModel);
+      if (!_beginMeetingEnd(event.reason?.name)) return;
+      if (_isInactivityEnd(event.reason)) {
+        _finishInactivityEnd(_livekitProviderKey.currentState?.viewModel);
+        return;
+      }
       switch (event.reason) {
         case DisconnectReason.participantRemoved:
           {
+            final movedToLobby = _takeFreshMoveToLobby();
+            if (movedToLobby != null) {
+              _leaveForLobby(movedToLobby);
+              break;
+            }
             showSnackBar(message: "Host has removed you from the meeting!");
             Timer(const Duration(seconds: 3), () {
               if (mounted) {
@@ -424,13 +543,22 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             break;
           }
         case DisconnectReason.duplicateIdentity:
-          {
-            _showDuplicateIdentityDialog();
-            break;
-          }
+          // Another device took over this attendance.
+          _forgetSavedAttendance();
+          _onDuplicateIdentity();
+          break;
         case DisconnectReason.roomDeleted:
+        case DisconnectReason.roomClosed:
           {
-            showSnackBar(message: "Meeting ended");
+            _forgetSavedAttendance();
+            final viewModel = _livekitProviderKey.currentState?.viewModel;
+            // A host ending it gets the same card as a duplicate identity;
+            // the meeting closes from the card.
+            if (_closedByHost(viewModel)) {
+              _showMeetingEndedDialog(viewModel);
+              break;
+            }
+            showSnackBar(message: _roomClosedMessage(viewModel));
             Timer(const Duration(seconds: 3), () {
               if (mounted) {
                 WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -458,7 +586,19 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           _handleGenericDisconnect("Failed to join the meeting.");
           break;
         case DisconnectReason.disconnected:
+        case DisconnectReason.migration:
+        case DisconnectReason.signalClose:
+        case DisconnectReason.connectionTimeout:
+        case DisconnectReason.mediaFailure:
           _handleGenericDisconnect("You have been disconnected.");
+          break;
+        // SIP and agent reasons don't apply to Daakia meetings, but keep the
+        // switch exhaustive so a stray one still closes the meeting cleanly.
+        case DisconnectReason.userUnavailable:
+        case DisconnectReason.userRejected:
+        case DisconnectReason.sipTrunkFailure:
+        case DisconnectReason.agentError:
+          _handleGenericDisconnect("Disconnected due to unknown reason.");
           break;
         case DisconnectReason.signalingConnectionFailure:
           _handleGenericDisconnect("Signaling connection failed.");
@@ -490,9 +630,18 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       viewModel?.setRecording(widget.room.isRecording);
       viewModel?.getAttendanceListForParticipant();
       viewModel?.fetchInvitedParticipants(silent: true);
+      // The joiner's metadata (with their email) can land just after the
+      // connect event, so read it a moment later.
+      final joined = event.participant;
+      Timer(const Duration(seconds: 2), () {
+        if (widget.room.remoteParticipants[joined.identity] == null) return;
+        _livekitProviderKey.currentState?.viewModel
+            .reportInviteeJoinedStatus(joined, joined: true);
+      });
       viewModel?.addParticipantToConsentList(event.participant);
       viewModel?.sendPrivateChatHistory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
+      _updateInactivityWatcher();
     })
     ..on<ParticipantDisconnectedEvent>((event) {
       _livekitProviderKey.currentState?.viewModel
@@ -503,8 +652,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           .getAttendanceListForParticipant();
       _livekitProviderKey.currentState?.viewModel
           .fetchInvitedParticipants(silent: true);
+      _livekitProviderKey.currentState?.viewModel
+          .reportInviteeJoinedStatus(event.participant, joined: false);
       _livekitProviderKey.currentState?.viewModel.clearRaiseHandMemory(event.participant.identity);
-      _sortParticipants();
+      _scheduleSortParticipants();
+      _updateInactivityWatcher();
     })
     ..on<RoomRecordingStatusChanged>((event) {
       var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -513,10 +665,11 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       if (!event.activeRecording) {
         clearConsentList(viewModel);
       }
-      var recordingAudioPath = event.activeRecording
-          ? Constant.startRecordingUrl
-          : Constant.stopRecordingUrl;
-      playAudio(recordingAudioPath);
+      unawaited(playAudio(event.activeRecording
+          ? CdnSounds.recordingStart
+          : CdnSounds.recordingStop));
+      // The chime is played here, so the join-time check must not repeat it.
+      isCheckedWhileJoining = true;
       handleRecordingButton(viewModel, event.activeRecording);
     })
     ..on<RoomAttemptReconnectEvent>((event) {
@@ -573,9 +726,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     ..on<TrackUnsubscribedEvent>((_) => _scheduleSortParticipants())
     ..on<TrackE2EEStateEvent>(_onE2EEStateEvent)
     ..on<ParticipantNameUpdatedEvent>((event) {
-      _sortParticipants();
+      _scheduleSortParticipants();
     })
-    ..on<ParticipantMetadataUpdatedEvent>((event) {})
+    ..on<ParticipantMetadataUpdatedEvent>((event) {
+      // Our role lives in our metadata, so a co-host change from any client
+      // lands here even when we miss the makeCoHost/removeCoHost message.
+      if (event.participant is LocalParticipant) {
+        _notifyWhiteboardPermissionChanged();
+      }
+      // A role change anywhere can move who watches for inactivity.
+      _updateInactivityWatcher();
+    })
     ..on<RoomMetadataChangedEvent>((event) {})
     ..on<DataReceivedEvent>((event) {
       _handleDataChannel(event);
@@ -592,19 +753,48 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     });
 
-  void _handleDataChannel(DataReceivedEvent event) {
+  Future<void> _handleDataChannel(DataReceivedEvent event) async {
+    var sender = event.participant;
+    // A message sent while its sender was reconnecting is delivered once the
+    // sender is back, and can arrive just before the room lists them again.
+    // Wait briefly for them so the message isn't attributed to "Unknown".
+    if (sender == null && event.participantIdentity.isNotEmpty) {
+      sender = await _awaitRemoteParticipant(event.participantIdentity);
+      if (!mounted) return;
+    }
+
     // Intercept annotation messages before MeetingActions validation
     try {
       final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
       if (AnnotationActions.all.contains(json['action'])) {
-        _handleAnnotationData(json, event.participant);
+        _handleAnnotationData(json, sender);
+        return;
+      }
+      if (json['action'] == MeetingActions.moveToLobby) {
+        _onMoveToLobbyNotice(json, sender);
         return;
       }
     } catch (_) {}
 
     var eventData0 = parseJsonData(event.data);
-    var eventData = eventData0.copyWith(identity: event.participant);
+    var eventData = eventData0.copyWith(identity: sender);
     _checkReceivedDataType(eventData);
+  }
+
+  Future<RemoteParticipant?> _awaitRemoteParticipant(String identity) async {
+    RemoteParticipant? lookup() => widget.room.remoteParticipants[identity];
+    final present = lookup();
+    if (present != null) return present;
+    try {
+      final joined =
+          await widget.room.events.waitFor<ParticipantConnectedEvent>(
+        duration: const Duration(seconds: 5),
+        filter: (e) => e.participant.identity == identity,
+      );
+      return joined.participant;
+    } catch (_) {
+      return lookup();
+    }
   }
 
   void _handleAnnotationData(
@@ -658,7 +848,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
-  late LobbyRequestManager? lobbyManager;
 
   Future<void> _checkReceivedDataType(RemoteActivityData remoteData) async {
     var viewModel = _livekitProviderKey.currentState?.viewModel;
@@ -695,9 +884,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.lobby:
         if (viewModel?.isHost() == true || viewModel?.isCoHost() == true) {
-          viewModel?.checkAndAddUserToLobbyList(remoteData);
-          lobbyManager?.showLobbyRequestDialog(remoteData);
+          // The banner shows it; heartbeats for a known request stay silent.
+          final isNew = viewModel!.checkAndAddUserToLobbyList(remoteData);
+          if (isNew && viewModel.isNotificationSoundEnabled) {
+            unawaited(playAudio(CdnSounds.lobbyNotification));
+          }
         }
+        break;
+
+      case MeetingActions.lobbyLeave:
+        viewModel?.removeLobbyRequest(remoteData.requestId);
         break;
 
       case MeetingActions.heart:
@@ -720,15 +916,31 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.askToUnmuteMic:
-        final result = await context
-            .showPermissionAskDialog("Host is asking you to turn on your mic");
-        if (result == true) viewModel?.enableAudio();
+        final asker = askerLabel(remoteData.identity?.name);
+        final result = viewModel?.isAudioDisconnected == true
+            ? await confirmUnmuteWithAudioOff(context,
+                requesterName: remoteData.identity?.name)
+            : await context.showPermissionAskDialog(
+                "$asker is asking you to turn on your mic");
+        if (result != true) break;
+        try {
+          await viewModel?.enableAudio();
+        } catch (_) {
+          showSnackBar(
+              message: "Couldn't turn on your microphone. Try again.");
+        }
         break;
 
       case MeetingActions.askToUnmuteCamera:
         final result = await context.showPermissionAskDialog(
-            "Host is asking you to turn on your camera");
-        if (result == true) viewModel?.enableVideo();
+            "${askerLabel(remoteData.identity?.name)} is asking you to turn on "
+            "your camera");
+        if (result != true) break;
+        try {
+          await viewModel?.enableVideo();
+        } catch (_) {
+          showSnackBar(message: "Couldn't turn on your camera. Try again.");
+        }
         break;
 
       case MeetingActions.makeCoHost:
@@ -748,10 +960,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         storageHelper
             .setAttendanceId(Utils.getMetadataAttendanceId(metadata));
         storageHelper.setAttendanceRole(AttendanceRole.cohost);
+        storageHelper.setAttendanceOwner(viewModel?.sdkConfiguration?.userEmail);
         storageHelper.setHostToken(remoteData.token ?? "");
         viewModel?.getAttendanceListForParticipant();
         viewModel?.fetchInvitedParticipants(silent: true);
         showSnackBar(message: "${remoteData.identity?.name} made you a Co-Host");
+        _notifyWhiteboardPermissionChanged();
         break;
 
       case MeetingActions.removeCoHost:
@@ -760,6 +974,12 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         StorageHelper().setHostToken("");
         clearConsentList(viewModel);
         showSnackBar(message: "${remoteData.identity?.name} remove you as a Co-Host");
+        _notifyWhiteboardPermissionChanged();
+        break;
+
+      case MeetingActions.allowLiveCollabWhiteboard:
+        viewModel?.isWhiteboardCollabEnabled = remoteData.value;
+        _notifyWhiteboardPermissionChanged();
         break;
 
       case MeetingActions.forceMuteAll:
@@ -769,6 +989,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         if (isAudioModeEnabled) {
           viewModel?.disableAudio();
         }
+        _announceWorkshopChange(viewModel, remoteData.identity?.name);
         break;
 
       case MeetingActions.forceVideoOffAll:
@@ -778,6 +999,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         if (isVideoModeEnabled) {
           viewModel?.disableVideo();
         }
+        _announceWorkshopChange(viewModel, remoteData.identity?.name);
         break;
 
       case MeetingActions.showLiveCaption:
@@ -819,25 +1041,29 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         break;
 
       case MeetingActions.extendMeetingEndTime:
-        showSnackBar(message: "Meeting has been extended by 10 minutes.");
-        meetingManager.extendMeetingBy10Minutes();
+        showSnackBar(
+            message:
+                "Meeting extended by ${Constant.meetingExtendTime} minutes");
+        _applyMeetingExtension();
+        // Somebody took the decision; nobody else needs the prompt any more.
+        _dismissMeetingEndingDialog();
+        break;
+
+      case MeetingActions.inactiveMeetingAutoEnd:
+        // The ROOM_DELETED that follows is labelled from this.
+        _inactivityNoticeAt = DateTime.now();
+        break;
+
+      case MeetingActions.notificationSoundSetting:
+        _applyRemoteNotificationSoundSetting(viewModel, remoteData);
         break;
 
       case MeetingActions.whiteboardState:
-        if (remoteData.value) {
-          showSnackBar(message: "Whiteboard Opened");
-          setState(() {
-            _isWhiteBoardEnabled = true;
-            loadWhiteboardUrl(Utils.generateWhiteboardUrl(
-                meetingId: widget.meetingDetails.meetingUid,
-                livekitToken: widget.meetingDetails.livekitToken));
-          });
-        } else {
-          showSnackBar(message: "Whiteboard Closed");
-          setState(() {
-            _isWhiteBoardEnabled = false;
-          });
-        }
+        showSnackBar(
+            message: remoteData.value ? "Whiteboard Opened" : "Whiteboard Closed");
+        // Shown/hidden via the WhiteboardStatus event this raises.
+        viewModel?.setWhiteboardState(remoteData.value,
+            whiteboardId: remoteData.whiteboardId);
         break;
 
       case MeetingActions.recordingConsentModal:
@@ -869,6 +1095,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         showSnackBar(message: "${remoteData.identity?.name} has stopped sharing their screen.");
         final stoppedSharerId = remoteData.identity?.identity;
         if (stoppedSharerId != null) viewModel?.resetAnnotationSharer(stoppedSharerId);
+        break;
+
+      case MeetingActions.requestStartRecording:
+        viewModel?.handleStartRecordingRequest();
         break;
 
       case MeetingActions.startRecording:
@@ -943,7 +1173,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
       case MeetingActions.allowMicPermission:
         viewModel?.isMicPermissionGranted = true;
-        showSnackBar(message: "Your mic permission has been granted");
+        // Granted while audio is disconnected: they can't be heard until they
+        // reconnect, so ask right away, over whatever page is open.
+        if (viewModel?.isAudioDisconnected == true) {
+          final reconnect = await confirmMicGrantedWithAudioOff(context);
+          // The permission may have been revoked while the dialog was open.
+          if (!reconnect || viewModel?.isMicPermissionGranted != true) break;
+          try {
+            await viewModel?.enableAudio();
+          } catch (_) {
+            showSnackBar(
+                message: "Couldn't turn on your microphone. Try again.");
+          }
+        } else {
+          showSnackBar(message: "Your mic permission has been granted");
+        }
         break;
 
       case MeetingActions.revokeMicPermission:
@@ -983,6 +1227,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         if (isHidden && viewModel?.isParticipantPageOpen == true) {
           _innerNavigatorKey.currentState?.maybePop();
         }
+        _announceWorkshopChange(viewModel, remoteData.identity?.name);
         break;
 
       case MeetingActions.refreshInvitedParticipants:
@@ -1065,6 +1310,9 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (vm != null && mounted) {
       vm.setAudioInterrupted(false);
       setState(() => _isPhoneCallActive = false);
+      // The native recovery re-activates the session as playAndRecord/videoChat,
+      // which drops an earpiece choice or a forced speaker. Put it back.
+      unawaited(DaakiaAudioRouting.reapply());
       showSnackBar(message: "Phone call ended");
     }
   }
@@ -1075,7 +1323,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (participant == null || vm == null) return;
 
     if (participant.isMicrophoneEnabled()) {
-      vm.disableAudio(); // void async — fire and don't await (return type is void)
+      unawaited(vm.disableAudio()); // fire and don't await
     } else {
       await vm.enableAudio();
     }
@@ -1097,7 +1345,7 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
   }
 
   void _onRoomDidUpdate() {
-    _sortParticipants();
+    _scheduleSortParticipants();
     _syncNotificationMuteState();
   }
 
@@ -1123,15 +1371,59 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  /// The room notifies on nearly every change (who is speaking, audio levels,
+  /// mutes, metadata), and in a big meeting that is many times a second.
+  /// Re-sorting on each one keeps the main thread busy, which in a large
+  /// meeting means dropped frames, ANRs and late keep-alives. Instead, the
+  /// first change starts a short timer and everything that arrives before it
+  /// fires is handled by one sort. This is a throttle, not a debounce: a
+  /// debounce restarts on every change, so while people keep talking it would
+  /// never fire at all.
+  static const _sortInterval = Duration(milliseconds: 250);
+
   void _scheduleSortParticipants() {
-    _sortParticipantsDebounceTimer?.cancel();
-    _sortParticipantsDebounceTimer =
-        Timer(const Duration(milliseconds: 200), () {
+    if (_sortParticipantsTimer?.isActive ?? false) return;
+    _sortParticipantsTimer = Timer(_sortInterval, () {
       if (mounted) _sortParticipants();
     });
   }
 
+  /// Everything the meeting screen and the participants page show for each
+  /// track, in order: position, identity, share or camera, name, role, mic
+  /// and camera state. Speaking state and audio levels are left out on
+  /// purpose. Tiles listen to their own participant for those, so a change
+  /// in who is talking only costs a refresh when it actually moves someone.
+  List<Object?> _layoutSignature(List<ParticipantTrack> tracks) {
+    final signature = <Object?>[];
+    for (final t in tracks) {
+      final p = t.participant;
+      signature
+        ..add(p.identity)
+        ..add(t.type)
+        ..add(p.name)
+        ..add(p.metadata)
+        ..add(p.isMicrophoneEnabled())
+        ..add(p.isCameraEnabled())
+        ..add(_receivedVideoMask(p));
+    }
+    return signature;
+  }
+
+  /// One bit per video publication: set when its track has arrived and is
+  /// not muted. The stage decides zoom and the no-video placeholder from
+  /// this, and a track can arrive well after the camera was switched on.
+  int _receivedVideoMask(Participant p) {
+    var mask = 0;
+    var bit = 1;
+    for (final v in p.videoTrackPublications) {
+      if (v.track != null && !v.muted) mask |= bit;
+      bit <<= 1;
+    }
+    return mask;
+  }
+
   void _sortParticipants() {
+    _sortParticipantsTimer?.cancel();
     final viewmodel = _livekitProviderKey.currentState?.viewModel;
     List<ParticipantTrack> userMediaTracks = [];
     List<ParticipantTrack> screenTracks = [];
@@ -1216,16 +1508,33 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     }
 
-    // Update the participant tracks
-    setState(() {
-      participantTracks = [
-        ...screenTracks, // Screen shares always first
-        if (pinnedTrack != null) pinnedTrack, // Then pinned participant
-        ...userMediaTracks, // Then remaining participants
-      ];
-    });
-    viewmodel?.coHostCount = coHostCount;
-    viewmodel?.addParticipant(participantTracks);
+    final sorted = [
+      ...screenTracks, // Screen shares always first
+      if (pinnedTrack != null) pinnedTrack, // Then pinned participant
+      ...userMediaTracks, // Then remaining participants
+    ];
+    if (viewmodel != null && viewmodel.coHostCount != coHostCount) {
+      viewmodel.coHostCount = coHostCount;
+    }
+
+    // Nothing anyone can see has changed: skip the rebuild here and the
+    // refresh of everything that listens to the meeting state. The first
+    // sort runs before the meeting state exists, so a sort only counts as
+    // delivered once the meeting state has received it.
+    final signature = _layoutSignature(sorted);
+    if (viewmodel != null && listEquals(signature, _lastLayoutSignature)) {
+      return;
+    }
+
+    setState(() => participantTracks = sorted);
+    final live = {
+      for (final t in sorted) '${t.participant.identity}|${t.type.name}'
+    };
+    _filmstripTileKeys.removeWhere((id, _) => !live.contains(id));
+    if (viewmodel != null) {
+      _lastLayoutSignature = signature;
+      viewmodel.addParticipant(participantTracks);
+    }
   }
 
   final GlobalKey<RtcProviderState> _livekitProviderKey =
@@ -1254,11 +1563,68 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
+          // Keep the view on the board. The board's image export (and any
+          // link inside it) otherwise navigates the whole view away to a
+          // blob:/data: image or another site, with no way back short of
+          // rejoining.
           onNavigationRequest: (NavigationRequest request) {
-            return NavigationDecision.navigate;
+            if (!request.isMainFrame || _isWhiteboardPage(request.url)) {
+              return NavigationDecision.navigate;
+            }
+            DaakiaVcLogger.logWarning(
+                'Whiteboard navigation blocked: ${_describeUrl(request.url)}',
+                reportToSentry: false);
+            return NavigationDecision.prevent;
+          },
+          onPageFinished: (_) {
+            if (_webViewController.platform is AndroidWebViewController) {
+              _webViewController
+                  .runJavaScript(WhiteboardFileSelector.cancelScript)
+                  .catchError((Object e) {
+                DaakiaVcLogger.logWarning(
+                    'Whiteboard file-cancel bridge failed: $e',
+                    reportToSentry: false);
+              });
+            }
+            _webViewController
+                .runJavaScript(WhiteboardDownload.script)
+                .catchError((Object e) {
+              DaakiaVcLogger.logWarning(
+                  'Whiteboard download bridge failed: $e',
+                  reportToSentry: false);
+            });
           },
         ),
+      )
+      ..addJavaScriptChannel(
+        WhiteboardDownload.channelName,
+        onMessageReceived: (message) async {
+          final saved = await WhiteboardDownload.save(message.message);
+          _livekitProviderKey.currentState?.viewModel.sendMessageToUI(
+              saved != null
+                  ? 'Saved $saved to Downloads'
+                  : "Couldn't save the whiteboard export");
+        },
       );
+    final platformController = _webViewController.platform;
+    if (platformController is AndroidWebViewController) {
+      platformController.setOnShowFileSelector(WhiteboardFileSelector.pick);
+    }
+  }
+
+  bool _isWhiteboardPage(String url) {
+    final uri = Uri.tryParse(url);
+    return uri != null &&
+        (uri.scheme == 'https' || uri.scheme == 'http') &&
+        uri.host == Uri.parse(Constant.whiteboardDomain).host;
+  }
+
+  /// Scheme and host only: the board URL carries the LiveKit token and
+  /// data: URLs carry the whole image.
+  String _describeUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return 'unparseable';
+    return uri.hasAuthority ? '${uri.scheme}://${uri.host}' : '${uri.scheme}:';
   }
 
   /// 👇 Call this function from your event listener to load the URL
@@ -1266,7 +1632,33 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     if (!_webViewInitialized) {
       _webViewInitialized = true;
       _webViewController.loadRequest(Uri.parse(url));
+      return;
     }
+    // Reopened: if the view was ever pulled off the board, put it back
+    // rather than show whatever it was left on.
+    _webViewController.currentUrl().then((current) {
+      if (current == null || !_isWhiteboardPage(current)) {
+        _webViewController.loadRequest(Uri.parse(url));
+      }
+    }).catchError((Object e) {
+      DaakiaVcLogger.logWarning('Whiteboard URL check failed: $e',
+          reportToSentry: false);
+    });
+  }
+
+  /// Tells the whiteboard page that our role or the collaboration setting
+  /// changed so it re-fetches its edit permission from the backend straight
+  /// away instead of waiting for its 20 s poll. The page debounces bursts, so
+  /// calling this for several overlapping events is fine.
+  void _notifyWhiteboardPermissionChanged() {
+    if (!_webViewInitialized) return;
+    _webViewController
+        .runJavaScript('window.dispatchEvent(new CustomEvent('
+            '"${Constant.whiteboardPermissionChangedEvent}"));')
+        .catchError((Object e) {
+      DaakiaVcLogger.logWarning('Whiteboard permission signal failed: $e',
+          reportToSentry: false);
+    });
   }
 
   @override
@@ -1291,6 +1683,17 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) async {
+        // System Back reaches the host app's navigator first and never the
+        // meeting's own one below, so a sheet or page opened inside the
+        // meeting (attach sheet, chat, participants...) got "Exit Meeting"
+        // instead of closing. Close the topmost of those first.
+        if (!didPop) {
+          final innerNavigator = _innerNavigatorKey.currentState;
+          if (innerNavigator != null && innerNavigator.canPop()) {
+            innerNavigator.maybePop();
+            return;
+          }
+        }
         WidgetsBinding.instance.addPostFrameCallback(
           (_) async {
             if (_isProgrammaticPop) {
@@ -1319,8 +1722,32 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         sdkConfiguration: widget.sdkConfiguration,
         child: MaterialApp(
           navigatorKey: _innerNavigatorKey,
+          // The meeting always handles Back: it closes its own sheet/page or
+          // asks to exit. By default this nested app told Android the
+          // framework can't handle Back once its own stack emptied (e.g.
+          // after closing chat), and the host app never corrected it, so
+          // Back skipped Flutter, closed the activity and dropped the call.
+          onNavigationNotification: (_) {
+            SystemNavigator.setFrameworkHandlesBack(true);
+            return true;
+          },
           debugShowCheckedModeBanner: false,
           theme: DaakiaSdkTheme.meeting,
+          // Room notices (top-anchored, deduped) sit above the navigator, so
+          // they still show while chat, participants, captions or any other
+          // page is open over the meeting. Not in PiP, which has no room.
+          builder: (context, child) => Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              if (!_isInPipMode)
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: _buildTopNotices(context),
+                ),
+            ],
+          ),
           home: AnnotatedRegion<SystemUiOverlayStyle>(
             value: const SystemUiOverlayStyle(
               statusBarColor: Colors.transparent,
@@ -1336,179 +1763,21 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
                     Scaffold(
                       backgroundColor: Colors.black,
                       body: SafeArea(
-                        child: Stack(children: [
-                          Container(
-                            color: Colors.black,
-                            child: Column(
-                              children: [
-                                // Main content area for participants
-                                Expanded(
-                                  child: Stack(
-                                    children: [
-                                      Column(
-                                        children: [
-                                          Expanded(
-                                            child: _isWhiteBoardEnabled
-                                                ? WhiteBoardWidget(
-                                                    key: const ValueKey(
-                                                        'whiteboard'),
-                                                    controller:
-                                                        _webViewController,
-                                                  )
-                                                : participantTracks.isNotEmpty
-                                                    ? Stack(
-                                                        children: [
-                                                          _speakerHasActiveVideo()
-                                                              ? GestureDetector(
-                                                                  onDoubleTap: _resetZoom,
-                                                                  child: InteractiveViewer(
-                                                                    transformationController: _zoomController,
-                                                                    minScale: 1.0,
-                                                                    maxScale: 4.0,
-                                                                    clipBehavior: Clip.hardEdge,
-                                                                    child: ParticipantWidget.widgetFor(
-                                                                      participantTracks.first,
-                                                                      showStatsLayer: true,
-                                                                      isSpeaker: true,
-                                                                      key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
-                                                                    ),
-                                                                  ),
-                                                                )
-                                                              : ParticipantWidget.widgetFor(
-                                                                  participantTracks.first,
-                                                                  showStatsLayer: true,
-                                                                  isSpeaker: true,
-                                                                  key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
-                                                                ),
-                                                          if (_speakerHasActiveVideo() && _zoomScale > 1.05)
-                                                            Positioned(
-                                                              top: 8,
-                                                              left: 8,
-                                                              child: GestureDetector(
-                                                                onTap: _resetZoom,
-                                                                child: Container(
-                                                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                                                  decoration: BoxDecoration(
-                                                                    color: Colors.black.withValues(alpha: 0.55),
-                                                                    borderRadius: BorderRadius.circular(20),
-                                                                  ),
-                                                                  child: const Row(
-                                                                    mainAxisSize: MainAxisSize.min,
-                                                                    children: [
-                                                                      Icon(Icons.zoom_out, color: Colors.white, size: 16),
-                                                                      SizedBox(width: 4),
-                                                                      Text('Reset', style: TextStyle(color: Colors.white, fontSize: 12)),
-                                                                    ],
-                                                                  ),
-                                                                ),
-                                                              ),
-                                                            ),
-                                                        ],
-                                                      )
-                                                    : Container(),
-                                          ),
-
-                                          // Show participant list below (adjusted based on whiteboard status)
-                                          if (participantTracks.length > 1 ||
-                                              _isWhiteBoardEnabled)
-                                            SizedBox(
-                                              height: 120,
-                                              child: ListView.builder(
-                                                scrollDirection:
-                                                    Axis.horizontal,
-                                                itemCount: _isWhiteBoardEnabled
-                                                    ? participantTracks
-                                                        .length // show all
-                                                    : participantTracks.length -
-                                                        1,
-                                                // skip first
-                                                itemBuilder:
-                                                    (BuildContext context,
-                                                        int index) {
-                                                  final track =
-                                                      _isWhiteBoardEnabled
-                                                          ? participantTracks[
-                                                              index] // show all participants
-                                                          : participantTracks[
-                                                              index +
-                                                                  1]; // skip first
-
-                                                  return SizedBox(
-                                                    width: 180,
-                                                    height: 120,
-                                                    child: ParticipantWidget.widgetFor(
-                                                      track,
-                                                      key: ValueKey(track.participant.identity),
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      Consumer<RtcViewmodel>(
-                                        builder: (context, viewModel, _) {
-                                          if (!viewModel.isWebinarModeEnable) {
-                                            return const SizedBox.shrink();
-                                          }
-                                          return Positioned(
-                                            left: 0,
-                                            right: 0,
-                                            top: 10,
-                                            child: IgnorePointer(
-                                              child: Center(
-                                                child: _buildTopStatusIndicator(
-                                                  label: 'Workshop',
-                                                  indicatorColor:
-                                                      const Color(0xFF34C759),
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                      if (_livekitProviderKey.currentState
-                                              ?.viewModel.isRecording ==
-                                          true)
-                                        const Positioned(
-                                          right: 10,
-                                          top: 10,
-                                          child: Icon(
-                                              Icons.radio_button_checked,
-                                              color: Colors.red),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                if (widget.room.localParticipant != null)
-                                  SafeArea(
-                                    top: false,
-                                    child: RtcControls(
-                                      widget.room,
-                                      widget.room.localParticipant!,
-                                    ),
-                                  ),
-                              ],
-                            ),
+                        child: Container(
+                          color: Colors.black,
+                          // Rebuilds only when the layout changes, not on
+                          // every meeting-state change.
+                          child: Selector<RtcViewmodel, (bool, bool)>(
+                            selector: (_, vm) =>
+                                (vm.isSpotlightActive, vm.isGridActive),
+                            builder: (context, layout, _) =>
+                                _buildMeetingLayout(context,
+                                    isLandscape: _isLandscape(context),
+                                    spotlight: layout.$1,
+                                    grid: layout.$2),
                           ),
-                          Positioned(
-                            right: 0,
-                            top: 50,
-                            child: EmojiReactionWidget(
-                              viewModel:
-                                  _livekitProviderKey.currentState?.viewModel,
-                            ),
-                          ),
-                        ]),
+                        ),
                       ),
-                    ),
-
-                    /// Toast notification overlay (top-anchored, deduped)
-                    Positioned(
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      child: RoomNotification(key: _notificationKey),
                     ),
 
                     /// Overlay banner
@@ -1551,87 +1820,365 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<bool> _showExitConfirmationDialog(BuildContext context) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: const Text('Exit Meeting'),
-              content: const Text('Are you sure you want to exit the meeting?'),
-              actions: <Widget>[
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(false); // Don't exit
-                  },
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.of(context).pop(true); // Exit
-                  },
-                  child: const Text('Exit'),
-                ),
-              ],
-            );
-          },
-        ) ??
-        false;
+  // ---------------------------------------------------------------------------
+  // Layout
+  //
+  // Portrait keeps the classic stack: speaker/whiteboard on top, the filmstrip
+  // of the remaining participants below it, controls pinned to the bottom.
+  // Landscape mirrors that along the other axis — the stage grows into the
+  // width freed up by rotating, and the filmstrip + controls become vertical
+  // rails on the trailing edge instead of eating the (now scarce) height.
+  // ---------------------------------------------------------------------------
+
+  static const double _filmstripPortraitHeight = 120;
+  static const double _filmstripPortraitTileWidth = 180;
+
+  bool _isLandscape(BuildContext context) =>
+      MediaQuery.of(context).orientation == Orientation.landscape;
+
+  /// Whether there is anything to show in the filmstrip. With the whiteboard up
+  /// every participant goes into the strip; otherwise the first track is the
+  /// speaker on stage and only the rest are stripped.
+  bool get _hasFilmstrip =>
+      participantTracks.length > 1 || _isWhiteBoardEnabled;
+
+  int get _filmstripCount => _isWhiteBoardEnabled
+      ? participantTracks.length
+      : participantTracks.length - 1;
+
+  ParticipantTrack _filmstripTrackAt(int index) => _isWhiteBoardEnabled
+      ? participantTracks[index]
+      : participantTracks[index + 1];
+
+  /// One layout for both orientations. Portrait stacks stage, filmstrip and
+  /// controls top to bottom; landscape lines them up left to right.
+  ///
+  /// It is one [Flex] whose direction flips, not a Column in portrait and a
+  /// Row in landscape, so that rotating updates the existing video tiles
+  /// instead of throwing them away and creating new ones. Recreating every
+  /// tile on rotation made the video plugin create and dispose renderers all
+  /// at once, which can deadlock its graphics lock and freeze the app (ANR).
+  /// The keyed children keep each piece matched even when the filmstrip
+  /// comes and goes.
+  Widget _buildMeetingLayout(BuildContext context,
+      {required bool isLandscape,
+      bool spotlight = false,
+      bool grid = false}) {
+    // The meeting state hears about a share or the whiteboard a moment after
+    // this page does; never put the grid over either in between.
+    grid = grid &&
+        !_isWhiteBoardEnabled &&
+        !participantTracks
+            .any((t) => t.type == ParticipantTrackType.kScreenShare);
+    // Keep the rail a proportion of the width so it stays a thumbnail strip on
+    // a phone and doesn't balloon into a second stage on a tablet.
+    final railWidth =
+        (MediaQuery.of(context).size.width * 0.18).clamp(130.0, 190.0);
+
+    return Flex(
+      direction: isLandscape ? Axis.horizontal : Axis.vertical,
+      crossAxisAlignment: isLandscape
+          ? CrossAxisAlignment.stretch
+          : CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          key: const ValueKey('stage'),
+          child: _buildStageArea(context,
+              isLandscape: isLandscape,
+              spotlight: spotlight,
+              grid: grid),
+        ),
+        // Spotlight replaces the filmstrip with one floating card; the grid
+        // has its own strip for whoever doesn't fit.
+        if (_hasFilmstrip && !spotlight && !grid)
+          SizedBox(
+            key: const ValueKey('filmstrip'),
+            width: isLandscape ? railWidth : null,
+            height: isLandscape ? null : _filmstripPortraitHeight,
+            child: _buildFilmstrip(
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+              tileWidth: isLandscape ? railWidth : _filmstripPortraitTileWidth,
+              tileHeight:
+                  isLandscape ? railWidth * 2 / 3 : _filmstripPortraitHeight,
+            ),
+          ),
+        if (widget.room.localParticipant != null)
+          SafeArea(
+            key: const ValueKey('controls'),
+            // Portrait keeps the bar clear of the bottom inset; the landscape
+            // rail sat flush before, so it keeps doing that.
+            left: !isLandscape,
+            top: false,
+            right: !isLandscape,
+            bottom: !isLandscape,
+            child: RtcControls(
+              widget.room,
+              widget.room.localParticipant!,
+              axis: isLandscape ? Axis.vertical : Axis.horizontal,
+            ),
+          ),
+      ],
+    );
   }
 
-  Widget _buildTopStatusIndicator({
-    required String label,
-    required Color indicatorColor,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: indicatorColor.withValues(alpha: 0.35),
+  /// The speaker / screen share / whiteboard surface plus everything that
+  /// floats on top of it. Overlays are anchored to the stage (not the whole
+  /// screen) so they never drift over the filmstrip or the controls rail.
+  Widget _buildStageArea(BuildContext context,
+      {required bool isLandscape,
+      bool spotlight = false,
+      bool grid = false}) {
+    // The stage is the stack's only non-positioned child and StackFit.expand
+    // makes it fill: a Stack sizes itself from its non-positioned children, so
+    // if every child were positioned (or the only unpositioned one collapsed to
+    // zero) the whole stage would collapse with it.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        grid
+            ? MeetingGrid(
+                key: const ValueKey('grid'),
+                room: widget.room,
+                tracks: participantTracks,
+              )
+            : _buildStage(),
+        // Spotlight's floating speaker card. Under the status pills and
+        // reactions so those stay visible above it.
+        if (spotlight &&
+            participantTracks.isNotEmpty &&
+            participantTracks.first.type == ParticipantTrackType.kScreenShare &&
+            _livekitProviderKey.currentState != null)
+          Positioned.fill(
+            child: SpotlightCardLayer(
+              room: widget.room,
+              viewModel: _livekitProviderKey.currentState!.viewModel,
+              tracks: participantTracks,
+              share: participantTracks.first,
+            ),
+          ),
+        // Status pills (workshop / recording) share one centred block at the
+        // top of the stage. Both top corners of the speaker tile are already
+        // taken — hand raise / zoom-reset on the left, the quick-actions "⋮" on
+        // the right — so the block is inset past the widest of them instead of
+        // being pinned to a corner, which is what made the recording dot sit
+        // under the "⋮" button. Wrap (not Row) means that when both pills are
+        // showing on a narrow stage they stack vertically rather than growing
+        // into the insets.
+        Positioned(
+          left: 0,
+          right: 0,
+          top: 10,
+          child: Consumer<RtcViewmodel>(
+            builder: (context, viewModel, _) {
+              final waiting = viewModel.isHost() || viewModel.isCoHost()
+                  ? viewModel.lobbyRequestList.length
+                  : 0;
+              final pills = <StatusPill>[
+                // Stays for as long as anyone waits, banner hidden or not, so
+                // a host never wonders why someone hasn't joined. Blue, not
+                // amber: amber already means "Audio off" in this row.
+                if (waiting > 0)
+                  StatusPill(
+                    label: '$waiting in lobby',
+                    color: const Color(0xFF8FA8FF),
+                    icon: Icons.meeting_room_outlined,
+                    compactText: '$waiting',
+                    showChevron: true,
+                    onTap: _openParticipantsPage,
+                  ),
+                if (viewModel.isWebinarModeEnable)
+                  const StatusPill(
+                    label: 'Workshop',
+                    color: Color(0xFF34C759),
+                    compactIcon: Icons.co_present_outlined,
+                  ),
+                if (viewModel.isRecording)
+                  const StatusPill(label: 'Recording', color: Colors.red),
+              ];
+              // Meeting audio off: the indicator lays out the whole row, so
+              // its chip can sit beside these pills.
+              if (viewModel.isAudioDisconnected) {
+                return MeetingAudioOffIndicator(
+                  pills: pills,
+                  onTurnOn: () => viewModel.joinAudio(),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 84),
+                child: StatusPillRow(pills: pills),
+              );
+            },
+          ),
         ),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 10,
-            height: 10,
-            decoration: BoxDecoration(
-              color: indicatorColor,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                  color: indicatorColor.withValues(alpha: 0.7),
-                  blurRadius: 8,
-                  spreadRadius: 1,
-                ),
-              ],
+        // Reactions float up the trailing edge of the stage. Landscape starts
+        // them higher and keeps them shorter because there is far less height.
+        // Display only: as a scrollable it would otherwise swallow every touch
+        // in its strip, even when empty, and the whiteboard under it (e.g. the
+        // export dialog's close button) couldn't be tapped there.
+        Positioned(
+          right: 0,
+          top: isLandscape ? 8 : 50,
+          bottom: isLandscape ? 8 : null,
+          child: IgnorePointer(
+            child: EmojiReactionWidget(
+              viewModel: _livekitProviderKey.currentState?.viewModel,
             ),
           ),
-          const SizedBox(width: 8),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
+  }
+
+  Widget _buildStage() {
+    if (_isWhiteBoardEnabled) {
+      return Consumer<RtcViewmodel>(
+        builder: (context, viewModel, _) => WhiteBoardWidget(
+          key: const ValueKey('whiteboard'),
+          controller: _webViewController,
+          onClose: viewModel.canManageWhiteboard()
+              ? () async {
+                  if (await context.showCloseWhiteboardDialog() == true &&
+                      viewModel.isWhiteboardOpen) {
+                    viewModel.toggleWhiteboard();
+                  }
+                }
+              : null,
+          isClosing: viewModel.isWhiteboardActionInProgress,
+        ),
+      );
+    }
+    if (participantTracks.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final speaker = ParticipantWidget.widgetFor(
+      participantTracks.first,
+      showStatsLayer: true,
+      isSpeaker: true,
+      key: ValueKey('speaker_${participantTracks.first.participant.identity}'),
+    );
+
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _speakerHasActiveVideo()
+            ? GestureDetector(
+                onDoubleTap: _resetZoom,
+                child: InteractiveViewer(
+                  transformationController: _zoomController,
+                  minScale: 1.0,
+                  maxScale: 4.0,
+                  clipBehavior: Clip.hardEdge,
+                  child: speaker,
+                ),
+              )
+            : speaker,
+        if (_speakerHasActiveVideo() && _zoomScale > 1.05)
+          Positioned(
+            top: 8,
+            left: 8,
+            child: GestureDetector(
+              onTap: _resetZoom,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.zoom_out, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text('Reset',
+                        style: TextStyle(color: Colors.white, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildFilmstrip({
+    required Axis axis,
+    required double tileWidth,
+    required double tileHeight,
+  }) {
+    final isVertical = axis == Axis.vertical;
+    return ListView.builder(
+      scrollDirection: axis,
+      padding: isVertical
+          ? const EdgeInsets.symmetric(vertical: 4)
+          : EdgeInsets.zero,
+      itemCount: _filmstripCount,
+      itemBuilder: (BuildContext context, int index) {
+        final track = _filmstripTrackAt(index);
+        return Padding(
+          padding: isVertical
+              ? const EdgeInsets.only(bottom: 4)
+              : EdgeInsets.zero,
+          child: SizedBox(
+            width: tileWidth,
+            height: tileHeight,
+            child: ParticipantWidget.widgetFor(
+              track,
+              key: _filmstripTileKey(track),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// One key per person (and per share) in the filmstrip, kept across
+  /// rebuilds. Rotation flips the strip's scroll direction, and with a plain
+  /// key every tile was thrown away and created again, along with its video
+  /// renderer (see [_buildMeetingLayout] for why that freezes the app). A
+  /// global key lets Flutter carry the existing tile over instead.
+  final Map<String, GlobalKey> _filmstripTileKeys = {};
+
+  GlobalKey _filmstripTileKey(ParticipantTrack track) => _filmstripTileKeys
+      .putIfAbsent('${track.participant.identity}|${track.type.name}',
+          () => GlobalKey());
+
+  Future<bool> _showExitConfirmationDialog(BuildContext context) {
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    // Back is a leave, so a host gets the same warning as the Leave button.
+    if (viewModel != null && (viewModel.isHost() || viewModel.isCoHost())) {
+      return confirmModeratorLeave(context, viewModel);
+    }
+    return confirmLeaveMeeting(context,
+        useCallTerminology: viewModel?.useCallTerminology ?? false);
+  }
+
+  /// Surfaces [RoomPage.joinNotice], once the meeting UI has settled enough
+  /// for the banner to be seen rather than swallowed by the join animation.
+  void _showJoinNotice() {
+    final notice = widget.joinNotice;
+    if (notice == null || notice.isEmpty) return;
+    Future.delayed(const Duration(milliseconds: 1200), () {
+      if (mounted) {
+        showSnackBar(message: notice, duration: const Duration(seconds: 6));
+      }
+    });
   }
 
   void showSnackBar({
     required String message,
     String? actionText,
     Function? actionCallBack,
+    Duration? duration,
+    VoidCallback? onDismiss,
   }) {
     _notificationKey.currentState?.show(
       message: message,
       actionText: actionText,
       actionCallback: actionCallBack != null ? () => actionCallBack() : null,
+      duration: duration,
+      onDismiss: onDismiss,
     );
   }
 
@@ -1651,6 +2198,10 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
             actionCallBack: () {
               Utils.openMediaFile(event.path ?? "", context);
             });
+      } else if (event is ShowWorkshopModeNotice) {
+        // Joining a meeting that's already in Workshop mode: no actor to name,
+        // and the controller drops it if nothing is actually restricted.
+        _announceWorkshopChange(viewModel, null);
       } else if (event is ShowReaction) {
         showReaction(event.emoji, viewModel);
       } else if (event is UpdateView) {
@@ -1658,6 +2209,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
           setState(() {});
         }
       } else if (event is EndMeeting) {
+        // This user ended the meeting for everyone. A plain Leave keeps it,
+        // so a co-host who steps out can come back as co-host, like web.
+        if (viewModel.endedMeetingForAll) _forgetSavedAttendance();
+        if (_inactivityAutoClosed) {
+          _finishInactivityEnd(viewModel);
+          return;
+        }
+        // Down first: with the prompt on top, the pop below would close it
+        // instead of the meeting.
+        _stopInactivityWatcher();
         clearMemory(viewModel);
         DatadogDisconnectLogger.logDisconnectEvent(
             meetingId: widget.meetingDetails.meetingUid,
@@ -1722,17 +2283,183 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     viewModel.addEmoji(newMessage);
   }
 
-  void _showDuplicateIdentityDialog() {
+  /// Announces a Workshop-mode change made by somebody else.
+  ///
+  /// Everyone still in the room hears about it, but not in the same words:
+  /// participants are told what's been taken away from them, while hosts and
+  /// co-hosts — exempt from the restrictions — are told what changed for
+  /// everyone else, so a co-host flipping the switch doesn't leave the host
+  /// guessing. The person who flipped it doesn't receive their own data
+  /// message; they got the summary from the Host controls screen already.
+  ///
+  /// The calling case has already applied the change to the viewmodel, so
+  /// reading the three flags back off it gives the restrictions currently in
+  /// force — which is exactly what the notice lists.
+  void _announceWorkshopChange(RtcViewmodel? viewModel, String? actorName) {
+    if (!mounted) return;
+    if (viewModel == null) return;
+    final isModerator = viewModel.isHost() || viewModel.isCoHost();
+    _workshopNotice.report(
+      context,
+      micLocked: viewModel.isAudioModeEnable,
+      cameraLocked: viewModel.isVideoModeEnable,
+      participantListHidden: viewModel.isParticipantDrawerHidden,
+      audience: isModerator
+          ? WorkshopAudience.moderator
+          : WorkshopAudience.participant,
+      actorName: actorName,
+    );
+  }
+
+  /// Tells a real second-device join apart from this device kicking itself
+  /// during a reconnect (see [_lastReconnectAttemptAt]). The meeting has ended
+  /// here either way; only the explanation differs.
+  void _onDuplicateIdentity() {
+    final lastAttempt = _lastReconnectAttemptAt;
+    final sinceReconnect =
+        lastAttempt == null ? null : DateTime.now().difference(lastAttempt);
+    if (sinceReconnect == null || sinceReconnect > _selfKickWindow) {
+      debugPrint('[Livekit] - DUPLICATE_IDENTITY: another device '
+          '(last reconnect attempt: '
+          '${sinceReconnect == null ? 'none' : '${sinceReconnect.inSeconds}s ago'})');
+      _showDuplicateIdentityDialog();
+      return;
+    }
+    debugPrint('[Livekit] - DUPLICATE_IDENTITY: connection drop '
+        '(last reconnect attempt: ${sinceReconnect.inSeconds}s ago)');
+    DaakiaVcLogger.logInfo(
+      'DUPLICATE_IDENTITY during reconnect, treated as a connection drop',
+      attributes: {
+        'meetingId': widget.meetingDetails.meetingUid,
+        'secondsSinceReconnectAttempt': sinceReconnect.inSeconds,
+      },
+    );
+    _showDuplicateIdentityDialog(connectionDropped: true);
+  }
+
+  void _showMeetingEndedDialog(RtcViewmodel? viewModel) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (dialogCtx) => DuplicateIdentityDialog(
+      builder: (dialogCtx) => DuplicateIdentityDialog.meetingEnded(
+        useCallTerminology: viewModel?.useCallTerminology == true,
         onLeave: () {
           Navigator.of(dialogCtx).pop();
           closeMeetingProgrammatically(context);
         },
       ),
     );
+  }
+
+  void _showDuplicateIdentityDialog({bool connectionDropped = false}) {
+    void onLeave(BuildContext dialogCtx) {
+      Navigator.of(dialogCtx).pop();
+      closeMeetingProgrammatically(context);
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) => connectionDropped
+          ? DuplicateIdentityDialog.connectionDropped(
+              onLeave: () => onLeave(dialogCtx))
+          : DuplicateIdentityDialog(onLeave: () => onLeave(dialogCtx)),
+    );
+  }
+
+  /// From the server's `move_to_lobby` notice, which comes about 500 ms before
+  /// the PARTICIPANT_REMOVED that carries it out.
+  MovedToLobby? _moveToLobbyNotice;
+  DateTime? _moveToLobbyNoticeAt;
+
+  /// The removal normally lands within a second; a notice older than this is
+  /// stale, so a later real "Remove from call" isn't mistaken for a move.
+  static const _moveToLobbyNoticeValidity = Duration(seconds: 10);
+
+  void _onMoveToLobbyNotice(
+      Map<String, dynamic> json, RemoteParticipant? sender) {
+    // Only the server may send it. Anyone in the room can publish data, so a
+    // participant-sent copy would otherwise let them fake a move.
+    if (sender != null) return;
+    final requestId = json['request_id'];
+    if (requestId is! String || requestId.isEmpty) return;
+    final local = widget.room.localParticipant;
+    // Captured now: by the time of the removal the tracks are going down.
+    _moveToLobbyNotice = MovedToLobby(
+      requestId: requestId,
+      micOn: local?.isMicrophoneEnabled() == true,
+      cameraOn: local?.isCameraEnabled() == true,
+    );
+    _moveToLobbyNoticeAt = DateTime.now();
+  }
+
+  /// The pending move, if one arrived recently enough to explain a removal.
+  /// Consumed either way.
+  MovedToLobby? _takeFreshMoveToLobby() {
+    final notice = _moveToLobbyNotice;
+    final noticeAt = _moveToLobbyNoticeAt;
+    _moveToLobbyNotice = null;
+    _moveToLobbyNoticeAt = null;
+    if (notice == null || noticeAt == null) return null;
+    final age = DateTime.now().difference(noticeAt);
+    if (age.isNegative || age > _moveToLobbyNoticeValidity) return null;
+    return notice;
+  }
+
+  /// Closes the meeting and hands [movedToLobby] to the pre-join screen, which
+  /// waits in the lobby to be admitted again.
+  void _leaveForLobby(MovedToLobby movedToLobby) {
+    DaakiaVcLogger.logInfo(
+      'Moved to the lobby by the host',
+      attributes: {
+        'meeting_uid': widget.meetingDetails.meetingUid,
+        'request_id': movedToLobby.requestId,
+      },
+    );
+    if (!mounted) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _isProgrammaticPop = true;
+      if (Navigator.canPop(context)) {
+        Navigator.of(context).pop(movedToLobby);
+      }
+    });
+  }
+
+  /// The lobby banner, with room notices stacked under it rather than on top.
+  Widget _buildTopNotices(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return Padding(
+      padding: EdgeInsets.only(top: media.padding.top),
+      child: MediaQuery.removePadding(
+        context: context,
+        removeTop: true,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            LobbyRequestBanner(
+              viewModel: Provider.of<RtcViewmodel>(context, listen: false),
+              onView: _openParticipantsPage,
+            ),
+            RoomNotification(key: _notificationKey),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _openParticipantsPage() {
+    final navigator = _innerNavigatorKey.currentState;
+    final viewModel = _livekitProviderKey.currentState?.viewModel;
+    if (navigator == null || viewModel == null) return;
+    if (viewModel.isParticipantPageOpen) return;
+    viewModel.isParticipantPageOpen = true;
+    navigator
+        .push(MaterialPageRoute<void>(
+          builder: (_) => const AllParticipantPage(),
+          fullscreenDialog: true,
+        ))
+        .then((_) => viewModel.isParticipantPageOpen = false);
   }
 
   // When closing the meeting programmatically
@@ -1743,11 +2470,33 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     }
   }
 
+  /// Whether the room closing under this device was a host or co-host
+  /// pressing End. Inactivity ends are handled before this; this device's own
+  /// End and a close at or after the scheduled end are the other cases.
+  bool _closedByHost(RtcViewmodel? viewModel) =>
+      viewModel?.endedMeetingForAll != true &&
+      !_closedAtScheduledEnd(viewModel);
+
+  bool _closedAtScheduledEnd(RtcViewmodel? viewModel) {
+    final endsAt = meetingManager.endDateTime;
+    return viewModel?.meetingClosesAtScheduledEnd() == true &&
+        endsAt != null &&
+        !DateTime.now().isBefore(endsAt);
+  }
+
+  /// The room-closed notice for the cases [_closedByHost] leaves out.
+  String _roomClosedMessage(RtcViewmodel? viewModel) {
+    final session =
+        viewModel?.useCallTerminology == true ? 'call' : 'meeting';
+    if (viewModel?.endedMeetingForAll == true) {
+      return 'You ended the $session for everyone';
+    }
+    return '${session == 'call' ? 'Call' : 'Meeting'} ended';
+  }
+
   void _meetingEndLogic(RtcViewmodel? viewModel) {
     //TODO NEED TO UPDATE LOGIC
-    if (viewModel?.meetingDetails.meetingBasicDetails?.meetingConfig
-            ?.autoMeetingEnd ==
-        1) {
+    if (viewModel?.meetingClosesAtScheduledEnd() == true) {
       DatadogDisconnectLogger.logDisconnectEvent(
           meetingId: widget.meetingDetails.meetingUid,
           room: widget.room,
@@ -1761,20 +2510,6 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
         }
       });
       return;
-    }
-    if (viewModel?.meetingDetails.features?.isBasicPlan() == true) {
-      DatadogDisconnectLogger.logDisconnectEvent(
-          meetingId: widget.meetingDetails.meetingUid,
-          room: widget.room,
-          reason: "TIME_EXCEEDED");
-      showSnackBar(message: "Meeting ended");
-      Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            closeMeetingProgrammatically(context);
-          });
-        }
-      });
     }
     // TODO: Uncomment the following alert if you want to show a "Meeting Ended" dialog to basic users. For basic users, this alert remains visible by default.
     // else {
@@ -1946,15 +2681,517 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
 
   late final AudioPlayer player;
 
-  void playAudio(String link) {
-    player.play(UrlSource(link), mode: PlayerMode.lowLatency);
+  /// Plays the recording chime for [soundKey]: from the cached file when it
+  /// has been downloaded, otherwise streamed from the backend URL, retrying
+  /// once on the fallback URL.
+  ///
+  /// Uses mediaPlayer rather than lowLatency. On Android, lowLatency (SoundPool)
+  /// downloads the URL on a background thread that doesn't handle errors, so
+  /// an offline device or a host that doesn't resolve crashes the whole app.
+  /// mediaPlayer reports the failure back here instead.
+  Future<void> playAudio(String soundKey) async {
+    // Meeting audio off means silent, chimes included.
+    if (_livekitProviderKey.currentState?.viewModel.isAudioDisconnected ==
+        true) {
+      return;
+    }
+    final cached = CdnSounds.cachedFile(soundKey);
+    final sources = <Source>[
+      if (cached != null) DeviceFileSource(cached),
+      for (final url in {CdnSounds.url(soundKey), CdnSounds.fallbackUrl(soundKey)})
+        UrlSource(url),
+    ];
+    for (final source in sources) {
+      try {
+        // A source that never loads can leave play() pending, hence the timeout.
+        await player
+            .play(source, mode: PlayerMode.mediaPlayer)
+            .timeout(const Duration(seconds: 10));
+        return;
+      } catch (e) {
+        // Only the chime is lost; the recording state change itself still lands.
+        debugPrint("Recording chime failed to play from $source: $e");
+      }
+    }
+  }
+
+  //===============================[Inactive meeting prompt]===============================
+
+  /// Runs the idle clock while this device is the elected watcher. Null when
+  /// the feature is off for the meeting.
+  InactiveMeetingWatcher? _inactivityWatcher;
+  BuildContext? _inactivityDialogContext;
+
+  /// Set when this device's countdown ran out and it is closing the meeting.
+  bool _inactivityAutoClosed = false;
+
+  /// When another device last announced it is ending the meeting for
+  /// inactivity.
+  DateTime? _inactivityNoticeAt;
+
+  /// Guards [_finishInactivityEnd]: the end can be reached through both the
+  /// end-meeting response and the ROOM_DELETED disconnect.
+  bool _inactivityEndStarted = false;
+
+  void _initInactivityWatcher(RtcViewmodel? viewModel) {
+    if (viewModel == null || !viewModel.isInactivePromptEnabled()) return;
+    _inactivityWatcher = InactiveMeetingWatcher(
+      room: widget.room,
+      timeout: viewModel.inactiveTimeout(),
+      onShowPrompt: () => _showInactivityPrompt(viewModel),
+      onHidePrompt: _closeInactivityPrompt,
+    );
+    _updateInactivityWatcher();
+  }
+
+  /// Re-runs the election and starts or stops the clock to match. Called on
+  /// connect, reconnect, joins, leaves and role changes.
+  void _updateInactivityWatcher() {
+    final watcher = _inactivityWatcher;
+    if (watcher == null || !mounted || _inactivityAutoClosed) return;
+    final room = widget.room;
+    if (room.connectionState == ConnectionState.connected &&
+        InactiveMeetingRules.isWatcher(room)) {
+      watcher.start();
+    } else {
+      // Whoever takes over starts a fresh clock of their own.
+      watcher.stop();
+    }
+  }
+
+  void _stopInactivityWatcher() {
+    _inactivityWatcher?.stop();
+    // Also covers a prompt left at 0:00 while the meeting is being closed.
+    _closeInactivityPrompt();
+  }
+
+  bool _showInactivityPrompt(RtcViewmodel viewModel) {
+    final watcher = _inactivityWatcher;
+    // Never stacked on the meeting-end warning; the watcher asks again once
+    // that card is gone.
+    if (!mounted || watcher == null || _isEndingDialogOpen) return false;
+
+    BuildContext? openedWith;
+    showInactiveMeetingDialog(
+      context,
+      solo: watcher.solo,
+      canEndForAll: () => InactiveMeetingRules.canEndForAll(widget.room),
+      onStay: watcher.stay,
+      onLeave: () => _leaveMeetingAfterPrompt(viewModel),
+      onEnd: () => _endMeetingFromPrompt(viewModel),
+      onCountdownZero: () => _onInactivityCountdownZero(viewModel),
+      onOpened: (dialogContext) =>
+          _inactivityDialogContext = openedWith = dialogContext,
+    ).then((_) {
+      // A newer prompt may already be up; only clear what this one set.
+      if (_inactivityDialogContext != openedWith) return;
+      _inactivityDialogContext = null;
+      _inactivityWatcher?.promptClosed();
+    });
+    return true;
+  }
+
+  /// Pops the prompt's own route, even if something was pushed above it.
+  void _closeInactivityPrompt() {
+    final dialogContext = _inactivityDialogContext;
+    if (dialogContext == null || !dialogContext.mounted) return;
+    final route = ModalRoute.of(dialogContext);
+    if (route == null || !route.isActive) return;
+    if (route.isCurrent) {
+      Navigator.of(dialogContext).pop();
+    } else {
+      Navigator.of(dialogContext).removeRoute(route);
+    }
+  }
+
+  /// Leave now: exactly what the Leave button does — this device only.
+  void _leaveMeetingAfterPrompt(RtcViewmodel viewModel) {
+    _stopInactivityWatcher();
+    viewModel.isMeetingEnded = true;
+    viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+  }
+
+  /// End meeting, pressed by a host or co-host. Same API as the regular End
+  /// button. On failure the prompt stays open with the reason so they can try
+  /// again; on success the regular end flow closes everything.
+  Future<String?> _endMeetingFromPrompt(RtcViewmodel viewModel) {
+    final result = Completer<String?>();
+    viewModel.endMeetingForAll(onFailed: (message) {
+      if (!result.isCompleted) result.complete(message);
+    });
+    return result.future;
+  }
+
+  void _onInactivityCountdownZero(RtcViewmodel viewModel) {
+    final room = widget.room;
+    // Recording started, or someone came back, during the countdown.
+    if (room.isRecording || !InactiveMeetingRules.isIdle(room)) {
+      _inactivityWatcher?.stay();
+      return;
+    }
+
+    _inactivityAutoClosed = true;
+    // Head-count now, not whichever text the prompt was showing.
+    final groupEnd = InactiveMeetingRules.humans(room).length > 1 &&
+        InactiveMeetingRules.canEndForAll(room);
+    if (!groupEnd) {
+      // Solo, or a group watcher who can't end it: leave. The backend closes
+      // an empty room; in a group the next watcher starts its own clock.
+      viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+      return;
+    }
+
+    // Tell everyone first, so their ROOM_DELETED reads as an inactivity end.
+    unawaited(viewModel.sendAction(
+        ActionModel(action: MeetingActions.inactiveMeetingAutoEnd)));
+    Timer(const Duration(milliseconds: Constant.inactiveEndNoticeLeadMs), () {
+      if (!mounted) return;
+      viewModel.endMeetingForAll(onFailed: (message) {
+        if (!mounted) return;
+        // Don't leave the host on a 0:00 prompt: leave, and let the meeting
+        // carry on for the others until the next watcher tries.
+        showSnackBar(message: message);
+        viewModel.sendEvent(EndMeeting(reason: "clientInitiated"));
+      });
+    });
+  }
+
+  bool _isInactivityEnd(DisconnectReason? reason) {
+    if (_inactivityAutoClosed) return true;
+    final noticeAt = _inactivityNoticeAt;
+    if (reason != DisconnectReason.roomDeleted || noticeAt == null) {
+      return false;
+    }
+    final age = DateTime.now().difference(noticeAt);
+    return !age.isNegative &&
+        age <
+            const Duration(milliseconds: Constant.inactiveEndNoticeValidityMs);
+  }
+
+  /// Closes the meeting behind the "ended due to inactivity" screen.
+  void _finishInactivityEnd(RtcViewmodel? viewModel) {
+    if (_inactivityEndStarted) return;
+    _inactivityEndStarted = true;
+    _forgetSavedAttendance();
+    // Our own disconnect below must not show "You have left the meeting."
+    _disconnectHandled = true;
+    _stopInactivityWatcher();
+    viewModel?.isMeetingEnded = true;
+    clearMemory(viewModel);
+    DatadogDisconnectLogger.logDisconnectEvent(
+        meetingId: widget.meetingDetails.meetingUid,
+        room: widget.room,
+        reason: "INACTIVITY");
+    unawaited(widget.room.disconnect());
+    if (!mounted) return;
+    showInactivityEndedDialog(context).then((_) {
+      if (mounted) closeMeetingProgrammatically(context);
+    });
+  }
+
+  //===============================[End of meeting warning]===============================
+
+  /// Its own player, so a recording chime starting or stopping can't cut the
+  /// warning short (and vice versa).
+  AudioPlayer? _meetingEndWarningPlayer;
+
+  /// The in-flight preparation, shared by everyone who wants the chime.
+  ///
+  /// Joining a meeting that is already inside its final minutes fires the
+  /// warning on the scheduler's very first check — before the clip has
+  /// finished loading. Routing every caller through this one future means a warning
+  /// that arrives early waits for the same player instead of racing ahead and
+  /// building a second one.
+  Future<AudioPlayer?>? _meetingEndWarningPreparation;
+
+  /// Whether the chime is still wanted. Cleared on dismiss, so a warning that
+  /// is dismissed while the clip is still loading stays silent rather than
+  /// starting up after the user waved it away.
+  bool _meetingEndWarningWanted = false;
+
+  /// Ends the looping chime when the warning window closes. See
+  /// [_playMeetingEndWarningSound].
+  Timer? _meetingEndWarningCutoff;
+  bool _isEndingDialogOpen = false;
+  BuildContext? _endingDialogContext;
+
+  /// Tiers whose message and chime have already been delivered here.
+  final Set<int> _warnedTiers = {};
+
+  /// Tiers whose extend prompt this client has already been shown. Tracked
+  /// apart from [_warnedTiers] because a co-host who inherits the leadership
+  /// mid-window has not been prompted yet, even though the tier is old news.
+  final Set<int> _promptedTiers = {};
+
+  /// Whether the post-join re-read of the end time has come back. Until then
+  /// the extend prompt is held, as on web, so it can't offer an extension that
+  /// was used while this client sat on pre-join.
+  bool _isMeetingEndTimeSynced = false;
+
+  /// Starts, or joins, preparation of the chime. Runs at most once.
+  ///
+  /// Kicked off on join rather than when the warning fires, so that decoding
+  /// the clip is already done by the time a warning wants it.
+  ///
+  /// The clip is a bundled asset, not a URL. It used to be fetched from blob
+  /// storage on every join; on a late join that download raced the WebRTC
+  /// connect for the network and the chime trailed its dialog by 3–7s.
+  Future<AudioPlayer?> _prepareMeetingEndWarningSound() =>
+      _meetingEndWarningPreparation ??= _createMeetingEndWarningPlayer();
+
+  Future<AudioPlayer?> _createMeetingEndWarningPlayer() async {
+    try {
+      final warningPlayer = AudioPlayer()
+        // Own cache, so pointing it at this package's assets doesn't change the
+        // prefix of the app-wide AudioCache.instance a host app may rely on.
+        ..audioCache = AudioCache(prefix: Constant.meetingEndWarningSoundDir);
+      // Order matters. The Android backend is picked from the player mode, so
+      // setting the mode after the source throws away whatever the previous
+      // backend had prepared. lowLatency selects SoundPool, which decodes the
+      // clip into memory here, at join time — otherwise the mp3 decoder is
+      // allocated at the instant the warning fires and the chime lags the
+      // dialog by a couple of seconds.
+      await warningPlayer.setPlayerMode(PlayerMode.lowLatency);
+      // The clip is three dings cut on exact period boundaries, so looping it
+      // keeps ringing for as long as the warning is up. Loop mode also keeps
+      // the clip loaded between warnings; the default ReleaseMode.release
+      // would unload it and make the second warning pay the load cost again.
+      await warningPlayer.setReleaseMode(ReleaseMode.loop);
+      await warningPlayer.setSourceAsset(Constant.meetingEndWarningSound);
+      if (!mounted) {
+        await warningPlayer.dispose();
+        return null;
+      }
+      _meetingEndWarningPlayer = warningPlayer;
+      return warningPlayer;
+    } catch (e) {
+      // Temp directory unwritable, audio backend refusing the clip. The warning
+      // message still shows; only the chime is lost, so this isn't worth
+      // surfacing to the user.
+      debugPrint("Could not prepare meeting-end warning sound: $e");
+      return null;
+    }
+  }
+
+  /// Plays the chime from the beginning, off the already-decoded clip.
+  ///
+  /// `stop()` rewinds to the start and `resume()` replays it. Deliberately not
+  /// `play()`, which re-applies the mode and re-sets the source and so rebuilds
+  /// the platform player — the very cost the preparation exists to avoid. And
+  /// deliberately not `seek(0)`, which on a source that was set but never
+  /// played hangs and throws `TimeoutException` out of `AudioPlayer.seek` 30s
+  /// later, as an unhandled async error.
+  Future<void> _playMeetingEndWarningSound() async {
+    // Meeting audio off means silent; the warning card still shows.
+    if (_livekitProviderKey.currentState?.viewModel.isAudioDisconnected ==
+        true) {
+      return;
+    }
+    _meetingEndWarningWanted = true;
+    try {
+      final warningPlayer = await _prepareMeetingEndWarningSound();
+      if (warningPlayer == null) return;
+      // Preparation can still be loading on a late join. If the warning was
+      // dismissed while we waited, honour that instead of starting a sound the
+      // user has already cancelled.
+      if (!mounted || !_meetingEndWarningWanted) return;
+      // Dismissing the warning stops the loop, but the card stays up until
+      // someone acts on it — so the loop is also capped rather than ringing
+      // indefinitely at an unattended device.
+      _meetingEndWarningCutoff?.cancel();
+      _meetingEndWarningCutoff = Timer(
+        const Duration(
+            milliseconds: Constant.meetingEndWarningSoundDurationMs),
+        () => unawaited(_stopMeetingEndWarningSound()),
+      );
+      await warningPlayer.stop();
+      await warningPlayer.resume();
+    } catch (e) {
+      // A silent warning is a nuisance; an unhandled async error is a crash.
+      debugPrint("Meeting-end warning sound failed to play: $e");
+    }
+  }
+
+  Future<void> _stopMeetingEndWarningSound() async {
+    _meetingEndWarningWanted = false;
+    _meetingEndWarningCutoff?.cancel();
+    _meetingEndWarningCutoff = null;
+    try {
+      await _meetingEndWarningPlayer?.stop();
+    } catch (e) {
+      debugPrint("Meeting-end warning sound failed to stop: $e");
+    }
+  }
+
+  /// Delivers one warning tier, split the same three ways as the web client:
+  ///
+  ///  * the elected leader of an extendable meeting gets the extend dialog at
+  ///    both tiers, which stands in for the notice;
+  ///  * everyone else gets a notice — at the early tier only if they are a host
+  ///    or co-host, at the final tier regardless. It is the same countdown card
+  ///    without Extend when the meeting really closes at zero, or a
+  ///    twelve-second message when it doesn't;
+  ///  * hosts and co-hosts additionally hear the chime, at the final tier only,
+  ///    and only while the setting is on.
+  ///
+  /// Called on every tick the tier's window is open, so the dedupe here is what
+  /// keeps the message from re-appearing every ten seconds — while still
+  /// letting a newly-elected leader be prompted partway through the window.
+  void _handleMeetingEndingSoon(
+      RtcViewmodel? viewModel, MeetingEndingSoon event) {
+    if (!mounted || viewModel == null) return;
+    // A meeting that stays open past its scheduled end (paid plans without
+    // auto end) isn't ending, so it gets no chime and no warning, like web.
+    if (!viewModel.meetingClosesAtScheduledEnd()) return;
+
+    final tier = event.minutesRemaining;
+    final isExtendLeader =
+        meetingManager.canExtendMeeting && viewModel.isMeetingExtendLeader();
+
+    if (isExtendLeader) {
+      // Not marked as prompted, so the next tick offers it once synced.
+      if (!_isMeetingEndTimeSynced) return;
+      if (!_promptedTiers.add(tier)) return;
+      // The prompt stands in for the message and carries the chime with it.
+      if (event.isFinalWarning &&
+          _warnedTiers.add(tier) &&
+          viewModel.shouldPlayMeetingEndSound()) {
+        unawaited(_playMeetingEndWarningSound());
+      }
+      _showExtendMeetingDialog(viewModel);
+      return;
+    }
+
+    // The early tier is a heads-up for moderators; participants wait for the
+    // final one.
+    if (!event.isFinalWarning && !viewModel.isHost() && !viewModel.isCoHost()) {
+      return;
+    }
+    if (!_warnedTiers.add(tier)) return;
+
+    if (event.isFinalWarning && viewModel.shouldPlayMeetingEndSound()) {
+      unawaited(_playMeetingEndWarningSound());
+    }
+    _showMeetingEndingNotice();
+  }
+
+  /// Moves the end time out and re-arms the warnings against it.
+  ///
+  /// The extend prompt does not come back — [MeetingManager.canExtendMeeting]
+  /// is false from here on — but the new end time gets its own final warning.
+  void _applyMeetingExtension() {
+    meetingManager.extendMeetingBy10Minutes();
+    _warnedTiers.clear();
+    _promptedTiers.clear();
+  }
+
+  void _showExtendMeetingDialog(RtcViewmodel viewModel) {
+    if (!mounted || _isEndingDialogOpen) return;
+    _isEndingDialogOpen = true;
+
+    showMeetingEndingDialog(
+      context,
+      // Read live, so a card left open keeps counting down to the real end.
+      endTime: () => meetingManager.endDateTime,
+      extendMinutes: Constant.meetingExtendTime,
+      onOpened: (dialogContext) => _endingDialogContext = dialogContext,
+      onExtend: () => _requestMeetingExtension(viewModel),
+    ).then((_) {
+      _isEndingDialogOpen = false;
+      _endingDialogContext = null;
+      // Dismissing is personal and stops only this client's sound; the meeting
+      // still ends on schedule, and the next tier still fires.
+      unawaited(_stopMeetingEndWarningSound());
+      // The inactivity prompt held back for this card can show now.
+      _inactivityWatcher?.check();
+    });
+  }
+
+  /// The final warning for everyone who isn't being offered the extension: the
+  /// same live countdown card, without the Extend button.
+  void _showMeetingEndingNotice() {
+    if (!mounted || _isEndingDialogOpen) return;
+    _isEndingDialogOpen = true;
+
+    showMeetingEndingDialog(
+      context,
+      endTime: () => meetingManager.endDateTime,
+      onOpened: (dialogContext) => _endingDialogContext = dialogContext,
+    ).then((_) {
+      _isEndingDialogOpen = false;
+      _endingDialogContext = null;
+      // The card and the chime are one unit, as with the prompt.
+      unawaited(_stopMeetingEndWarningSound());
+      _inactivityWatcher?.check();
+    });
+  }
+
+  /// Asks the backend for the extension on the dialog's behalf.
+  ///
+  /// Resolves to null once it is accepted, or to the backend's reason when it
+  /// isn't, which the dialog shows in place so the host can retry. The local
+  /// clock moves only once the backend agrees, so a rejected extend doesn't
+  /// leave this client counting down to a different end than everyone else.
+  Future<String?> _requestMeetingExtension(RtcViewmodel viewModel) {
+    final result = Completer<String?>();
+    viewModel.meetingTimeExtend(
+      onExtended: () {
+        if (mounted) {
+          _applyMeetingExtension();
+          showSnackBar(
+              message:
+                  "Meeting extended by ${Constant.meetingExtendTime} minutes");
+        }
+        if (!result.isCompleted) result.complete(null);
+      },
+      onFailed: (message) {
+        if (!result.isCompleted) result.complete(message);
+      },
+    );
+    return result.future;
+  }
+
+  /// Adopts an end-meeting-sound toggle broadcast by another client.
+  ///
+  /// Everyone used to read this once on join, which went stale the moment a
+  /// host flipped it mid-meeting; the broadcast keeps every client honest.
+  /// Only moderators may change it, so a message from a regular participant is
+  /// dropped rather than trusted — otherwise anyone could silence the hosts.
+  void _applyRemoteNotificationSoundSetting(
+      RtcViewmodel? viewModel, RemoteActivityData remoteData) {
+    if (viewModel == null) return;
+
+    final sender = remoteData.identity;
+    final senderMetadata = sender?.metadata;
+    final isSenderHost = Utils.isHost(senderMetadata);
+    final isSenderCoHost = Utils.isCoHost(senderMetadata);
+    if (!isSenderHost && !isSenderCoHost) return;
+
+    viewModel.isNotificationSoundEnabled = remoteData.value;
+
+    // Who changed it is moderator business — participants have no toggle and
+    // no sound, so the notice would mean nothing to them.
+    if (!viewModel.isHost() && !viewModel.isCoHost()) return;
+
+    final name = sender?.name.isNotEmpty == true ? sender!.name : "Someone";
+    final role = isSenderHost ? "Host" : "Co-Host";
+    final change = remoteData.value ? "enabled" : "disabled";
+    showSnackBar(message: "$name ($role) $change the end meeting sound.");
+  }
+
+  /// Closes the prompt once somebody, anybody, has extended the meeting.
+  void _dismissMeetingEndingDialog() {
+    final dialogContext = _endingDialogContext;
+    if (!_isEndingDialogOpen || dialogContext == null) return;
+    if (!dialogContext.mounted) return;
+    Navigator.of(dialogContext).pop();
   }
 
   var isCheckedWhileJoining = false;
 
   void checkRecordingPlayer(bool isRecording) {
     if (isRecording && !isCheckedWhileJoining) {
-      playAudio(Constant.startRecordingUrl);
+      unawaited(playAudio(CdnSounds.recordingStart));
       isCheckedWhileJoining = true;
     }
   }
@@ -1993,6 +3230,16 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
     } else {
       await DaakiaMeetingService.stop();
     }
+  }
+
+  /// Drops the attendance saved for rejoining once the meeting is over or
+  /// another device has taken it over. A plain Leave, a dropped connection or
+  /// a killed app keep it, so those can rejoin on the same attendance and
+  /// role. The session check alone isn't enough: right after a meeting ends,
+  /// its details still name the ended session, so a fresh join would match it
+  /// and come back as co-host, skipping the password and email checks.
+  void _forgetSavedAttendance() {
+    unawaited(StorageHelper().clearMeetingAttendance());
   }
 
   void clearMemory(RtcViewmodel? viewModel) {

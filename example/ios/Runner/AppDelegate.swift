@@ -2,7 +2,7 @@ import Flutter
 import UIKit
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
 
     var replayKitChannel: FlutterMethodChannel! = nil
     var observeTimer: Timer! = nil
@@ -12,21 +12,23 @@ import UIKit
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
-        guard let controller = window?.rootViewController as? FlutterViewController else {
-            return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-        }
-        
-        
+        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    // With the UIScene life cycle (required from the iOS 27 SDK) there is no
+    // window or root view controller at launch, so plugins and the ReplayKit
+    // channel are wired up once Flutter's engine exists.
+    func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+        GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+
         // Creating the method channel for ReplayKit communication
         replayKitChannel = FlutterMethodChannel(name: "daakia_vc/replaykit-channel",
-                                                binaryMessenger: controller.binaryMessenger)
-        
+                                                binaryMessenger: engineBridge.applicationRegistrar.messenger())
+
         // Setting method call handler for handling Flutter calls
         replayKitChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
             self?.handleReplayKitFromFlutter(result: result, call: call)
         }
-            GeneratedPluginRegistrant.register(with: self)
-            return super.application(application, didFinishLaunchingWithOptions: launchOptions)
     }
         
         

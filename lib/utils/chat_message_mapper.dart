@@ -1,6 +1,7 @@
 import '../model/remote_activity_data.dart';
 import '../model/reply_message.dart';
 import '../model/reaction_model.dart';
+import 'json_parser.dart';
 
 class ChatMessageMapper {
   ChatMessageMapper._(); // 🔒 no instance
@@ -23,6 +24,10 @@ class ChatMessageMapper {
       "isReplied": msg.replyMessage != null,
       "replyMessage": msg.replyMessage?.toJson(),
       "reactions": msg.reactions?.map((e) => e.toJson()).toList() ?? [],
+      // Web's keys for these flags. We don't keep the edit time, so the send
+      // time stands in; only its presence marks the message as edited.
+      if (msg.isEdited) "editTimestamp": msg.timestamp,
+      if (msg.isDeleted) "deleted": true,
     };
   }
 
@@ -50,9 +55,14 @@ class ChatMessageMapper {
   static RemoteActivityData fromApiJson(
       Map<String, dynamic> json,
       ) {
+    // Web marks an edit with `editTimestamp` and a delete with `deleted`, and
+    // keeps the original text of a deleted message, so it must not be shown.
+    final isDeleted = JsonParser.toBool(json['deleted'] ?? json['isDeleted']) ?? false;
+    final isEdited = json['editTimestamp'] != null ||
+        (JsonParser.toBool(json['isEdited']) ?? false);
     return RemoteActivityData(
       id: json['id'] as String?,
-      message: json['message'] as String?,
+      message: isDeleted ? "[Message deleted]" : json['message'] as String?,
       timestamp: json['timestamp'] as int?,
       fromUserId: json['from'] as String?,
       participantIdentity: json['from'] as String?,
@@ -66,6 +76,8 @@ class ChatMessageMapper {
             (e) => Reaction.fromJson(e as Map<String, dynamic>),
       )
           .toList(),
+      isEdited: isEdited,
+      isDeleted: isDeleted,
     );
   }
 }

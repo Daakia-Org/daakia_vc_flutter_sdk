@@ -53,11 +53,12 @@ extension RTCExampleExt on BuildContext {
         ),
       );
 
-  Future<bool?> showDisconnectDialog() => showDialog<bool>(
+  Future<bool?> showCloseWhiteboardDialog() => showDialog<bool>(
         context: this,
         builder: (ctx) => AlertDialog(
-          title: const Text('Disconnect'),
-          content: const Text('Are you sure to disconnect?'),
+          title: const Text('Close Whiteboard'),
+          content: const Text(
+              'This closes the whiteboard for everyone in the meeting.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx, false),
@@ -65,7 +66,7 @@ extension RTCExampleExt on BuildContext {
             ),
             TextButton(
               onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('Disconnect'),
+              child: const Text('Close'),
             ),
           ],
         ),

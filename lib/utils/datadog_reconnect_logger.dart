@@ -49,9 +49,12 @@ class DatadogReconnectLogger {
       }
     };
 
+    // Datadog only: a reconnect attempt is transient network churn, not a
+    // defect, so it must not open a Sentry issue.
     DaakiaVcLogger.logError(
       'Reconnecting to the room!!!',
       attributes: attributes,
+      reportToSentry: false,
     );
   }
 }

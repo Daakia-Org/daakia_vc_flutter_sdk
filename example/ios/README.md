@@ -53,11 +53,15 @@ Follow these steps to set up the Broadcast Extension for screen sharing on iOS.
 ## Step 5: Configure `AppDelegate.swift`
 
 1. Open `AppDelegate` in your main app.
-2. Add the following code:
+2. Add the following code. It uses the UIScene life cycle, which apps built with the iOS 27 SDK (Xcode 27)
+   must adopt: add the scene manifest to your `Info.plist` as shown in the
+   [Migration Guide](../../doc/MigrationGuide.md#building-with-the-ios-27-sdk-xcode-27-uiscene-life-cycle).
+   With UIScene there is no window or root view controller at launch, so plugins and the ReplayKit channel
+   are registered once Flutter's engine exists.
 
     ```swift
    @main
-   @objc class AppDelegate: FlutterAppDelegate {
+   @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
 
        var replayKitChannel: FlutterMethodChannel! = nil
        var observeTimer: Timer! = nil
@@ -67,21 +71,20 @@ Follow these steps to set up the Broadcast Extension for screen sharing on iOS.
            _ application: UIApplication,
            didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
        ) -> Bool {
-           guard let controller = window?.rootViewController as? FlutterViewController else {
-               return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-           }
+           return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+       }
+
+       func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+           GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
            // Setting up ReplayKit communication
            replayKitChannel = FlutterMethodChannel(name: "daakia_vc/replaykit-channel",
-                                                   binaryMessenger: controller.binaryMessenger)
+                                                   binaryMessenger: engineBridge.applicationRegistrar.messenger())
 
            // Handle Flutter method calls
            replayKitChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
                self?.handleReplayKitFromFlutter(result: result, call: call)
            }
-
-           GeneratedPluginRegistrant.register(with: self)
-           return super.application(application, didFinishLaunchingWithOptions: launchOptions)
        }
 
        func handleReplayKitFromFlutter(result: FlutterResult, call: FlutterMethodCall) {
@@ -128,6 +131,23 @@ Follow these steps to set up the Broadcast Extension for screen sharing on iOS.
 
 3. Replace all instances of group.com.daakia.example with your actual App Group identifier.
 4. Do not modify the channel names.
+
+> **App without the UIScene life cycle** (built with an SDK older than iOS 27 and no scene manifest in
+> `Info.plist`): `didInitializeImplicitFlutterEngine` is not called. Register in
+> `didFinishLaunchingWithOptions` instead, and drop `FlutterImplicitEngineDelegate`:
+>
+> ```swift
+> guard let controller = window?.rootViewController as? FlutterViewController else {
+>     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+> }
+> replayKitChannel = FlutterMethodChannel(name: "daakia_vc/replaykit-channel",
+>                                         binaryMessenger: controller.binaryMessenger)
+> replayKitChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+>     self?.handleReplayKitFromFlutter(result: result, call: call)
+> }
+> GeneratedPluginRegistrant.register(with: self)
+> return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+> ```
 
 ### Special Note:
 > ⚠️ **This screen share will not work on the iOS Simulator. To test its functionality, you must use a real device.**

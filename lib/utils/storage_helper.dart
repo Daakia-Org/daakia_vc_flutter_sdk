@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:daakia_vc_flutter_sdk/enum/attendance_role_enum.dart';
 import 'package:daakia_vc_flutter_sdk/utils/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 class StorageHelper {
   static const _prefix = "daakia_vc_flutter_sdk."; // Unique prefix for SDK keys
@@ -15,9 +18,15 @@ class StorageHelper {
     return prefs.getString("$_prefix$key");
   }
 
+  /// Wipes the SDK's stored state, except [Constant.deviceId]: that one
+  /// identifies the install, not the meeting, and rotating it would make this
+  /// device look like a new one to the duplicate-device checks.
   Future<void> clearSdkData() async {
     final prefs = await SharedPreferences.getInstance();
-    final keys = prefs.getKeys().where((k) => k.startsWith(_prefix)).toList();
+    final keys = prefs
+        .getKeys()
+        .where((k) => k.startsWith(_prefix) && k != "$_prefix${Constant.deviceId}")
+        .toList();
     for (final key in keys) {
       await prefs.remove(key);
     }
@@ -48,6 +57,106 @@ class StorageHelper {
   Future<void> setHostToken(String? value) async => await saveData(Constant.hostToken, value ?? "");
   Future<String?> getHostToken() async => await getData(Constant.hostToken);
 
+  /// Who the saved attendance belongs to: the signed-in email the host app
+  /// passed in, or empty for someone who isn't signed in.
+  static String attendanceOwnerFor(String? userEmail) =>
+      userEmail?.trim().toLowerCase() ?? "";
+
+  Future<void> setAttendanceOwner(String? userEmail) async =>
+      await saveData(Constant.attendanceOwner, attendanceOwnerFor(userEmail));
+
+  /// Whether the saved attendance was made by [userEmail], so another account
+  /// on this device never rejoins on someone else's attendance and role.
+  Future<bool> isAttendanceOwnedBy(String? userEmail) async =>
+      (await getData(Constant.attendanceOwner) ?? "") ==
+      attendanceOwnerFor(userEmail);
+
+  /// Forgets the attendance (and co-host token) saved for rejoining. They are
+  /// kept for rejoining after a Leave, a dropped connection or a killed app;
+  /// once the meeting is over, or another device has taken the attendance, a
+  /// later join must start fresh and not come back as co-host on it.
+  Future<void> clearMeetingAttendance() async {
+    final prefs = await SharedPreferences.getInstance();
+    for (final key in [
+      Constant.meetingUid,
+      Constant.sessionUid,
+      Constant.attendanceId,
+      Constant.attendanceRole,
+      Constant.hostToken,
+      Constant.attendanceOwner,
+    ]) {
+      await prefs.remove("$_prefix$key");
+    }
+  }
+
   Future<void> setGuestUserName(String? value) async => await saveData(Constant.guestUserName, value ?? "");
   Future<String?> getGuestUserName() async => await getData(Constant.guestUserName);
+
+  String _emailVerificationKey(String meetingUid) =>
+      "${Constant.emailVerificationPrefix}$meetingUid";
+
+  /// Keeps a participant's verified email and its `email_token` for one
+  /// meeting, so rejoining (app restart, leaving and coming back) doesn't ask
+  /// for a new code while the token is valid.
+  Future<void> saveEmailVerification(
+      String meetingUid, String email, String token) async {
+    await saveData(_emailVerificationKey(meetingUid),
+        jsonEncode({"email": email, "token": token}));
+  }
+
+  /// The saved verification for [meetingUid], or null when there is none or
+  /// its token has expired (an expired one is removed).
+  Future<({String email, String token})?> getEmailVerification(
+      String meetingUid) async {
+    final raw = await getData(_emailVerificationKey(meetingUid));
+    if (raw == null || raw.isEmpty) return null;
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final email = map["email"]?.toString() ?? "";
+      final token = map["token"]?.toString() ?? "";
+      if (email.isEmpty || token.isEmpty) return null;
+      final expiry = _jwtExpiry(token);
+      if (expiry == null || !expiry.isAfter(DateTime.now())) {
+        await clearEmailVerification(meetingUid);
+        return null;
+      }
+      return (email: email, token: token);
+    } catch (_) {
+      await clearEmailVerification(meetingUid);
+      return null;
+    }
+  }
+
+  Future<void> clearEmailVerification(String meetingUid) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("$_prefix${_emailVerificationKey(meetingUid)}");
+  }
+
+  /// Reads `exp` from a JWT without verifying it (the server does that); only
+  /// used to drop a token that has certainly expired.
+  static DateTime? _jwtExpiry(String token) {
+    try {
+      final parts = token.split(".");
+      if (parts.length < 2) return null;
+      final payload = jsonDecode(
+          utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+      final exp = payload is Map ? payload["exp"] : null;
+      if (exp is! num) return null;
+      return DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Fallback device id for platforms where DeviceIdProvider can't get one
+  /// (an emulator with no ANDROID_ID, a simulator). A random id for this
+  /// install, created on first use and kept until the app is reinstalled or
+  /// its data cleared.
+  Future<String> getOrCreateDeviceId() async {
+    final existing = await getData(Constant.deviceId);
+    if (existing != null && existing.isNotEmpty) return existing;
+    final id = const Uuid().v4();
+    await saveData(Constant.deviceId, id);
+    return id;
+  }
 }

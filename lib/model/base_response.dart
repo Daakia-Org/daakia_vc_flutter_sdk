@@ -1,3 +1,5 @@
+import '../utils/json_parser.dart';
+
 class BaseResponse<T> {
   int? success;
   String? message;
@@ -9,7 +11,7 @@ class BaseResponse<T> {
       Map<String, dynamic> json,
       T Function(dynamic json) fromJsonT,
       ) {
-    success = json['success'];
+    success = JsonParser.toFlagInt(json['success']);
     message = json['message'];
 
     if (json['data'] != null) {

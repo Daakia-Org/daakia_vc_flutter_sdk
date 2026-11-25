@@ -26,6 +26,13 @@ class MeetingActions {
   static const String sendPrivateMessage = "send_private_message";
   static const String sendPublicMessage = "send_public_message";
   static const String lobby = "lobby";
+  // Sent by the server (no sender) just before it removes a participant whom
+  // a host or co-host moved back to the lobby. Handled ahead of the action
+  // switch in room.dart, since the sender check needs the raw event.
+  static const String moveToLobby = "move_to_lobby";
+  // A lobby request was admitted or denied. Sent by the server, and by a web
+  // host that admits or denies.
+  static const String lobbyLeave = "lobby_leave";
 
   static const String heart = "heart";
   static const String blush = "blush";
@@ -63,6 +70,10 @@ class MeetingActions {
   static const String screenShareStopped = "screen-share-stopped";
 
   static const String startRecording = "started-recording";
+
+  /// Sent to hosts and co-hosts by a participant whose consent completed the
+  /// list, asking one of them to start the recording.
+  static const String requestStartRecording = "start-recording";
 
   static const String stopRecording = "stopped-recording";
 
@@ -112,6 +123,19 @@ class MeetingActions {
 
   static const String refreshInvitedParticipants = "refresh_invited_participants";
 
+  /// Broadcast when a host/co-host flips the end-of-meeting warning sound so
+  /// every client picks up the new value without re-reading the API.
+  static const String notificationSoundSetting = "notification_sound_setting";
+
+  /// Broadcast by the host/co-host when whiteboard collaboration is switched
+  /// on or off. `value` carries the new state.
+  static const String allowLiveCollabWhiteboard = "allow-live-collab-whiteboard";
+
+  /// Sent by the inactive-meeting watcher just before it ends an idle meeting,
+  /// so everyone else can label the ROOM_DELETED that follows as an inactivity
+  /// end. Carries no payload.
+  static const String inactiveMeetingAutoEnd = "inactive-meeting-auto-end";
+
   // ✅ Add new fields here
 
   // ✅ Method to check if an action is valid
@@ -135,6 +159,8 @@ class MeetingActions {
     sendPrivateMessage,
     sendPublicMessage,
     lobby,
+    moveToLobby,
+    lobbyLeave,
     heart,
     blush,
     clap,
@@ -159,6 +185,7 @@ class MeetingActions {
     screenShareStarted,
     screenShareStopped,
     startRecording,
+    requestStartRecording,
     stopRecording,
     finallyStartRecording,
     finallyStopRecording,
@@ -184,6 +211,9 @@ class MeetingActions {
     allowAnnotationPermission,
     revokeAnnotationPermission,
     refreshInvitedParticipants,
+    notificationSoundSetting,
+    allowLiveCollabWhiteboard,
+    inactiveMeetingAutoEnd,
     // ✅ Add new fields here
   };
 }

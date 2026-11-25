@@ -42,6 +42,12 @@ class EnterPIP extends RTCEvents{}
 
 class SortParticipants extends RTCEvents{}
 
+/// Host-control state has just been loaded, so whatever Workshop restrictions
+/// are already in force can be announced — this is how someone joining a
+/// meeting that's *already* in Workshop mode gets told, since they never see
+/// the actions that turned it on.
+class ShowWorkshopModeNotice extends RTCEvents{}
+
 class EndMeeting extends RTCEvents{
   final String reason;
   EndMeeting({required this.reason});

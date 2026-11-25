@@ -17,6 +17,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:safe_device/safe_device.dart';
 
 import '../model/transcription_model.dart';
+import 'json_parser.dart';
 
 FutureOr<void> Function()? onWindowShouldClose;
 
@@ -58,6 +59,74 @@ class Utils {
     // Find the ScaffoldMessenger in the widget tree
     // and use it to show a SnackBar.
     ScaffoldMessenger.of(context).showSnackBar(snackBar);
+  }
+
+  /// Shows a modal bottom sheet that survives a short viewport.
+  ///
+  /// A phone in landscape is only ~360dp tall and the framework caps a plain
+  /// sheet at 9/16 of that (~200dp), which clips almost every sheet in this
+  /// SDK. Every sheet should go through here rather than calling
+  /// [showModalBottomSheet] directly so it gets the full height when the
+  /// viewport is short.
+  ///
+  /// Lifting the cap is only half the fix for a sheet that can genuinely
+  /// outgrow the screen: [isScrollControlled] removes the ceiling but does not
+  /// make the sheet's own content scroll. Pass [scrollable] for those — an
+  /// unbounded list, or a block of copy that is already taller than a
+  /// landscape phone — and the builder's result is wrapped in a scroll view.
+  ///
+  /// It is off by default on purpose: a scrollable inside a sheet wins the
+  /// gesture arena against the sheet's own drag recognizer, so wrapping a
+  /// sheet that always fits would cost swipe-down-to-dismiss for nothing.
+  /// Leave it off too when the sheet manages its own scrolling, or when its
+  /// layout needs a bounded height (an [Expanded] over a [ListView], a
+  /// [DraggableScrollableSheet]) — wrapping those hands them unbounded height
+  /// and breaks them outright.
+  ///
+  /// Pass [forceFullHeight] for a sheet that must be scroll-controlled in
+  /// every orientation (again, [DraggableScrollableSheet] requires it).
+  ///
+  /// The orientation is read inside the builder, not when the sheet opens, so
+  /// a sheet opened in portrait and then rotated takes the landscape height
+  /// (and back). The sheet is always scroll-controlled for that reason; the
+  /// portrait 9/16 cap the framework would apply is reproduced here instead.
+  static Future<T?> showAdaptiveSheet<T>(
+    BuildContext context, {
+    required WidgetBuilder builder,
+    bool scrollable = false,
+    bool forceFullHeight = false,
+    Color? backgroundColor,
+    ShapeBorder? shape,
+    bool isDismissible = true,
+    bool enableDrag = true,
+    bool useSafeArea = true,
+  }) {
+    return showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: backgroundColor,
+      shape: shape,
+      isDismissible: isDismissible,
+      enableDrag: enableDrag,
+      useSafeArea: useSafeArea,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        Widget child = builder(sheetContext);
+        if (scrollable) child = SingleChildScrollView(child: child);
+        if (forceFullHeight) return child;
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final isLandscape = MediaQuery.orientationOf(context) ==
+                Orientation.landscape;
+            if (isLandscape) return child;
+            return ConstrainedBox(
+              constraints:
+                  BoxConstraints(maxHeight: constraints.maxHeight * 9 / 16),
+              child: child,
+            );
+          },
+        );
+      },
+    );
   }
 
   static String getTimeZoneId() {
@@ -158,19 +227,6 @@ class Utils {
     }
   }
 
-  static String getParticipantType(String? metadata) {
-    String role = getMetadataRole(metadata);
-
-    switch (role) {
-      case 'moderator':
-        return ' (Host)';
-      case 'cohost':
-        return ' (Co-Host)';
-      default:
-        return '';
-    }
-  }
-
   static bool isHost(String? metadata) {
     String role = getMetadataRole(metadata);
     return role == 'moderator';
@@ -179,6 +235,16 @@ class Utils {
   static bool isCoHost(String? metadata) {
     String role = getMetadataRole(metadata);
     return role == 'cohost';
+  }
+
+  static bool isGuest(String? metadata) {
+    if (metadata == null) return false;
+    try {
+      final jsonObject = jsonDecode(metadata);
+      return JsonParser.toBool(jsonObject['is_guest']) ?? false;
+    } catch (e) {
+      return false;
+    }
   }
 
   static Future<bool> isIosSimulator() async {
@@ -492,6 +558,15 @@ class Utils {
     FocusScope.of(context).unfocus();
   }
 
+  /// Pass as a text field's `onTapOutside`. On Android and iOS Flutter keeps
+  /// focus when you tap outside a field, so the keyboard stays up until Back.
+  /// Some third-party keyboards have no hide key, which left the user stuck.
+  /// Dropping focus also stops the field from grabbing focus again, and
+  /// reopening the keyboard, when a sheet or dialog opened over it closes.
+  static void dismissKeyboardOnTapOutside(PointerDownEvent _) {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+
   static String? extractUserAvatar(String? metadata) {
     if (metadata == null || metadata.trim().isEmpty) return null;
 
@@ -525,6 +600,33 @@ class Utils {
     if (Platform.isWindows) return 'windows';
     if (Platform.isLinux) return 'linux';
     return 'unknown';
+  }
+
+  /// The email an invitee joined with, from their participant metadata.
+  ///
+  /// Checks the same keys as the web client, top level first, then
+  /// `custom_metadata` (where pre-join puts the advance-password email).
+  static String? extractParticipantEmail(String? metadata) {
+    if (metadata == null || metadata.trim().isEmpty) return null;
+    try {
+      final Map<String, dynamic> decoded = jsonDecode(metadata);
+      final custom = decoded['custom_metadata'] is Map
+          ? decoded['custom_metadata'] as Map
+          : const {};
+      for (final value in [
+        decoded['participant_email'],
+        decoded['email'],
+        custom['participant_email'],
+        custom['email'],
+        custom['identifier'],
+      ]) {
+        final email = value?.toString().trim() ?? '';
+        if (email.isNotEmpty) return email;
+      }
+    } catch (_) {
+      return null;
+    }
+    return null;
   }
 
   static String? extractClientPlatform(String? metadata) {
@@ -587,27 +689,6 @@ class Utils {
     return platform == 'android' || platform == 'ios' || platform == 'mobile_web';
   }
 
-  static bool _toBool(dynamic value) {
-    if (value == null) return false;
-
-    if (value is bool) return value;
-
-    if (value is String) {
-      switch (value.toLowerCase()) {
-        case 'true':
-        case '1':
-        case 'yes':
-          return true;
-        default:
-          return false;
-      }
-    }
-
-    if (value is num) {
-      return value != 0;
-    }
-
-    return false;
-  }
+  static bool _toBool(dynamic value) => JsonParser.toBool(value) ?? false;
 
 }

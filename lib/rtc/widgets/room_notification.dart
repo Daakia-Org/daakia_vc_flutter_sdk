@@ -17,6 +17,7 @@ class RoomNotificationState extends State<RoomNotification>
   String? _message;
   String? _actionText;
   VoidCallback? _actionCallback;
+  VoidCallback? _onDismiss;
   Timer? _dismissTimer;
   String? _lastMessage;
   DateTime? _lastShownAt;
@@ -40,14 +41,25 @@ class RoomNotificationState extends State<RoomNotification>
   @override
   void dispose() {
     _dismissTimer?.cancel();
+    _notifyDismissed();
     _animController.dispose();
     super.dispose();
   }
 
+  /// [duration] overrides [_displayDuration] for a notice that needs longer on
+  /// screen than a routine one — a couple of sentences the user has to act on
+  /// can't be read in the default 2.5s.
+  ///
+  /// [onDismiss] fires once the notice goes away, however it goes away — timed
+  /// out, closed by the user, or replaced by the next one. Used by notices that
+  /// are paired with something else, such as a sound that has to stop the
+  /// moment the message does.
   void show({
     required String message,
     String? actionText,
     VoidCallback? actionCallback,
+    Duration? duration,
+    VoidCallback? onDismiss,
   }) {
     if (!mounted) return;
 
@@ -61,19 +73,32 @@ class RoomNotificationState extends State<RoomNotification>
     _lastShownAt = now;
 
     _dismissTimer?.cancel();
+    // The outgoing notice never gets to finish, so settle its pairing now.
+    _notifyDismissed();
     setState(() {
       _message = message;
       _actionText = actionText;
       _actionCallback = actionCallback;
+      _onDismiss = onDismiss;
     });
     _animController.forward(from: 0);
-    _dismissTimer = Timer(_displayDuration, _dismiss);
+    _dismissTimer = Timer(duration ?? _displayDuration, _dismiss);
   }
 
   void _dismiss() {
+    _dismissTimer?.cancel();
+    _notifyDismissed();
     _animController.reverse().then((_) {
       if (mounted) setState(() => _message = null);
     });
+  }
+
+  /// Runs the pairing callback exactly once, so a user-dismiss followed by the
+  /// timer (or vice versa) doesn't fire it twice.
+  void _notifyDismissed() {
+    final callback = _onDismiss;
+    _onDismiss = null;
+    callback?.call();
   }
 
   @override
@@ -124,9 +149,9 @@ class RoomNotificationState extends State<RoomNotification>
                         _actionCallback?.call();
                         _dismiss();
                       },
-                      child: const Text(
-                        'Open',
-                        style: TextStyle(
+                      child: Text(
+                        _actionText!,
+                        style: const TextStyle(
                           color: Color(0xFF64B5F6),
                           fontWeight: FontWeight.w600,
                           fontSize: 15,

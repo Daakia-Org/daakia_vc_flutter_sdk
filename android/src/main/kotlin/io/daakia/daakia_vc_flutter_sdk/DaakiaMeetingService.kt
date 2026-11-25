@@ -35,7 +35,14 @@ class DaakiaMeetingService : Service() {
         // main thread without going through an intent round-trip.
         var instance: DaakiaMeetingService? = null
 
+        // True between startForegroundService() and the service's startForeground()
+        // call. Stopping the service inside that window makes Android throw
+        // ForegroundServiceDidNotStartInTimeException and kill the app.
+        @Volatile
+        private var startPending = false
+
         fun start(context: Context, title: String, text: String, isMuted: Boolean, showMuteButton: Boolean) {
+            startPending = true
             val intent = Intent(context, DaakiaMeetingService::class.java).apply {
                 action = ACTION_START
                 putExtra(EXTRA_TITLE, title)
@@ -60,6 +67,19 @@ class DaakiaMeetingService : Service() {
         }
 
         fun stop(context: Context) {
+            if (startPending) {
+                // A meeting that closes right after joining (instant kick, fast
+                // leave) can stop us before ACTION_START has been handled. Queue
+                // the stop behind it instead, so startForeground() still runs first.
+                try {
+                    context.startService(
+                        Intent(context, DaakiaMeetingService::class.java).apply { action = ACTION_STOP }
+                    )
+                    return
+                } catch (e: Exception) {
+                    Log.w(TAG, "Queued stop failed, stopping directly: $e")
+                }
+            }
             context.stopService(Intent(context, DaakiaMeetingService::class.java))
         }
     }
@@ -76,6 +96,7 @@ class DaakiaMeetingService : Service() {
 
     override fun onDestroy() {
         instance = null
+        startPending = false
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
@@ -162,6 +183,14 @@ class DaakiaMeetingService : Service() {
                 DaakiaVcFlutterSdkPlugin.invokeOnFlutter("onMuteToggle", null)
             }
             ACTION_END_CALL -> {
+                // No Flutter engine is left to end the meeting (app swiped away,
+                // engine detached) — the notification is orphaned, just remove it.
+                if (!DaakiaVcFlutterSdkPlugin.hasServiceOwner) {
+                    Log.w(TAG, "End Call with no owning Flutter engine; stopping orphaned service")
+                    stopSelf()
+                    return START_NOT_STICKY
+                }
+
                 // Bring the Activity to the foreground first. This exits Android PiP mode
                 // cleanly so that Flutter's Navigator.pop() doesn't leave the PiP overlay
                 // frozen on the previous page.
@@ -172,13 +201,27 @@ class DaakiaMeetingService : Service() {
 
                 // Delay Flutter callback so Android has time to finish the PiP→fullscreen
                 // transition before navigation happens (~300 ms is reliable in practice).
+                // Stop the service ourselves afterwards rather than relying on the Dart
+                // side's dispose() — after a hot restart its handler is gone and the
+                // callback lands nowhere. stopSelf() is a no-op if Dart already stopped us.
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                     DaakiaVcFlutterSdkPlugin.invokeOnFlutter("onEndCall", null)
+                    stopSelf()
                 }, 300)
             }
             ACTION_STOP -> stopSelf()
         }
-        return START_STICKY
+        // Not sticky: if the process dies the Dart meeting dies with it, so a
+        // system-restarted service would only show a dead notification.
+        return START_NOT_STICKY
+    }
+
+    // User swiped the app away from recents. The activity (and with it the Flutter
+    // engine running the meeting) is gone, so nothing would ever stop this service.
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "Task removed; stopping meeting service")
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
     }
 
     private fun startMeetingForeground() {
@@ -188,6 +231,8 @@ class DaakiaMeetingService : Service() {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, baseFgsType)
         } catch (e: Exception) {
             Log.w(TAG, "startForeground failed, running without foreground promotion: $e")
+        } finally {
+            startPending = false
         }
     }
 
