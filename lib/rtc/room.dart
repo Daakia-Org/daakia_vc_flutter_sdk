@@ -753,23 +753,48 @@ class _RoomPageState extends State<RoomPage> with WidgetsBindingObserver {
       }
     });
 
-  void _handleDataChannel(DataReceivedEvent event) {
+  Future<void> _handleDataChannel(DataReceivedEvent event) async {
+    var sender = event.participant;
+    // A message sent while its sender was reconnecting is delivered once the
+    // sender is back, and can arrive just before the room lists them again.
+    // Wait briefly for them so the message isn't attributed to "Unknown".
+    if (sender == null && event.participantIdentity.isNotEmpty) {
+      sender = await _awaitRemoteParticipant(event.participantIdentity);
+      if (!mounted) return;
+    }
+
     // Intercept annotation messages before MeetingActions validation
     try {
       final json = jsonDecode(utf8.decode(event.data)) as Map<String, dynamic>;
       if (AnnotationActions.all.contains(json['action'])) {
-        _handleAnnotationData(json, event.participant);
+        _handleAnnotationData(json, sender);
         return;
       }
       if (json['action'] == MeetingActions.moveToLobby) {
-        _onMoveToLobbyNotice(json, event.participant);
+        _onMoveToLobbyNotice(json, sender);
         return;
       }
     } catch (_) {}
 
     var eventData0 = parseJsonData(event.data);
-    var eventData = eventData0.copyWith(identity: event.participant);
+    var eventData = eventData0.copyWith(identity: sender);
     _checkReceivedDataType(eventData);
+  }
+
+  Future<RemoteParticipant?> _awaitRemoteParticipant(String identity) async {
+    RemoteParticipant? lookup() => widget.room.remoteParticipants[identity];
+    final present = lookup();
+    if (present != null) return present;
+    try {
+      final joined =
+          await widget.room.events.waitFor<ParticipantConnectedEvent>(
+        duration: const Duration(seconds: 5),
+        filter: (e) => e.participant.identity == identity,
+      );
+      return joined.participant;
+    } catch (_) {
+      return lookup();
+    }
   }
 
   void _handleAnnotationData(
