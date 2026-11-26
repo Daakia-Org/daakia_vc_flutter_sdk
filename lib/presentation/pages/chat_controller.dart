@@ -4,8 +4,6 @@ import 'package:daakia_vc_flutter_sdk/presentation/widgets/loader.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../utils/chat_export.dart';
-import '../../utils/utils.dart';
 import '../../viewmodel/rtc_viewmodel.dart';
 import 'chat_page.dart';
 
@@ -192,23 +190,6 @@ class _ChatControllerState extends State<ChatController>
                   : title,
               backgroundColor: Colors.black,
               iconTheme: const IconThemeData(color: Colors.white),
-              actions: [
-                IconButton(
-                  tooltip: 'Download chat',
-                  icon: _isSavingChat
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(Icons.download_rounded,
-                          color: Colors.white),
-                  onPressed: _isSavingChat ? null : _downloadChat,
-                ),
-              ],
               bottom: isLandscape ? null : tabBar,
             ),
       // Keeps the chat clear of the status bar while the app bar is hidden.
@@ -224,42 +205,6 @@ class _ChatControllerState extends State<ChatController>
             if (_isLoading) const CustomLoader(),
           ],
         ),
-      ),
-    );
-  }
-
-  bool _isSavingChat = false;
-
-  Future<void> _downloadChat() async {
-    final export = ChatExport.fromViewModel(widget.viewModel);
-    if (!export.hasMessages) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('There are no chat messages to download yet.')),
-      );
-      return;
-    }
-    setState(() => _isSavingChat = true);
-    final path = await export.save();
-    if (!mounted) return;
-    setState(() => _isSavingChat = false);
-
-    // This page is pushed over the meeting, so the meeting's own message
-    // overlay would sit behind it; show the result here instead.
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(path != null
-            ? 'Chat downloaded successfully'
-            : 'Failed to download chat. Please try again.'),
-        action: path == null
-            ? null
-            : SnackBarAction(
-                label: 'Open',
-                // The snack bar can outlive this page, whose context is gone
-                // by then.
-                onPressed: () => Utils.openMediaFile(path, messenger.context),
-              ),
       ),
     );
   }
